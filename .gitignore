@@ -1,0 +1,10 @@
+.godot/
+.translation
+.mono/
+.tmp
+Thumbs.db
+.vscode/
+/builds/
+/export/
+$RECYCLE.BIN/
+desktop.ini
