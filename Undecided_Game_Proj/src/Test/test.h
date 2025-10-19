@@ -5,11 +5,20 @@
 
 namespace godot {
 
-    class GDExample : public MeshInstance3D {
-        GDCLASS(GDExample, MeshInstance3D)
+    class GDTest : public MeshInstance3D {
+        GDCLASS(GDTest, MeshInstance3D)
 
-        
-    }
+        private:
+
+        protected:
+        static void _bind_methods();
+
+        public:
+            GDTest();
+            ~GDTest();
+
+            void Print();
+    };
 }
 
 #endif
