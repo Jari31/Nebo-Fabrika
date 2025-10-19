@@ -4,7 +4,8 @@
 .tmp
 Thumbs.db
 .vscode/
-/builds/
+/build/
 /export/
 $RECYCLE.BIN/
 desktop.ini
+.vs

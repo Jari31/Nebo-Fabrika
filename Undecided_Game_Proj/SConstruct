@@ -1,0 +1,50 @@
+# this is AI generated boilerplate. Feel free to change it if you really want to; as I certainly don't want to write my own SConstruct.
+# if you're confused, do this inside of .../Undecided_Game_Proj : scons --target=NameOfLib
+
+import os
+import platform
+from SCons.Script import Default, Environment, Glob, AddOption
+
+env = Environment(
+    tools=['default', 'textfile'],
+    ENV=os.environ
+)
+
+AddOption('--target', dest='lib_name', type='string', default='my_extension', help='Name of the output library (e.g., my_extension)')
+AddOption('--godot-cpp-root', dest='godot_cpp_root', type='string', default='godot-cpp', help='Path to the godot-cpp repository.')
+
+env['LIB_NAME'] = env.GetOption('lib_name')
+env['GODOT_CPP_ROOT'] = env.GetOption('godot_cpp_root')
+
+# Path to the final output DLL (root project directory)
+# MODIFIED: Changed from '#.' (root) to '#build' (a dedicated build folder)
+env['GDEXTENSION_BUILD_DIR'] = '#build'
+
+# Windows-specific flags (assuming MSVC which is standard)
+env.Append(CCFLAGS=['/EHsc', '/Zi', '/O2'])
+env.Append(LINKFLAGS=['/DEBUG'])
+
+# Includes
+env.Append(CPPPATH=[
+    '#src',
+    env['GODOT_CPP_ROOT'] + '/gen/include',
+    env['GODOT_CPP_ROOT'] + '/gen/core/include',
+    env['GODOT_CPP_ROOT'] + '/godot'
+])
+
+# Library paths and definitions
+# CRITICAL FIX: Add the 'bin' folder where godot-cpp puts its compiled library
+env.Append(LIBPATH=[
+    env['GDEXTENSION_BUILD_DIR'], 
+    env['GODOT_CPP_ROOT'] + '/bin'
+])
+
+# CRITICAL FIX: Use the full, specific name of the generated library file
+env.Append(LIBS=['libgodot-cpp.windows.template_debug.x86_64'])
+
+# Compile the SConscript file (CRITICAL STEP!)
+env.SConscript('SConscript', exports='env')
+
+# Aliases
+env.Alias('all', env['GDEXTENSION_BUILD_DIR'])
+Default(env['GDEXTENSION_BUILD_DIR'])

@@ -1,2 +1,5 @@
 # Undecided_Game_Proj
-A community porject led by Jari.
+A community project led by Jari.
+
+# Supported Platforms
+Windows, as of now.
