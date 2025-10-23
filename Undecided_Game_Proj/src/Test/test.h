@@ -1,5 +1,4 @@
-#ifndef TEST_H
-#define TEST_H
+#pragma once
 
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 
@@ -20,5 +19,3 @@ namespace godot {
             void Print();
     };
 }
-
-#endif
