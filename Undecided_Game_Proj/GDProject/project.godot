@@ -11,5 +11,6 @@ config_version=5
 [application]
 
 config/name="Undecided_Name"
+run/main_scene="uid://c2pm1fraw3gho"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"

@@ -1,65 +1,61 @@
 # this is AI generated boilerplate. Feel free to change it if you really want to, as I certainly don't want to write my own SConstruct.
-# if you're confused, do this inside of .../Undecided_Game_Proj : scons --target=NameOfLib
+# if you're confused, do this inside of .../Undecided_Game_Proj : scons --setName=Name_of_your_lib
 # use VS Code or VS Studio 2022
 
 import os
 import platform
-# IMPORTANT: Import GetOption here!
 from SCons.Script import Default, Environment, Glob, AddOption, GetOption
 
-# --- 1. ENVIRONMENT SETUP ---
 env = Environment(
     tools=['default', 'textfile'],
     ENV=os.environ
 )
 
-# --- 2. COMMAND LINE OPTIONS ---
 AddOption('--target', dest='lib_name', type='string', default='my_extension', help='Name of the output library (e.g., my_extension)')
 AddOption('--godot-cpp-root', dest='godot_cpp_root', type='string', default='godot-cpp', help='Path to the godot-cpp repository.')
+AddOption('--build-folder', dest='build_folder', type='string', default='build', help='Name of the output build directory (e.g., build).')
+AddOption('--setName', dest='selectedName', type='string', default="gameModuleCPP", help="Sets the name without explicitly searching for the file, unlike --target.")
 
-# --- 3. SET VARIABLES ---
-# Use GetOption() directly, not env.GetOption()
 env['LIB_NAME'] = GetOption('lib_name')
 env['GODOT_CPP_ROOT'] = GetOption('godot_cpp_root')
+env['BUILD_FOLDER'] = GetOption('build_folder')
+env['SET_NAME'] = GetOption('selectedName')
 
-# Path to the final output DLL/SO (build folder)
-env['GDEXTENSION_BUILD_DIR'] = '#build'
+build_dir = env['BUILD_FOLDER']
 
-# --- 4. WINDOWS (MSVC) CONFIGURATION ---
+if (build_dir == 'build'):
+    if(env['LIB_NAME'] != 'my_extension'):
+        build_dir = env['LIB_NAME']
+    
+    build_dir = env['SET_NAME']
+
+env['BUILD_FOLDER'] = build_dir
+
+env['GDEXTENSION_BUILD_DIR'] = '#GDProject/Bin/build/' + env['BUILD_FOLDER']
+
 print("Building for architecture x86_64 on platform windows (MSVC)")
 
-# MSVC specific flags
-env.Append(CXXFLAGS=['/EHsc', '/Zi', '/O2', '/std:c++17']) 
+env.Append(CXXFLAGS=['/EHsc', '/Zi', '/O2', '/std:c++17', '/DTYPED_METHOD_BIND']) 
 env.Append(LINKFLAGS=['/DEBUG'])
 
-# Common Includes (The definitive, exhaustive search paths with /)
 env.Append(CPPPATH=[
     '#src',
-    # 1. Path to general includes (where most binding classes live)
     env['GODOT_CPP_ROOT'] + '/include',
-    # 2. Path to core binding headers (e.g., String, Vector2)
     env['GODOT_CPP_ROOT'] + '/gen/core/include',
-    # 3. Path for the GDExtension interface header (gdextension_interface.h) - Standard Location
     env['GODOT_CPP_ROOT'] + '/gen/gdextension/include',
-    # 4. Fallback for generated class headers
     env['GODOT_CPP_ROOT'] + '/gen/include',
-    # FIX: Add the root GDExtension folder (common alternative location for gdextension_interface.h)
     env['GODOT_CPP_ROOT'] + '/gdextension',
 ])
 
-# Library paths and Linkage
 env.Append(LIBPATH=[
     env['GDEXTENSION_BUILD_DIR'], 
     env['GODOT_CPP_ROOT'] + '/bin'
 ])
 
-# Libraries: Windows needs the full name of the compiled .lib file
 env.Append(LIBS=['libgodot-cpp.windows.template_debug.x86_64'])
 
 
-# --- 5. EXECUTE BUILD ---
 env.SConscript('SConscript', exports='env')
 
-# Aliases
 env.Alias('all', env['GDEXTENSION_BUILD_DIR'])
 Default(env['GDEXTENSION_BUILD_DIR'])

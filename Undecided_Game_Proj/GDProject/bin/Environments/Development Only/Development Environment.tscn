@@ -1,9 +1,8 @@
 [gd_scene load_steps=2 format=3 uid="uid://c2pm1fraw3gho"]
 
-[sub_resource type="BoxMesh" id="BoxMesh_r4f5r"]
+[ext_resource type="Script" uid="uid://c4avp0p38orfo" path="res://bin/GDScripts/testRef/gd_test.gd" id="1_q8uwn"]
 
 [node name="Node3D" type="Node3D"]
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-transform = Transform3D(8.576882, 0, 0, 0, 0.14715827, 0, 0, 0, 11.964331, 0, 0, 0)
-mesh = SubResource("BoxMesh_r4f5r")
+[node name="GDTest" type="GDTest" parent="."]
+script = ExtResource("1_q8uwn")

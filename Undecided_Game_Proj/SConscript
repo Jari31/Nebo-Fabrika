@@ -7,7 +7,7 @@ src_files += Glob('src/*/*.cpp', True)
 src_files += Glob('src/*/*/*.cpp', True)
 
 lib = env.SharedLibrary(
-    target=env['GDEXTENSION_BUILD_DIR'] + '/' + env['LIB_NAME'],
+    target=env['GDEXTENSION_BUILD_DIR'] + '/' + env['SET_NAME'],
     source=src_files
 )
 
