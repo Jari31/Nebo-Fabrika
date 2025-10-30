@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://c8a3en627vdcf"
+path="res://.godot/imported/Simplex3D.glsl-d44e2103bff7e2cac13461756d96f61a.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/Libs/Simplex3D.glsl"
+dest_files=["res://.godot/imported/Simplex3D.glsl-d44e2103bff7e2cac13461756d96f61a.res"]
+
+[params]
+

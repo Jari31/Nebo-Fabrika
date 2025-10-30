@@ -14,3 +14,7 @@ config/name="Undecided_Name"
 run/main_scene="uid://c2pm1fraw3gho"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/measuringtape/plugin.cfg")

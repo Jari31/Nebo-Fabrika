@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dsqbr6q5u6jfx"
+path="res://.godot/imported/SparseVoxelOctrees.glsl-b6b4db72ee5fc0ee34800294b933197e.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/Libs/SparseVoxelOctrees.glsl"
+dest_files=["res://.godot/imported/SparseVoxelOctrees.glsl-b6b4db72ee5fc0ee34800294b933197e.res"]
+
+[params]
+

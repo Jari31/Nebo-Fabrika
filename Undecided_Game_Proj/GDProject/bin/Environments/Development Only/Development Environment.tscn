@@ -1,8 +1,28 @@
-[gd_scene load_steps=2 format=3 uid="uid://c2pm1fraw3gho"]
+[gd_scene load_steps=5 format=3 uid="uid://c2pm1fraw3gho"]
 
 [ext_resource type="Script" uid="uid://c4avp0p38orfo" path="res://bin/GDScripts/testRef/gd_test.gd" id="1_q8uwn"]
+[ext_resource type="PackedScene" uid="uid://bx6xbotrj7tvq" path="res://bin/Models/5_8_box.fbx" id="2_f3knc"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_s08hj"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_q8uwn"]
 
 [node name="Node3D" type="Node3D"]
 
 [node name="GDTest" type="GDTest" parent="."]
 script = ExtResource("1_q8uwn")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="5_8_box" parent="World" instance=ExtResource("2_f3knc")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1.0000004, 2.4283164, 0.9012409, 0.08477738)
+
+[node name="Player" type="MeshInstance3D" parent="World"]
+transform = Transform3D(0.846533, 0, 0, 0, 0.8458742, 0, 0, 0, 0.8469932, 0, 0.8625179, 0)
+mesh = SubResource("CapsuleMesh_s08hj")
+skeleton = NodePath("../..")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="World"]
+transform = Transform3D(4.4090257, 0, 0, 0, 0.10932845, 0, 0, 0, 4.4114227, 0, 0, 0)
+mesh = SubResource("BoxMesh_q8uwn")
+skeleton = NodePath("../..")
