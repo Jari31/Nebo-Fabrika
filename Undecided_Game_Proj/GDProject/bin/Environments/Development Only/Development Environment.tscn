@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3 uid="uid://c2pm1fraw3gho"]
+[gd_scene load_steps=6 format=3 uid="uid://c2pm1fraw3gho"]
 
 [ext_resource type="Script" uid="uid://c4avp0p38orfo" path="res://bin/GDScripts/testRef/gd_test.gd" id="1_q8uwn"]
 [ext_resource type="PackedScene" uid="uid://bx6xbotrj7tvq" path="res://bin/Models/5_8_box.fbx" id="2_f3knc"]
+[ext_resource type="Script" uid="uid://bw0pltyjglqme" path="res://bin/Environments/Development Only/PlanetGen_1.gd" id="3_s08hj"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_s08hj"]
 
@@ -9,7 +10,7 @@
 
 [node name="Node3D" type="Node3D"]
 
-[node name="GDTest" type="GDTest" parent="."]
+[node name="GDTest" type="MeshInstance3D" parent="."]
 script = ExtResource("1_q8uwn")
 
 [node name="World" type="Node3D" parent="."]
@@ -26,3 +27,6 @@ skeleton = NodePath("../..")
 transform = Transform3D(4.4090257, 0, 0, 0, 0.10932845, 0, 0, 0, 4.4114227, 0, 0, 0)
 mesh = SubResource("BoxMesh_q8uwn")
 skeleton = NodePath("../..")
+
+[node name="PCG_Environment" type="PCG_Environment" parent="."]
+script = ExtResource("3_s08hj")

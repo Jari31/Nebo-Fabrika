@@ -11,6 +11,9 @@
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/classes/rd_uniform.hpp>
+#include <godot_cpp/classes/rd_shader_spirv.hpp>
+
+#include <cmath>
 
 namespace godot {
     class String;
@@ -24,7 +27,18 @@ namespace godot {
                 uint32_t is_STARTING_SCENE;
                 uint32_t seed;
                 uint32_t MAXVERTs;
-                uint32_t padding[2]; 
+
+                uint32_t X;
+                uint32_t Y;
+                uint32_t Z;
+
+                uint32_t I;
+                uint32_t J;
+                uint32_t K;
+
+                uint32_t entityX;
+                uint32_t entityY;
+                uint32_t entityZ;
             };
 
             struct returnedVertex 
@@ -44,7 +58,11 @@ namespace godot {
             
             RID loadGDShader(String &path_to_compute_shader, String &CompileAndSaveTo_REQUIRED, const bool doCompilation, const bool DEBUG); // need to include the name for the shader in CompileAndSaveTo. eg. res://x/xx/nameOfShader.res 
                                                                                                                   // It's also required even if Compile_YN is set to off
-
-            void passParams_to_PCG(RID &CompiledShader, bool isCPU_or_GPU, const String &EditFileLocation, const String SVO_VertexFileLocation, const bool IS_STARTINGSCENE, const uint32_t &SEED, const uint32_t MAXVERTs, const uint8_t (&CHUNK_SIZE)[3], const bool DEBUG); // 0 for CPU, 1 for GPU
+            void passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
+                                    const String &EditFileLocation, const String &SVO_VertexFileLocation,
+                                     const bool IS_STARTINGSCENE, const uint32_t &SEED, const uint32_t MAXVERTs, 
+                                     const PackedByteArray CHUNK_SIZE, const PackedByteArray VOXELS_PER_CHUNK, const PackedByteArray LOCAL_CHUNK_SIZE, 
+                                     const PackedByteArray CURRENT_PLAYER_LOCATION, 
+                                     const bool CLEAR_RIDs, const bool DEBUG);
     }; 
 }

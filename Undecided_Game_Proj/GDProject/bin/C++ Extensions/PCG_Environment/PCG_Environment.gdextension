@@ -1,6 +1,6 @@
 [configuration]
 
-entry_symbol = "test_library_init"
+entry_symbol = "init_PCGENV"
 compatibility_minimum = "4.5"
 reloadable = true
 load_in_editor = true
