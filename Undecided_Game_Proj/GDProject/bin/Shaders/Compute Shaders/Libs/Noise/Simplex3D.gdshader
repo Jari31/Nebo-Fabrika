@@ -1,4 +1,4 @@
-#include "res://bin/Shaders/ComputeShaders/Environment Generation GLSL/Libs/Hasher.gdshader"
+#include "res://bin/Shaders/ComputeShaders/Libs/Noise/Hasher.gdshader"
 
 float pointProcess(vec3 inPoint, vec3 gradientHash){
     const float RadiusFalloff = 0.7;

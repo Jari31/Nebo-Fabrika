@@ -1,49 +1,145 @@
 #[compute]
 #version 450
-
-#include "res://bin/Shaders/ComputeShaders/Environment Generation GLSL/Libs/Simplex3D.gdshader"
+// feel free to copy and paste this to use as boilerplate. I can't separate any more of this into other files, as doing so would be a massive pain in the ass. 
+#include "res://bin/Shaders/ComputeShaders/Libs/Noise/Simplex3D.gdshader"
+#include "res://bin/Shaders/ComputeShaders/Libs/SVO/SVO_Utility.gdshader"
+#include "res://bin/Shaders/ComputeShaders/Libs/SVO/SparseVoxelOctrees.gdshader"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 layout(std140, set = 0, binding = 0) ComputeUniforms
 {
-    uint is_STARTING_SCENE;
-    uint SEED;
-    uint MAXVERTs;
-    
-    uint CHUNKSIZE_X;
-    uint CHUNKSIZE_Y;
-    uint CHUNKSIZE_Z;
-    
-    uint VOXELS_PER_CHUNK_X;
-    uint VOXELS_PER_CHUNK_Y;
-    uint VOXELS_PER_CHUNK_Z;
+    uvec4 SCENE_PROPERTIES;
 
-    uint CURRENT_ENTITY_LOCATION_X;
-    uint CURRENT_ENTITY_LOCATION_Y;
-    uint CURRENT_ENTITY_LOCATION_Z;
+    vec4 NOISE_PARAMS;
+                
+    uvec4 CHUNK_SIZE;
+
+    uvec4 VOXELS_PER_CHUNK;
+
+    ivec4 ENTITY_LOCATION; 
 }
 
-layout(std430, set = 0, binding = 2) buffer VoxelData {
-    uint voxels[]; 
+layout(std450, set = 0, binding = 1) buffer voxelData {
+    struct voxelData {
+        float matID;
+        float density;
+    };
+    voxelData VoxelData[];
 };
 
-void main() {
+layout(std450, set = 0, binding = 2) buffer SVONodeBuffer{
+    uvec2 SVO_Nodes[];
+}
+
+layout(std450, set = 0, binding = 3) buffer AtomicCounter {
+    uint NextAvailableNodeIndex;
+    uint DC_AtomicCounter;
+}
+
+layout(std450, set = 0, binding = 4) buffer NodePointerGridA {
+    uint PtrGridA[];
+}
+
+layout(std450, set = 0, binding = 5) buffer NodePointerGridB {
+    uint PtrGridB[];
+}
+
+layout(std450, set = 0, binding = 6) buffer vertexBuffer {
+    struct VBuffer{
+    vec4 Position;
+    uint MatID;
+    }
+    Vbuffer VertexBuffer[];
+}
+
+layout(std450, set = 0, binding = 7) buffer indicesBuffer {
+    uint IndicesBuffer[];
+}
+
+layout(std450, set = 0, binding = 8) buffer activeCubes {
+    uint ActiveCubes[];
+}
+
+layout(push_constant) uniform pushConstant{
+    uint PushConstant;
+}
+//...yes, those are a lot of buffers, but I don't think I can lower it more.
+
+vec2 pickMatID(float noiseLayer1, float noiseLayer2, float matID_layer1, float matID_layer2){
+    if(noiseLayer1 >= noiseLayer2){
+        vec2 combined_Values = vec2(noiseLayer2, matID_layer2);
+
+        return combined_Values;
+    } 
+
+    vec2 combined_Values = vec2(noiseLayer1, matID_layer1);
+
+    return combined_Values;
+
+}
+
+void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you're insane enough to optimize the other parts 
+    const uint SEED = SCENE_PROPERTIES.x;
+    const float WorldScale = NOISE_PARAMS.y;
+    const float NoiseScale1 = 1.2;
+    const float NoiseScale2 = 1.3;
+    const float SDF_ApproxDistance = 2.0;
+
     vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz;
 
-    vec3 ChunkWorldOrigin = vec3(CURRENT_ENTITY_LOCATION_X, CURRENT_ENTITY_LOCATION_Y, CURRENT_ENTITY_LOCATION_Z);
+    vec3 ChunkWorldOrigin = vec3(ENTITY_LOCATION.x, ENTITY_LOCATION.y, ENTITY_LOCATION.z);
 
-    vec3 VoxelWorldPosition = ChunkWorldOrigin + VoxelLocalCoordinates;
+    vec3 VoxelWorldPosition = ChunkWorldOrigin + VoxelLocalCoordinates * WorldScale;
 
-    float NoiseAmount = 0.1;
-    vec3 NoiseInVec = VoxelWorldPosition * NoiseAmount;
+    float noiseLayer1 = simplex3D(VoxelWorldPosition * NoiseScale1, SEED) * SDF_ApproxDistance;
+    float noiseLayer2 = simplex3D(VoxelWorldPosition * NoiseScale2, SEED) * SDF_ApproxDistance;
 
-    float density = simplex3D(NoiseInVec);
+    vec2 Dens_MatID = pickMatID(noiseLayer1, noiseLayer2, 1.0, 2.0);
 
-    if(density > 0){
+    uint Index = VoxelLocalCoordinates.x + (VoxelLocalCoordinates.y * VOXELS_PER_CHUNK.x) + 
+                 (VoxelLocalCoordinates.z * VOXELS_PER_CHUNK.x * VOXELS_PER_CHUNK.y);
 
+    voxelData[index].matID = floor(Dens_MatID.y);
+    VoxelData[index].density = Dens_MatID.x;
+}
+
+void Stage_GenerateVertices(){
+    uvec3 CubeCoordinates = gl_GlobalInvocationID;
+    float CornerDensities[8];
+    uint SignMask = 0;
+
+    if(!SignMask || SignMask == 0xFF)
+        return;
+
+    vec3 VertexPosition = vec3(CubeCoordinates) + 0.5;
+
+    uint VertexIndex = atomicAdd(DC_AtomicCounter, 1);
+
+    VertexBuffer[VertexIndex].Position = vec4()VertexPosition, 1.0;
+    VertexBuffer[VertexIndex].MatID = 1;
+}
+
+void main() {
+    uint Stage = SCENE_PROPERTIES.w;
+    uint PassNum = PushConstant.PassNum;
+
+    switch (Stage)
+    {
+        case 0:
+            Stage_GenerateLeaves();
+            break;
+        case 1:
+            Stage_BuildSVOFromLeaves();
+            break;
+        case 2:
+            Stage_BuildSVOHigherLayers(PassNum);
+            break;
+        case 3:
+            Stage_GenerateVertices();
+            break;
+        case 4:
+            Stage_GenerateIndices();
+            break;
     }
-
-    uint Index = VoxelLocal.x + (VoxelLocal.y * VOXELS_PER_CHUNK_X) + 
-                 (VoxelLocal.z * VOXELS_PER_CHUNK_X * VOXELS_PER_CHUNK_Y);
 }
