@@ -18,6 +18,10 @@ layout(std140, set = 0, binding = 0) ComputeUniforms
     uvec4 VOXELS_PER_CHUNK;
 
     ivec4 ENTITY_LOCATION; 
+
+    ivec4 ENTITY_LOCATION_P2;
+
+    vec4 PLANET_BOUNDS;
 }
 
 layout(std450, set = 0, binding = 1) buffer voxelData {
@@ -61,6 +65,11 @@ layout(std450, set = 0, binding = 8) buffer activeCubes {
     uint ActiveCubes[];
 }
 
+layout(std450, set = 0, binding = 9) writeonly buffer savedReferences{
+    uvec4 SavedReferences_low[];
+    uvec4 SavedReferences_high[];
+}
+
 layout(push_constant) uniform pushConstant{
     uint PushConstant;
 }
@@ -76,34 +85,42 @@ vec2 pickMatID(float noiseLayer1, float noiseLayer2, float matID_layer1, float m
     vec2 combined_Values = vec2(noiseLayer1, matID_layer1);
 
     return combined_Values;
-
 }
 
+
+
 void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you're insane enough to optimize the other parts 
+
+    vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz;
+    vec3 ChunkWorldPosition = convert_to_ivec64(ENTITY_LOCATION, ENTITY_LOCATION_P2);
+    vec3 VoxelWorldPosition = ChunkWorldPosition + VoxelLocalCoordinates;
+
+    uint Index = flatten_coord(VoxelLocalCoordinates, VOXELS_PER_CHUNK.xyz);
+
+    float PlanetRadius = PLANET_BOUNDS.w; 
+    if(distance(VoxelWorldPosition, PLANET_BOUNDS.xyz) > PlanetRadius){
+        VoxelData[Index].density = 0.0;
+        VoxelData[Index].matID = 0.0;
+        return;
+    }
+
     const uint SEED = SCENE_PROPERTIES.x;
     const float WorldScale = NOISE_PARAMS.y;
     const float NoiseScale1 = 1.2;
     const float NoiseScale2 = 1.3;
     const float SDF_ApproxDistance = 2.0;
 
-    vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz;
-
-    vec3 ChunkWorldOrigin = vec3(ENTITY_LOCATION.x, ENTITY_LOCATION.y, ENTITY_LOCATION.z);
-
-    vec3 VoxelWorldPosition = ChunkWorldOrigin + VoxelLocalCoordinates * WorldScale;
-
     float noiseLayer1 = simplex3D(VoxelWorldPosition * NoiseScale1, SEED) * SDF_ApproxDistance;
     float noiseLayer2 = simplex3D(VoxelWorldPosition * NoiseScale2, SEED) * SDF_ApproxDistance;
 
     vec2 Dens_MatID = pickMatID(noiseLayer1, noiseLayer2, 1.0, 2.0);
 
-    uint Index = VoxelLocalCoordinates.x + (VoxelLocalCoordinates.y * VOXELS_PER_CHUNK.x) + 
-                 (VoxelLocalCoordinates.z * VOXELS_PER_CHUNK.x * VOXELS_PER_CHUNK.y);
-
-    voxelData[index].matID = floor(Dens_MatID.y);
-    VoxelData[index].density = Dens_MatID.x;
+    if(density < 0 || density == 0){
+        voxelData[index].matID = floor(Dens_MatID.y);
+        VoxelData[index].density = Dens_MatID.x;
+    }
 }
-
+/*
 void Stage_GenerateVertices(){
     uvec3 CubeCoordinates = gl_GlobalInvocationID;
     float CornerDensities[8];
@@ -119,7 +136,7 @@ void Stage_GenerateVertices(){
     VertexBuffer[VertexIndex].Position = vec4()VertexPosition, 1.0;
     VertexBuffer[VertexIndex].MatID = 1;
 }
-
+*/
 void main() {
     uint Stage = SCENE_PROPERTIES.w;
     uint PassNum = PushConstant.PassNum;

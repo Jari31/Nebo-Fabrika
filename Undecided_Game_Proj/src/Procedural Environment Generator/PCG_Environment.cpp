@@ -15,7 +15,7 @@ PCG_Environment::~PCG_Environment(){
 
 }
 
-RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &CompileTo, const bool doCompilation, const bool DEBUG){
+RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &CompileTo, const bool doCompilation, const uint64_t WORKGROUP_SIZE, const bool DEBUG){
     RID ComplacentValue;
 
     if(doCompilation)
@@ -24,6 +24,9 @@ RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &Compil
         
         if(GDShader_File.is_valid()){
             String ShaderSource = GDShader_File->get_as_text();
+
+            String MacroDefinition = String("#define WORKGROUP_SIZE") + String::num_uint64(WORKGROUP_SIZE) + String("/n"); 
+            ShaderSource = MacroDefinition.insert(0, MacroDefinition);
 
             Ref<RDShaderSource> RenderDeviceShaderFile = memnew(RDShaderSource);
             RenderDeviceShaderFile->set_stage_source(RenderingDevice::SHADER_STAGE_COMPUTE, ShaderSource);
@@ -53,10 +56,10 @@ RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &Compil
     return CompiledShader;
 }
 
-void PCG_Environment::SVOPass(uint32Vec &VecObj, uint32Vec &CurrentDispatchDimension, int64_t &ComputeList, PackedByteArray LOCAL_CHUNK_SIZE){
-    VecObj.x = std::max(1u, CurrentDispatchDimension.x / LOCAL_CHUNK_SIZE[0]);
-    VecObj.y = std::max(1u, CurrentDispatchDimension.y / LOCAL_CHUNK_SIZE[1]);
-    VecObj.z = std::max(1u, CurrentDispatchDimension.z / LOCAL_CHUNK_SIZE[2]);
+void PCG_Environment::SVOPass(uint32Vec3 &VecObj, uint32Vec3 &CurrentDispatchDimension, int64_t &ComputeList, PackedInt32Array CHUNK_SIZE){
+    VecObj.x = std::max(1u, CurrentDispatchDimension.x / CHUNK_SIZE[0]);
+    VecObj.y = std::max(1u, CurrentDispatchDimension.y / CHUNK_SIZE[1]);
+    VecObj.z = std::max(1u, CurrentDispatchDimension.z / CHUNK_SIZE[2]);
 
     RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
     RenderingDevice->compute_list_add_barrier(ComputeList);
@@ -75,22 +78,179 @@ Ref<RDUniform> PCG_Environment::RefWrapper(int Binding, RID Buffer_RID, Renderin
     return Uniform_Ref;
 }
 
+void SetVector4i(Vector4i &Vector, PackedInt32Array InVector){
+    Vector.x = InVector[0];
+    Vector.y = InVector[1];
+    Vector.z = InVector[2];
+    if(InVector[3])
+        Vector.w = InVector[3];
+};
+
+void PCG_Environment::Active_Passive_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
+                                            int64_t &ComputeList, ComputeUniformData &UniformData, size_t &UDA_Size, RID UniformBuffer_RID,
+                                            PackedByteArray UniformDataArray, const bool SKIP_SVO){
+    RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+
+    VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
+    VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
+    VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
+    RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
+
+    RenderingDevice->compute_list_add_barrier(ComputeList);
+    
+    if(!SKIP_SVO){
+        UniformData.SCENE_PROPERTIES.w = 1; // it's a stage indicator. I'm too lazy to refactor it; magic numbers are my beloved
+        memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
+        RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+
+        uint32Vec3 CurrentDispatchDimension;
+        CurrentDispatchDimension.x = VOXELS_PER_CHUNK[0] / 2;
+        CurrentDispatchDimension.y = VOXELS_PER_CHUNK[1] / 2;
+        CurrentDispatchDimension.z = VOXELS_PER_CHUNK[2] / 2;
+
+        SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
+                    
+        UniformData.SCENE_PROPERTIES.w = 2;
+        memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
+        RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+
+        PushConstant BasicPushConstant;
+        BasicPushConstant.PassNum = 2;
+        godot::PackedByteArray pushconst_buffer;
+        pushconst_buffer.resize(sizeof(uint32_t));
+        
+        while (CurrentDispatchDimension.x || CurrentDispatchDimension.y || CurrentDispatchDimension.z){
+            memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+            RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+
+            SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
+
+            BasicPushConstant.PassNum += 1;
+        }
+
+        RenderingDevice->compute_list_add_barrier(ComputeList);
+    }
+}
+
+void PCG_Environment::RegisterLocalLocation(ComputeUniformData &UniformData, PackedInt64Array LocalEntityLocation, uint32_t &Stage){
+    UniformData.ENTITY_LOCATION.x = static_cast<uint32_t>(LocalEntityLocation[0]);
+    UniformData.ENTITY_LOCATION.y = static_cast<uint32_t>(LocalEntityLocation[1]);
+    UniformData.ENTITY_LOCATION.z = static_cast<uint32_t>(LocalEntityLocation[2]);
+    // add the latter 32 bits (that's why it has '>>' 32)
+    UniformData.ENTITY_LOCATION_P2.x = static_cast<uint32_t>(LocalEntityLocation[0] >> 32);
+    UniformData.ENTITY_LOCATION_P2.y = static_cast<uint32_t>(LocalEntityLocation[1] >> 32);
+    UniformData.ENTITY_LOCATION_P2.z = static_cast<uint32_t>(LocalEntityLocation[2] >> 32);
+    
+    UniformData.ENTITY_LOCATION.w = Stage;
+}
+
+void PCG_Environment::LoopGenerationForEntity(const bool FOR_EACH_ENTITY, PackedInt64Array CURRENT_ENTITY_LOCATION, PackedInt64Array CURRENT_PLANET_LOCATION,
+                                            const uint8_t PASS_AMOUNT,
+                                            uint32Vec3 &VecObj,  PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
+                                            int64_t &ComputeList, ComputeUniformData &UniformData, size_t &UDA_Size, RID UniformBuffer_RID,
+                                            PackedByteArray UniformDataArray)
+{
+    PackedInt64Array GlobalPosition;
+
+    uint32_t Stage = 0;
+    
+    PackedInt64Array LocalEntityLocation;
+
+    PackedInt32Array LocalChunkSize;
+    PackedInt32Array LocalVoxelSize;
+    float LocalSize_Offset = 1.0;
+
+    if(FOR_EACH_ENTITY){
+        int ArraySize = CURRENT_ENTITY_LOCATION.size() * 0.3333333333333333;
+
+        int PassOffset = 0;
+
+        for (int entity_index = 0; entity_index < ArraySize;)
+        {   
+            for (int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){     
+                for(int chunk_index = 0; chunk_index <= 2;){
+                    LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5); 
+                    LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
+                    
+                    LocalSize_Offset *= 0.5;
+
+                    chunk_index++;
+                }
+
+                for (int coordinate_index = 0; coordinate_index <= 2;){
+                    LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index + PassOffset] - CURRENT_PLANET_LOCATION[coordinate_index + PassOffset];
+                    LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
+
+                    coordinate_index++;
+                }
+
+                RegisterLocalLocation(UniformData, LocalEntityLocation, Stage);
+
+                memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
+                RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+
+                PCG_Environment::Active_Passive_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                    ComputeList, UniformData, UDA_Size, UniformBuffer_RID,
+                                                    UniformDataArray, FOR_EACH_ENTITY);
+            }
+
+            PassOffset += 3;
+
+            entity_index++;
+        }
+    }
+    else
+    {
+        for (int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){     
+            for(int chunk_index = 0; chunk_index <= 2;){
+                LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5); 
+                LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
+                
+                LocalSize_Offset *= 0.5;
+
+                chunk_index++;
+            }
+
+            for (int coordinate_index = 0; coordinate_index <= 2;){
+                LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index] - CURRENT_PLANET_LOCATION[coordinate_index];
+                LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
+
+                coordinate_index++;
+            }
+
+            RegisterLocalLocation(UniformData, LocalEntityLocation, Stage);
+
+            memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
+            RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+
+            PCG_Environment::Active_Passive_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                            ComputeList, UniformData, UDA_Size, UniformBuffer_RID,
+                                                            UniformDataArray, FOR_EACH_ENTITY);
+        }
+    }
+
+    
+}
+
 /* 
     (mostly) a note to self:
     the system is node based. this is not a monolithic end all be all for every single planet. 
     it generates a single planet, it does not generate a galaxy. you still need to place galaxies, solar systems etc. 
-    -with an assignment function, this is only for generating local bodies, limited to, for now, planets.
+    -with an assignment function, this is only for generating local bodies; limited to, for now, planets.
     though it might be able to handle an entire universe, as in my early stages I did not focus on building a node based system.
 */
 
 // boilerplate galore
 // I doubt the CPU logic will be used as remaking the entire pipeline just for the CPU is insane. I'll add it if later on people really request for it.
+// Also, this function is supposed to be abstracted, that's why it's so ambiguous.
 void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU, 
                                         const String &EditFileLocation, const String &SVO_VertexFileLocation, 
-                                        const bool IS_STARTINGSCENE, const uint32_t &SEED, const uint32_t paramMAXVERTs,
-                                        const PackedByteArray CHUNK_SIZE, const PackedByteArray VOXELS_PER_CHUNK, const PackedByteArray LOCAL_CHUNK_SIZE, 
-                                        const uint32_t SVO_MAX_NODES_PER_CHUNK,  
-                                        const PackedByteArray CURRENT_ENTITY_LOCATION,
+                                        const bool IS_STARTINGSCENE, const uint32_t &SEED, const uint32_t MAXVERTs, 
+                                        const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK, 
+                                        const uint32_t SVO_MAX_NODES_PER_CHUNK,  const uint8_t PASS_AMOUNT,
+                                        const PackedInt64Array CURRENT_ENTITY_LOCATION, const PackedInt64Array CURRENT_PLANET_POSITION,
+                                        const uint8_t GLOBAL_PASS_AMOUNT,
+                                        const bool FOR_EACH_ENTITY,
                                         const bool CLEAR_RIDs, const bool DEBUG){
     if(isCPU_or_GPU){
         RID Pipeline_RID = RenderingDevice->compute_pipeline_create(CompiledShader);
@@ -102,19 +262,15 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
         ComputeUniformData UniformData;
 
         UniformData.SCENE_PROPERTIES.x = SEED;
-        UniformData.SCENE_PROPERTIES.y = paramMAXVERTs;
+        UniformData.SCENE_PROPERTIES.y = MAXVERTs;
         UniformData.SCENE_PROPERTIES.z = IS_STARTINGSCENE;
         UniformData.SCENE_PROPERTIES.w = 0;
 
         UniformData.NOISE_PARAMS.x = WORLD_SCALE;
 
-        UniformData.CHUNK_SIZE.x = CHUNK_SIZE[0];
-        UniformData.CHUNK_SIZE.y = CHUNK_SIZE[1];
-        UniformData.CHUNK_SIZE.z = CHUNK_SIZE[2];
+        SetVector4i(UniformData.CHUNK_SIZE, CHUNK_SIZE);
 
-        UniformData.VOXELS_PER_CHUNK.x = VOXELS_PER_CHUNK[0];
-        UniformData.VOXELS_PER_CHUNK.y = VOXELS_PER_CHUNK[1];
-        UniformData.VOXELS_PER_CHUNK.z = VOXELS_PER_CHUNK[2];
+        SetVector4i(UniformData.VOXELS_PER_CHUNK, VOXELS_PER_CHUNK);
 
         UniformData.ENTITY_LOCATION.x = CURRENT_ENTITY_LOCATION[0];
         UniformData.ENTITY_LOCATION.y = CURRENT_ENTITY_LOCATION[1];
@@ -149,8 +305,8 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
         RID NodePointerGridB_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * IntermediateGridSize);
 
         uint64_t MAXVERTS = 0;
-        if(paramMAXVERTs){
-            MAXVERTS = paramMAXVERTs;
+        if(MAXVERTs){
+            MAXVERTS = MAXVERTs;
         } else {
             MAXVERTS = VOXELS_PER_CHUNK[0] * VOXELS_PER_CHUNK[1] * VOXELS_PER_CHUNK[2]; 
         }
@@ -183,64 +339,24 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
         UniformsArray.push_back(VertexBuffer_UniformRef);
         UniformsArray.push_back(IndicesBuffer_UniformRef);
         UniformsArray.push_back(ActiveCubes_UniformRef);
-        // this is where the actual code begins, the first bit of it was just boilerplate :skull:
+        
         RID UniformSet_RID = RenderingDevice->uniform_set_create(UniformsArray, CompiledShader, 0);
-        if(!CLEAR_RIDs){
-            RenderingDevice->compute_list_bind_uniform_set(ComputeList, UniformSet_RID, 0);
+        if(!CLEAR_RIDs){ // the actual game logic
+            uint32Vec3 VecObj;
 
-
-            uint32Vec VecObj;
-            // I could probably turn this into a function so I don't have to repeat it, but at the same time I'm too lazy so yeah
-            VecObj.x = VOXELS_PER_CHUNK[0] / LOCAL_CHUNK_SIZE[0];
-            VecObj.y = VOXELS_PER_CHUNK[1] / LOCAL_CHUNK_SIZE[1];
-            VecObj.z = VOXELS_PER_CHUNK[2] / LOCAL_CHUNK_SIZE[2];
-            RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
-
-            RenderingDevice->compute_list_add_barrier(ComputeList);
-            
-            UniformData.SCENE_PROPERTIES.w = 1; // this is a stage indicator. I'm too lazy to refactor it to a reference.
-            memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
-            RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
-
-            uint32Vec CurrentDispatchDimension;
-            CurrentDispatchDimension.x = VOXELS_PER_CHUNK[0] / 2;
-            CurrentDispatchDimension.y = VOXELS_PER_CHUNK[1] / 2;
-            CurrentDispatchDimension.z = VOXELS_PER_CHUNK[2] / 2;
-
-            SVOPass(VecObj, CurrentDispatchDimension, ComputeList, LOCAL_CHUNK_SIZE);
-            
-            UniformData.SCENE_PROPERTIES.w = 2;
-            memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
-            RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
-
-            PushConstant BasicPushConstant;
-            BasicPushConstant.PassNum = 2;
-            godot::PackedByteArray pushconst_buffer;
-            pushconst_buffer.resize(sizeof(uint32_t));
-
-            while (CurrentDispatchDimension.x || CurrentDispatchDimension.y || CurrentDispatchDimension.z){
-                memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-                RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
-
-                SVOPass(VecObj, CurrentDispatchDimension, ComputeList, LOCAL_CHUNK_SIZE);
-
-                if(CurrentDispatchDimension.x == 1 && CurrentDispatchDimension.y == 1 && CurrentDispatchDimension.z == 1){
-                    if(VecObj.x == 1 && VecObj.y == 1 && VecObj.z == 1) {
-                        break;
-                    }
-                }
-                BasicPushConstant.PassNum += 1;
-            }
-
-            RenderingDevice->compute_list_add_barrier(ComputeList);
+            LoopGenerationForEntity(FOR_EACH_ENTITY, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_POSITION,
+                                    PASS_AMOUNT,
+                                    VecObj,  VOXELS_PER_CHUNK, CHUNK_SIZE,
+                                    ComputeList, UniformData, UDA_Size, UniformBuffer_RID,
+                                    UniformDataArray);
 
             UniformData.SCENE_PROPERTIES.w = 3;
             memcpy(UniformDataArray.ptrw(), &UniformData, UDA_Size);
             RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
 
-            VecObj.x = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[0] - 1) / LOCAL_CHUNK_SIZE[0]));
-            VecObj.y = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[1] - 1) / LOCAL_CHUNK_SIZE[1]));
-            VecObj.z = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[2] - 1) / LOCAL_CHUNK_SIZE[2]));
+            VecObj.x = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[0] - 1) / CHUNK_SIZE[0]));
+            VecObj.y = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[1] - 1) / CHUNK_SIZE[1]));
+            VecObj.z = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[2] - 1) / CHUNK_SIZE[2]));
             RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
 
             RenderingDevice->compute_list_add_barrier(ComputeList);
@@ -249,9 +365,9 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
             memcpy(UniformDataArray.ptrw(), &UniformData, UDA_Size);
             RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
 
-            VecObj.x = VOXELS_PER_CHUNK[0] / LOCAL_CHUNK_SIZE[0];
-            VecObj.y = VOXELS_PER_CHUNK[1] / LOCAL_CHUNK_SIZE[1];
-            VecObj.z = VOXELS_PER_CHUNK[2] / LOCAL_CHUNK_SIZE[2];
+            VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
+            VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
+            VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
             RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
 
             RenderingDevice->compute_list_end();
@@ -279,4 +395,3 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
 
     // CPU specific logic (meant for servers)
 }
-

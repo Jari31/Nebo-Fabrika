@@ -4,6 +4,21 @@ uint SVO_AtomicAllocator(uint count){
     return atomicAdd(NextAvailableNodeIndex, count);
 }
 
+vec3 convert_to_ivec64(ivec3 low, ivec3 high){
+    vec3 low_f;
+    vec3 high_f;
+
+    low_f.x = float(low.x);
+    low_f.y = float(low.y);
+    low_f.z = float(low.z);
+
+    high_f.x = float(high.x);
+    high_f.y = float(high.y);
+    high_f.z = float(high.z);
+
+    return vec3(high_f) * 4294967296.0 + vec3(low_f);
+}
+
 void Stage_BuildSVOFromLeaves(){
     vec3 ParentNodeCoordinates = gl_GlobalInvocationID.xyz;
     vec3 ChildBaseCoordinates = ParentNodeCoordinates * 2;
@@ -105,6 +120,13 @@ void Stage_BuildSVOHigherLayers(in uint32 PassNum){
         SVO_Nodes[ParentNodeIndex] = ParentNode;
 
         OutputPointer = ParentNodeIndex + 1;
+
+        if (ParentGridDimensions.x == 1 && ParentGridDimensions.y == 1 && ParentGridDimensions.z == 1) {
+
+            uint saved_index = atomicAdd(NextAvailableSavedReferenceIndex, 1);
+            
+            SavedReferences[saved_index] = OutputPointer;
+        }
     }
 
     if (PassNum % 2 == 1){
