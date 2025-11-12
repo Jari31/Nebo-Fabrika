@@ -1,4 +1,4 @@
-# Undecided Game Proj (name pending)
+# Nebo Fabrika
 A community project led by Jari.
 
 # Supported Platforms (as of now)
