@@ -121,11 +121,13 @@ void Stage_BuildSVOHigherLayers(in uint32 PassNum){
 
         OutputPointer = ParentNodeIndex + 1;
 
-        if (ParentGridDimensions.x == 1 && ParentGridDimensions.y == 1 && ParentGridDimensions.z == 1) {
-
+        if (ParentGridDimensions.x == 1 && ParentGridDimensions.y == 1 && ParentGridDimensions.z == 1) {  
             uint saved_index = atomicAdd(NextAvailableSavedReferenceIndex, 1);
             
-            SavedReferences[saved_index] = OutputPointer;
+            SavedReferences_low[saved_index] = uvec4(ENTITY_LOCATION.x + ParentNodeCoordinates.x, ENTITY_LOCATION.y + ParentNodeCoordinates.y,
+                                                     ENTITY_LOCATION.z + ParentNodeCoordinates.z, OutputPointer);
+            SavedReferences_high[saved_index] = uvec4(ENTITY_LOCATION_P2.x + ParentNodeCoordinates.x, ENTITY_LOCATION_P2.y + ParentNodeCoordinates.y,
+                                                     ENTITY_LOCATION_P2.z + ParentNodeCoordinates.z, OutputPointer)
         }
     }
 

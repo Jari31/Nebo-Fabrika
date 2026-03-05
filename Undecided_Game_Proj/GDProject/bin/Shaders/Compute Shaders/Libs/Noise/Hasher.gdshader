@@ -7,7 +7,7 @@ float hash(ivec3 inVector){
     MultSum = MultSum ^ (MultSum >> 11);
     MultSum = MultSum + (MultSum << 15);
 
-    return float(MultSum) * (1.0 / 4294967295.0); // conv int to normal (normalized float)
+    return float(MultSum) * 2.3283064365386963e-10; // conv int to normal (normalized float)
 }
 
 vec3 gradient_hash(ivec3 inVector, const uint SEED){

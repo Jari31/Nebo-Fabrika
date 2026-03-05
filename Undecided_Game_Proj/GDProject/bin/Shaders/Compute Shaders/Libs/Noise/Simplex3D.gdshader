@@ -58,7 +58,7 @@ float simplex3D(vec3 inVector, const uint SEED){
         }
     }
 
-    ivec3 i3_offset = (1, 1, 1);
+    ivec3 i3_offset = ivec3(1, 1, 1);
     
     ivec3 i0_cell = flooredVec;
     ivec3 i1_cell = flooredVec + i1_offset;
@@ -71,10 +71,10 @@ float simplex3D(vec3 inVector, const uint SEED){
     float i2_sum = float(i2_offset.x + i2_offset.y + i2_offset.z);
     vec3 pointTwo = pointZero - (vec3(i2_offset) - i2_sum * unskewingFactor);
 
-    float i1_sum = float(i3_offset.x + i3_offset.y + i3_offset.z);
+    float i3_sum = float(i3_offset.x + i3_offset.y + i3_offset.z);
     vec3 pointThree = pointZero - (vec3(i3_offset) - i3_sum * unskewingFactor);
 
-    vec3 gradientVec = gradient_hash(i0, SEED);
+    vec3 gradientVec = gradient_hash(i0_cell, SEED);
     vec3 gradientVec1 = gradient_hash(i1_cell, SEED);
     vec3 gradientVec2 = gradient_hash(i2_cell, SEED);
     vec3 gradientVec3 = gradient_hash(i3_cell, SEED);
@@ -82,7 +82,7 @@ float simplex3D(vec3 inVector, const uint SEED){
     float N = pointProcess(pointZero, gradientVec);
     N += pointProcess(pointOne, gradientVec1);
     N += pointProcess(pointTwo, gradientVec2);
-    n += pointProcess(pointThree, gradientVec3);
+    N += pointProcess(pointThree, gradientVec3);
 
-    return N * 30;
+    return N * 42.0;
 }

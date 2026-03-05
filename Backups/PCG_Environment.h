@@ -61,24 +61,28 @@ namespace godot {
                 uint32_t z;
             };
 
-            struct SVO_NodeBuffer
+            struct VertexBuffer
             {
-                struct SVO_Node
-                {
-                uint32_t ChildPointer;
-                uint32_t ChildMask;
-
-                uint32_t data;
-                }
-
-                SVO_Node[];
+                struct VBuffer{
+                    Vector4 Position;
+                    uint32_t MatID;
+                    uint32_t padding[3];
+                };
+                VBuffer VertexBuffer[];
             };
+
             struct PushConstant 
             {
                 uint32_t PassNum;
                 uint32_t padding[3];
             };
 
+            struct AtomicCounters
+            {
+                uint32_t NextAvailableNodeIndex;
+                uint32_t DC_AtomicCounter;
+                uint32_t paddingp[2];
+            };
             
         protected:
             static void _bind_methods();

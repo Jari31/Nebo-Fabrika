@@ -18,7 +18,7 @@ uint SVO_GetNthChildIndex(uvec2 SVO_Nodes, uint NodeIndex, const uint SVO_NODE_S
 
     return SVO_GetChildOffset(SVO_Nodes, NodeIndex, SVO_NODE_SIZE) + AmountOfPreviousSiblings;
 }
-// the ones above have been deprecated, it was from a doc that I somewhat followed before abandoning it
+// the ones above have been deprecated; they were from a doc that I somewhat followed, before abandoning it
 
 uint flatten_coord(uvec3 coord, uvec3 dimensions) {
     return coord.x + (coord.y * dimensions.x) + (coord.z * dimensions.x * dimensions.y);

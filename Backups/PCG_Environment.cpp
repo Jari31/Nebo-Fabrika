@@ -284,23 +284,26 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
 
         RID UniformBuffer_RID = RenderingDevice->uniform_buffer_create(UniformDataArray.size(), UniformDataArray);
 
-        returnedVoxel VoxelBuffer;
-
-        PackedByteArray VoxelBufferArray;
         int64_t OutputSize = sizeof(returnedVoxel) * CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2];
-        VoxelBufferArray.resize(OutputSize);
-        memcpy(VoxelBufferArray.ptrw(), &VoxelBuffer, OutputSize);
-        
-        RID VoxelOutputBuffer_RID = RenderingDevice->storage_buffer_create(VoxelBufferArray.size(), VoxelBufferArray);    
+        RID VoxelOutputBuffer_RID = RenderingDevice->storage_buffer_create(OutputSize);    
 
-        SVO_NodeBuffer SVO_Node_Data;
-        PackedByteArray SVO_NodePool;
-        int64_t SVO_NodePoolSize = sizeof(SVO_NodeBuffer) * SVO_MAX_NODES_PER_CHUNK;
-        SVO_NodePool.resize(SVO_NodePoolSize);
-        memcpy(SVO_NodePool.ptrw(), &SVO_Node_Data, SVO_NodePoolSize);
-        
-        RID SVO_Node_RID = RenderingDevice->storage_buffer_create(SVO_NodePool.size(), SVO_NodePool);
-        
+
+        int64_t SVO_NodePoolSize = sizeof(uint32_t) * 2 * SVO_MAX_NODES_PER_CHUNK;
+        RID SVO_NodePool_RID = RenderingDevice->storage_buffer_create(SVO_NodePoolSize);
+
+        AtomicCounters AtomicCountersObj;
+        AtomicCountersObj.NextAvailableNodeIndex = 1;
+
+        PackedByteArray AtomicCountersArray;
+        size_t ACA_Size = sizeof(AtomicCounters);
+        AtomicCountersArray.resize(ACA_Size);
+        memcpy(AtomicCountersArray.ptrw(), &AtomicCountersObj, ACA_Size);
+
+        RID AtomicCountersArray_RID = RenderingDevice->uniform_buffer_create(AtomicCountersArray.size(), AtomicCountersArray);
+
+        uint32_t IntermediateGridSize = (VOXELS_PER_CHUNK[0] / 2) * (VOXELS_PER_CHUNK[1] / 2) * (VOXELS_PER_CHUNK[2] / 2);
+        RID NodePointerGridA_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * IntermediateGridSize);
+        RID NodePointerGridB_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * IntermediateGridSize);
 
         uint64_t MAXVERTS64 = 0;
         if(MAXVERTs){
@@ -308,7 +311,10 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
         } else {
             MAXVERTS64 = VOXELS_PER_CHUNK[0] * VOXELS_PER_CHUNK[1] * VOXELS_PER_CHUNK[2]; 
         }
+        RID VertexBuffer_RID = RenderingDevice->storage_buffer_create(sizeof(VertexBuffer) * MAXVERTS64);
 
+        uint64_t MAX_INDICIES = MAXVERTS64 * 3;
+        RID IndicesBuffer_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * MAX_INDICIES);
 
         uint32_t CubeGridSize = (VOXELS_PER_CHUNK[0] - 1) * (VOXELS_PER_CHUNK[1] - 1) * (VOXELS_PER_CHUNK[2] - 1);
         RID ActiveCubes_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * CubeGridSize);
@@ -316,13 +322,24 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
         // for whoever is editing this afterwards, please, PLEASE order it like this. it saves so much time.
         Ref<RDUniform> UniformConstants_Ref          = RefWrapper(0, UniformBuffer_RID, RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
         Ref<RDUniform> VoxelStorageBuffer_UniformRef = RefWrapper(1, VoxelOutputBuffer_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-        Ref<RDUniform> SVO_Node_UniformRef           = RefWrapper(2, SVO_Node_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> SVO_NodePool_UniformRef       = RefWrapper(2, SVO_NodePool_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> AtomicCounter_UniformRef      = RefWrapper(3, AtomicCountersArray_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> NodePointerGridA_UniformRef   = RefWrapper(4, NodePointerGridA_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> NodePointerGridB_UniformRef   = RefWrapper(5, NodePointerGridB_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> VertexBuffer_UniformRef       = RefWrapper(6, VertexBuffer_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> IndicesBuffer_UniformRef      = RefWrapper(7, IndicesBuffer_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+        Ref<RDUniform> ActiveCubes_UniformRef        = RefWrapper(8, ActiveCubes_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
 
         TypedArray<Ref<RDUniform>> UniformsArray;
         UniformsArray.push_back(UniformConstants_Ref);
         UniformsArray.push_back(VoxelStorageBuffer_UniformRef);
-        UniformsArray.push_back(SVO_Node_UniformRef);
-
+        UniformsArray.push_back(SVO_NodePool_UniformRef);
+        UniformsArray.push_back(AtomicCounter_UniformRef);
+        UniformsArray.push_back(NodePointerGridA_UniformRef);
+        UniformsArray.push_back(NodePointerGridB_UniformRef);
+        UniformsArray.push_back(VertexBuffer_UniformRef);
+        UniformsArray.push_back(IndicesBuffer_UniformRef);
+        UniformsArray.push_back(ActiveCubes_UniformRef);
         
         RID UniformSet_RID = RenderingDevice->uniform_set_create(UniformsArray, CompiledShader, 0);
         if(!CLEAR_RIDs){ // the actual game logic
@@ -364,12 +381,15 @@ void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU,
         }
         
         if(CLEAR_RIDs){
+            RenderingDevice->free_rid(AtomicCountersArray_RID);
+            RenderingDevice->free_rid(NodePointerGridA_RID);
+            RenderingDevice->free_rid(NodePointerGridB_RID);
             RenderingDevice->free_rid(VoxelOutputBuffer_RID);
             RenderingDevice->free_rid(UniformBuffer_RID);
             RenderingDevice->free_rid(UniformSet_RID);
             RenderingDevice->free_rid(CompiledShader);
             RenderingDevice->free_rid(Pipeline_RID);
-            RenderingDevice->free_rid(SVO_Node_RID);
+            RenderingDevice->free_rid(SVO_NodePool_RID);
         }
         return;
     }
