@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dtrpgevrcg0gt"
+path="res://.godot/imported/SVOPrefixSum.glsl-9f232c0c537aba82df7aef0c1f2c44f6.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/MathLibs/SVOPrefixSum.glsl"
+dest_files=["res://.godot/imported/SVOPrefixSum.glsl-9f232c0c537aba82df7aef0c1f2c44f6.res"]
+
+[params]
+

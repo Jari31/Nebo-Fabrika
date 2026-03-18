@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b8b26ojl5ieer"
+path="res://.godot/imported/MortonCurve.glsl-b1c325880cbab7384f59f3ac2a6e8ad0.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/MathLibs/MortonCurve.glsl"
+dest_files=["res://.godot/imported/MortonCurve.glsl-b1c325880cbab7384f59f3ac2a6e8ad0.res"]
+
+[params]
+

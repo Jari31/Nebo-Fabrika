@@ -12,7 +12,30 @@ PCG_Environment::PCG_Environment(){
 }
 
 PCG_Environment::~PCG_Environment(){
+    RenderingDevice->free_rid(compiled_shaders.CompiledShader);
+    RenderingDevice->free_rid(compiled_shaders.CompiledShader_SVO);
+    RenderingDevice->free_rid(compiled_shaders.CompiledShader_DualContour);
+    RenderingDevice->free_rid(compiled_shaders.CompiledShader_Radix);
+    RenderingDevice->free_rid(compiled_shaders.CompiledShader_Histogram);
 
+    RenderingDevice->free_rid(pipelines.density);
+    RenderingDevice->free_rid(pipelines.svo);
+    RenderingDevice->free_rid(pipelines.dual_contour);
+    RenderingDevice->free_rid(pipelines.prefixsum);
+    RenderingDevice->free_rid(pipelines.histogram);
+
+    RenderingDevice->free_rid(storage.voxel_output);
+    RenderingDevice->free_rid(storage.uniform_buffer);
+    RenderingDevice->free_rid(storage.uniform_set);
+    RenderingDevice->free_rid(storage.svo_storage);
+    RenderingDevice->free_rid(storage.atomic_counter);
+    RenderingDevice->free_rid(storage.atomic_counter2);
+    RenderingDevice->free_rid(storage.svo_aux);
+    RenderingDevice->free_rid(storage.prefixsum_offset);
+    RenderingDevice->free_rid(storage.histogram_buffer);
+    RenderingDevice->free_rid(storage.voxel_storage);
+    RenderingDevice->free_rid(storage.svo_storage);
+    RenderingDevice->free_rid(storage.histogram_storage);
 }
 
 RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &CompileTo, const bool doCompilation, const uint64_t WORKGROUP_SIZE, const bool DEBUG){
@@ -31,7 +54,7 @@ RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &Compil
             Ref<RDShaderSource> RenderDeviceShaderFile = memnew(RDShaderSource);
             RenderDeviceShaderFile->set_stage_source(RenderingDevice::SHADER_STAGE_COMPUTE, ShaderSource);
 
-            Ref<RDShaderSPIRV> Shader_SPIRV = RenderingDevice->shader_compile_spirv_from_source(RenderDeviceShaderFile); // (SPIRV is Vulkan's GLSL. Shader language, if you will)
+            Ref<RDShaderSPIRV> Shader_SPIRV = RenderingDevice->shader_compile_spirv_from_source(RenderDeviceShaderFile);
 
             if(Shader_SPIRV.is_valid()){
                 Error Result = ResourceSaver::get_singleton()->save(Shader_SPIRV, CompileTo);
@@ -51,22 +74,8 @@ RID PCG_Environment::loadGDShader(String &path_to_compute_shader, String &Compil
     }
 
     Ref<RDShaderSPIRV> preCompiledShader = ResourceLoader::get_singleton()->load(CompileTo);
-    
     RID CompiledShader = RenderingDevice->shader_create_from_spirv(preCompiledShader);
     return CompiledShader;
-}
-
-void PCG_Environment::SVOPass(uint32Vec3 &VecObj, uint32Vec3 &CurrentDispatchDimension, int64_t &ComputeList, PackedInt32Array CHUNK_SIZE){
-    VecObj.x = std::max(1u, CurrentDispatchDimension.x / CHUNK_SIZE[0]);
-    VecObj.y = std::max(1u, CurrentDispatchDimension.y / CHUNK_SIZE[1]);
-    VecObj.z = std::max(1u, CurrentDispatchDimension.z / CHUNK_SIZE[2]);
-
-    RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
-    RenderingDevice->compute_list_add_barrier(ComputeList);
-
-    CurrentDispatchDimension.x = std::max(1u, CurrentDispatchDimension.x / 2);
-    CurrentDispatchDimension.y = std::max(1u, CurrentDispatchDimension.y / 2);
-    CurrentDispatchDimension.z = std::max(1u, CurrentDispatchDimension.z / 2);
 }
 
 Ref<RDUniform> PCG_Environment::RefWrapper(int Binding, RID Buffer_RID, RenderingDevice::UniformType UniformType){
@@ -86,69 +95,164 @@ void SetVector4i(Vector4i &Vector, PackedInt32Array InVector){
         Vector.w = InVector[3];
 };
 
-void PCG_Environment::Active_Passive_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
-                                            int64_t &ComputeList, ComputeUniformData &UniformData, size_t &UDA_Size, RID UniformBuffer_RID,
-                                            PackedByteArray UniformDataArray, const bool SKIP_SVO){
-    RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
 
-    VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
+void PCG_Environment::Histogram_pass(int64_t &ComputeList,
+                                     PackedInt32Array &VOXELS_PER_CHUNK, PackedInt32Array &CHUNK_SIZE)
+{
+    uint32_t CurrentDispatchDimension_X = ((VOXELS_PER_CHUNK[0] * CHUNK_SIZE[0]) + 256 - 1) / 256;
+
+    RenderingDevice->compute_list_dispatch(ComputeList, CurrentDispatchDimension_X, 0, 0);
+    RenderingDevice->compute_list_add_barrier(ComputeList);
+}
+
+void PCG_Environment::PrefixSum(int64_t &ComputeList,
+                                PackedInt32Array &VOXELS_PER_CHUNK, PackedInt32Array &CHUNK_SIZE)
+{
+
+    RenderingDevice->compute_list_dispatch(ComputeList, 1, 1, 1);
+    RenderingDevice->compute_list_add_barrier(ComputeList);
+}
+
+void PCG_Environment::Density_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
+                                              int64_t &ComputeList)
+{
+    VecObj.x = (VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0]) / 8;
     VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
     VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
     RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
 
     RenderingDevice->compute_list_add_barrier(ComputeList);
+}
+
+void PCG_Environment::SVOPass(uint32Vec3 &VecObj, uint32Vec3 &CurrentDispatchDimension, int64_t &ComputeList, PackedInt32Array CHUNK_SIZE){
+    RenderingDevice->compute_list_dispatch(ComputeList, CurrentDispatchDimension.x, CurrentDispatchDimension.y, CurrentDispatchDimension.z);
+    RenderingDevice->compute_list_add_barrier(ComputeList);
+
+    CurrentDispatchDimension.x = std::max(1u, CurrentDispatchDimension.x / 2);
+    CurrentDispatchDimension.y = std::max(1u, CurrentDispatchDimension.y / 2);
+    CurrentDispatchDimension.z = std::max(1u, CurrentDispatchDimension.z / 2);
+}
+
+void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
+                                          int64_t &ComputeList)
+{
+    RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.svo);
+    RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.voxel_storage, 1);
+    RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.svo_storage,   2);
+
+    uint32Vec3 CurrentDispatchDimension;
+    CurrentDispatchDimension.x = ((VOXELS_PER_CHUNK[0] * CHUNK_SIZE[0]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO;
+    CurrentDispatchDimension.y = ((VOXELS_PER_CHUNK[1] * CHUNK_SIZE[1]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO;
+    CurrentDispatchDimension.z = ((VOXELS_PER_CHUNK[2] * CHUNK_SIZE[2]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO;
+
+    SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
+
+    RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.histogram);
+    RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.histogram_storage, 3);
+    RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.svo_storage, 2);
+
     
-    if(!SKIP_SVO){
-        UniformData.SCENE_PROPERTIES.w = 1; // it's a stage indicator. I'm too lazy to refactor it; magic numbers are my beloved
-        memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
-        RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+    
+    for(int i = 0; i < 6; i++)
+    {
+        memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+        RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
 
-        uint32Vec3 CurrentDispatchDimension;
-        CurrentDispatchDimension.x = VOXELS_PER_CHUNK[0] / 2;
-        CurrentDispatchDimension.y = VOXELS_PER_CHUNK[1] / 2;
-        CurrentDispatchDimension.z = VOXELS_PER_CHUNK[2] / 2;
+        Histogram_pass(ComputeList, VOXELS_PER_CHUNK, CHUNK_SIZE);
 
-        SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
-                    
-        UniformData.SCENE_PROPERTIES.w = 2;
-        memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
-        RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
+        BasicPushConstant.PassNum++;
+        BasicPushConstant.PassOffset += 4;
+    }
 
-        PushConstant BasicPushConstant;
-        BasicPushConstant.PassNum = 2;
-        godot::PackedByteArray pushconst_buffer;
-        pushconst_buffer.resize(sizeof(uint32_t));
-        
-        while (CurrentDispatchDimension.x || CurrentDispatchDimension.y || CurrentDispatchDimension.z){
-            memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-            RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+    RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.prefixsum);
+    PrefixSum(ComputeList, VOXELS_PER_CHUNK, CHUNK_SIZE);
 
-            SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
+    BasicPushConstant.PassNum++;
+    BasicPushConstant.PassOffset = 0;
 
-            BasicPushConstant.PassNum += 1;
+    RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.histogram);
+
+    for(int i = 0; i < 6; i++)
+    {
+        memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+        RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+
+        Histogram_pass(ComputeList, VOXELS_PER_CHUNK, CHUNK_SIZE);
+
+        BasicPushConstant.PassNum++;
+        BasicPushConstant.PassOffset += 4;
+    }
+
+    RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.svo);
+
+    BasicPushConstant.PassNum    = 1;
+    BasicPushConstant.PassOffset = 0;
+
+    while(CurrentDispatchDimension.x > 1 || CurrentDispatchDimension.y > 1 || CurrentDispatchDimension.z > 1)
+    {
+        if(BasicPushConstant.PassNum > 2)
+        {
+            BasicPushConstant.PassNum = 1;
+            
         }
 
-        RenderingDevice->compute_list_add_barrier(ComputeList);
+        switch(BasicPushConstant.PassNum)
+        {
+            case 1:
+                RenderingDevice->buffer_clear(storage.atomic_counter2, 0, sizeof(uint32_t));
+                break;
+            case 2:
+                RenderingDevice->buffer_clear(storage.atomic_counter, 0, sizeof(uint32_t));
+                break;
+            default:
+                break;
+        }    
+        
+        memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+        RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+
+        SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
+
+        BasicPushConstant.PassNum += 1;
     }
+
+    RenderingDevice->compute_list_add_barrier(ComputeList);
 }
 
-void PCG_Environment::RegisterLocalLocation(ComputeUniformData &UniformData, PackedInt64Array LocalEntityLocation, uint32_t &Stage){
-    UniformData.ENTITY_LOCATION.x = static_cast<uint32_t>(LocalEntityLocation[0]);
-    UniformData.ENTITY_LOCATION.y = static_cast<uint32_t>(LocalEntityLocation[1]);
-    UniformData.ENTITY_LOCATION.z = static_cast<uint32_t>(LocalEntityLocation[2]);
-    // add the latter 32 bits (that's why it has '>>' 32)
-    UniformData.ENTITY_LOCATION_P2.x = static_cast<uint32_t>(LocalEntityLocation[0] >> 32);
-    UniformData.ENTITY_LOCATION_P2.y = static_cast<uint32_t>(LocalEntityLocation[1] >> 32);
-    UniformData.ENTITY_LOCATION_P2.z = static_cast<uint32_t>(LocalEntityLocation[2] >> 32);
-    
-    UniformData.ENTITY_LOCATION.w = Stage;
+void PCG_Environment::DualContour_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
+                                                  int64_t &ComputeList)
+{
+    RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.dual_contour);
+    RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.uniform_set, 0);
+
+    VecObj.x = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[0] - 1) / CHUNK_SIZE[0]));
+    VecObj.y = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[1] - 1) / CHUNK_SIZE[1]));
+    VecObj.z = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[2] - 1) / CHUNK_SIZE[2]));
+    RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
+
+    RenderingDevice->compute_list_add_barrier(ComputeList);
+
+    VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
+    VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
+    VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
+    RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
 }
 
-void PCG_Environment::LoopGenerationForEntity(const bool FOR_EACH_ENTITY, PackedInt64Array CURRENT_ENTITY_LOCATION, PackedInt64Array CURRENT_PLANET_LOCATION,
-                                            const uint8_t PASS_AMOUNT,
-                                            uint32Vec3 &VecObj,  PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
-                                            int64_t &ComputeList, ComputeUniformData &UniformData, size_t &UDA_Size, RID UniformBuffer_RID,
-                                            PackedByteArray UniformDataArray)
+void PCG_Environment::RegisterLocalLocation(PackedInt64Array LocalEntityLocation, uint32_t &Stage)
+{
+    BasicPushConstant.ENTITY_LOCATION.x    = static_cast<uint32_t>(LocalEntityLocation[0]);
+    BasicPushConstant.ENTITY_LOCATION.y    = static_cast<uint32_t>(LocalEntityLocation[1]);
+    BasicPushConstant.ENTITY_LOCATION.z    = static_cast<uint32_t>(LocalEntityLocation[2]);
+    BasicPushConstant.ENTITY_LOCATION_P2.x = static_cast<uint32_t>(LocalEntityLocation[0] >> 32);
+    BasicPushConstant.ENTITY_LOCATION_P2.y = static_cast<uint32_t>(LocalEntityLocation[1] >> 32);
+    BasicPushConstant.ENTITY_LOCATION_P2.z = static_cast<uint32_t>(LocalEntityLocation[2] >> 32);
+    BasicPushConstant.ENTITY_LOCATION.w    = Stage;
+}
+
+void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, PackedInt64Array CURRENT_ENTITY_LOCATION, PackedInt64Array CURRENT_PLANET_LOCATION,
+                                              const uint8_t &PASS_AMOUNT,
+                                              uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
+                                              int64_t &ComputeList)
 {
     PackedInt64Array GlobalPosition;
 
@@ -160,219 +264,248 @@ void PCG_Environment::LoopGenerationForEntity(const bool FOR_EACH_ENTITY, Packed
     PackedInt32Array LocalVoxelSize;
     float LocalSize_Offset = 1.0;
 
-    if(FOR_EACH_ENTITY){
-        int ArraySize = CURRENT_ENTITY_LOCATION.size() * 0.3333333333333333; // CURRENT_ENTITY_LOCATION.size() / 3
+    switch(FOR_EACH_ENTITY)
+    {
+        case 0:
+        {
+            RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.density);
 
-        int PassOffset = 0;
-
-        for (int entity_index = 0; entity_index < ArraySize;)
-        {   
-            for (int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){     
+            for(int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){
                 for(int chunk_index = 0; chunk_index <= 2;){
-                    LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5); 
+                    LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5);
                     LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
-                    
                     LocalSize_Offset *= 0.5;
-
                     chunk_index++;
                 }
 
-                for (int coordinate_index = 0; coordinate_index <= 2;){
-                    LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index + PassOffset] - CURRENT_PLANET_LOCATION[coordinate_index + PassOffset];
+                for(int coordinate_index = 0; coordinate_index <= 2;){
+                    LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index] - CURRENT_PLANET_LOCATION[coordinate_index];
                     LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
-
                     coordinate_index++;
                 }
 
-                RegisterLocalLocation(UniformData, LocalEntityLocation, Stage);
+                RegisterLocalLocation(LocalEntityLocation, Stage);
+                memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+                RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
 
-                memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
-                RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
-
-                PCG_Environment::Active_Passive_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
-                                                    ComputeList, UniformData, UDA_Size, UniformBuffer_RID,
-                                                    UniformDataArray, FOR_EACH_ENTITY);
+                PCG_Environment::Density_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                         ComputeList);
             }
 
-            PassOffset += 3;
-
-            entity_index++;
-            LocalSize_Offset = 1.0;
+            PCG_Environment::SVO_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                  ComputeList);
+            break;
         }
-    }
-    else
-    {
-        for (int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){     
-            for(int chunk_index = 0; chunk_index <= 2;){
-                LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5); 
-                LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
-                
-                LocalSize_Offset *= 0.5;
 
-                chunk_index++;
+        case 1:
+        {
+            int ArraySize   = CURRENT_ENTITY_LOCATION.size() * 0.3333333333333333;
+            int PassOffset  = 0;
+
+            RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.density);
+
+            for(int entity_index = 0; entity_index < ArraySize;)
+            {
+                LocalSize_Offset = 1.0;
+
+                for(int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){
+                    for(int chunk_index = 0; chunk_index <= 2;){
+                        LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5);
+                        LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
+                        LocalSize_Offset *= 0.5;
+                        chunk_index++;
+                    }
+
+                    for(int coordinate_index = 0; coordinate_index <= 2;){
+                        LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index + PassOffset] - CURRENT_PLANET_LOCATION[coordinate_index + PassOffset];
+                        LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
+                        coordinate_index++;
+                    }
+
+                    RegisterLocalLocation(LocalEntityLocation, Stage);
+                    memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+                    RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+
+                    PCG_Environment::Density_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                             ComputeList);
+                }
+
+                PassOffset += 3;
+                entity_index++;
             }
-
-            for (int coordinate_index = 0; coordinate_index <= 2;){
-                LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index] - CURRENT_PLANET_LOCATION[coordinate_index];
-                LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
-
-                coordinate_index++;
-            }
-
-            RegisterLocalLocation(UniformData, LocalEntityLocation, Stage);
-
-            memcpy(UniformDataArray.ptrw(), &UniformData, sizeof(ComputeUniformData));
-            RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
-
-            PCG_Environment::Active_Passive_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
-                                                            ComputeList, UniformData, UDA_Size, UniformBuffer_RID,
-                                                            UniformDataArray, FOR_EACH_ENTITY);
+            break;
         }
+
+        case 2:
+            // For each entity, but with SVO
+            break;
+
+        default:
+            break;
     }
+}
+
+// i love writing boilerplate i love writing boilerplate i love writing boilerplate i love writing boilerplate i love writing boilerplate
+void PCG_Environment::initCompute(const int32_t &SEED, const int32_t &MAXVERTs, const int32_t &IS_STARTINGSCENE,
+                                  const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK,
+                                  const PackedInt64Array CURRENT_ENTITY_LOCATION, const PackedInt64Array CURRENT_PLANET_POSITION,
+                                  const uint32_t &SVO_MAX_NODES_PER_CHUNK)
+{
+    pipelines.density      = RenderingDevice->compute_pipeline_create(compiled_shaders.CompiledShader);
+    pipelines.svo          = RenderingDevice->compute_pipeline_create(compiled_shaders.CompiledShader_SVO);
+    pipelines.dual_contour = RenderingDevice->compute_pipeline_create(compiled_shaders.CompiledShader_DualContour);
+    pipelines.prefixsum    = RenderingDevice->compute_pipeline_create(compiled_shaders.CompiledShader_Radix);
+    pipelines.histogram    = RenderingDevice->compute_pipeline_create(compiled_shaders.CompiledShader_Histogram);
+
+    pushconst_buffer.resize(sizeof(PushConstant));
+
+    ComputeUniformData UniformData;
+
+    UniformData.SCENE_PROPERTIES.x = SEED;
+    UniformData.SCENE_PROPERTIES.y = MAXVERTs;
+    UniformData.SCENE_PROPERTIES.z = IS_STARTINGSCENE;
+    UniformData.SCENE_PROPERTIES.w = 0;
+
+    UniformData.NOISE_PARAMS.x = WORLD_SCALE;
+
+    SetVector4i(UniformData.CHUNK_SIZE,      CHUNK_SIZE);
+    SetVector4i(UniformData.VOXELS_PER_CHUNK, VOXELS_PER_CHUNK);
+
+    UniformData.ENTITY_LOCATION.x = CURRENT_ENTITY_LOCATION[0];
+    UniformData.ENTITY_LOCATION.y = CURRENT_ENTITY_LOCATION[1];
+    UniformData.ENTITY_LOCATION.z = CURRENT_ENTITY_LOCATION[2];
+
+    PackedByteArray UniformDataArray;
+    size_t UDA_Size = sizeof(ComputeUniformData);
+    UniformDataArray.resize(UDA_Size);
+    memcpy(UniformDataArray.ptrw(), &UniformData, UDA_Size);
+
+    storage.uniform_buffer = RenderingDevice->uniform_buffer_create(UniformDataArray.size(), UniformDataArray);
+
+    returnedVoxel VoxelBuffer;
+    PackedByteArray VoxelBufferArray;
+    int64_t OutputSize = sizeof(returnedVoxel) * CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2];
+    VoxelBufferArray.resize(OutputSize);
+    memcpy(VoxelBufferArray.ptrw(), &VoxelBuffer, OutputSize);
+    storage.voxel_output = RenderingDevice->storage_buffer_create(VoxelBufferArray.size(), VoxelBufferArray);
+
+    SVO_NodeBuffer SVO_Node_Data;
+    PackedByteArray SVO_NodePool;
+    int64_t SVO_NodePoolSize = sizeof(SVO_NodeBuffer) * SVO_MAX_NODES_PER_CHUNK;
+    SVO_NodePool.resize(SVO_NodePoolSize);
+    memcpy(SVO_NodePool.ptrw(), &SVO_Node_Data, SVO_NodePoolSize);
+    storage.svo_storage = RenderingDevice->storage_buffer_create(SVO_NodePool.size(), SVO_NodePool);
+
+    SVO_NodeBufferAux SVO_NodeAux_Data;
+    PackedByteArray SVO_NodePoolAux;
+    int64_t SVO_NodePoolSizeAux = sizeof(SVO_NodeBufferAux) * SVO_MAX_NODES_PER_CHUNK;
+    SVO_NodePoolAux.resize(SVO_NodePoolSizeAux);
+    memcpy(SVO_NodePoolAux.ptrw(), &SVO_NodeAux_Data, SVO_NodePoolSizeAux);
+    storage.svo_aux = RenderingDevice->storage_buffer_create(SVO_NodePoolAux.size(), SVO_NodePoolAux);
+
+    uint32_t AtomicCounter = 0;
+    PackedByteArray AtomicCounterArray;
+    int64_t AtomicCounter_Size = sizeof(uint32_t);
+    AtomicCounterArray.resize(AtomicCounter_Size);
+    memcpy(AtomicCounterArray.ptrw(), &AtomicCounter, AtomicCounter_Size);
+    storage.atomic_counter = RenderingDevice->storage_buffer_create(AtomicCounterArray.size(), AtomicCounterArray);
+
+    uint32_t AtomicCounter2 = 0;
+    PackedByteArray AtomicCounterArray2;
+    AtomicCounterArray2.resize(AtomicCounter_Size);
+    memcpy(AtomicCounterArray2.ptrw(), &AtomicCounter2, AtomicCounter_Size);
+    storage.atomic_counter2 = RenderingDevice->storage_buffer_create(AtomicCounterArray2.size(), AtomicCounterArray2);
+
+    Histogram HistogramBuffer;
+    PackedByteArray HistogramBuffer_Array;
+    int64_t HistoSize = sizeof(Histogram);
+    HistogramBuffer_Array.resize(HistoSize);
+    memcpy(HistogramBuffer_Array.ptrw(), &HistogramBuffer, HistoSize);
+    storage.histogram_buffer = RenderingDevice->storage_buffer_create(HistogramBuffer_Array.size(), HistogramBuffer_Array);
+
+    PSOffset PrefixsumOffset;
+    PackedByteArray PrefixsumOffset_Array;
+    int64_t PrefixSize = sizeof(PSOffset);
+    PrefixsumOffset_Array.resize(PrefixSize);
+    memcpy(PrefixsumOffset_Array.ptrw(), &PrefixsumOffset, PrefixSize);
+    storage.prefixsum_offset = RenderingDevice->storage_buffer_create(PrefixsumOffset_Array.size(), PrefixsumOffset_Array);
+
+    uint64_t MAXVERTS64 = MAXVERTs ? MAXVERTs
+                                : (uint64_t)VOXELS_PER_CHUNK[0] * VOXELS_PER_CHUNK[1] * VOXELS_PER_CHUNK[2];
+
+    uint32_t CubeGridSize = (VOXELS_PER_CHUNK[0] - 1) * (VOXELS_PER_CHUNK[1] - 1) * (VOXELS_PER_CHUNK[2] - 1);
+    RID ActiveCubes_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * CubeGridSize);
+
+    Ref<RDUniform> UniformConstants_Ref          = RefWrapper(0, storage.uniform_buffer,    RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
+    Ref<RDUniform> VoxelStorageBuffer_UniformRef = RefWrapper(1, storage.voxel_output,      RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> SVO_Node_UniformRef           = RefWrapper(2, storage.svo_storage,       RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> AtomicCounter_UniformRef      = RefWrapper(3, storage.atomic_counter,    RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> SVO_NodeAux_UniformRef        = RefWrapper(4, storage.svo_aux,           RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> Histogram_UniformRef          = RefWrapper(5, storage.histogram_buffer,  RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> PrefixsumOffset_UniformRef    = RefWrapper(6, storage.prefixsum_offset,  RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> AtomicCounter2_UniformRef     = RefWrapper(7, storage.atomic_counter2,   RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+
+    TypedArray<Ref<RDUniform>> UniformsArray;
+    UniformsArray.push_back(UniformConstants_Ref);
+
+    TypedArray<Ref<RDUniform>> VoxelStorage;
+    VoxelStorage.push_back(VoxelStorageBuffer_UniformRef);
+
+    TypedArray<Ref<RDUniform>> SVOStorage;
+    SVOStorage.push_back(SVO_Node_UniformRef);
+    SVOStorage.push_back(AtomicCounter_UniformRef);
+    SVOStorage.push_back(AtomicCounter2_UniformRef);
+    SVOStorage.push_back(SVO_NodeAux_UniformRef);
+
+    TypedArray<Ref<RDUniform>> HistogramStorage;
+    HistogramStorage.push_back(Histogram_UniformRef);
+    HistogramStorage.push_back(PrefixsumOffset_UniformRef);
+
+    storage.uniform_set       = RenderingDevice->uniform_set_create(UniformsArray,    compiled_shaders.CompiledShader,           0);
+    storage.voxel_storage     = RenderingDevice->uniform_set_create(VoxelStorage,     compiled_shaders.CompiledShader,           1);
+    storage.voxel_storage     = RenderingDevice->uniform_set_create(VoxelStorage,     compiled_shaders.CompiledShader_SVO,       1);
+    storage.svo_storage       = RenderingDevice->uniform_set_create(SVOStorage,       compiled_shaders.CompiledShader_SVO,       2);
+    storage.svo_storage       = RenderingDevice->uniform_set_create(SVOStorage,       compiled_shaders.CompiledShader_Histogram, 2);
+    storage.histogram_storage = RenderingDevice->uniform_set_create(HistogramStorage, compiled_shaders.CompiledShader_Histogram, 3);
 
     
 }
 
-/* 
+/*
     (mostly) a note to self:
-    the system is node based. this is not a monolithic end all be all for every single planet. 
-    it generates a single planet, it does not generate a galaxy. you still need to place galaxies, solar systems etc. 
-    -with an assignment function, this is only for generating local bodies; limited to, for now, planets.
-    though it might be able to handle an entire universe, as in my early stages I did not focus on building a node based system.
+    the system is node based. this is not a monolithic end all be all for every single planet.
+    it generates a single planet - it does not generate an entire galaxy. you still need to place galaxies, solar systems etc.,
+    with an assignment function. this is only for generating local bodies. limited to, for now, planets.
 */
 
-// boilerplate galore
-// I doubt the CPU logic will be used as remaking the entire pipeline just for the CPU is insane. I'll add it if later on people really request for it.
-// Also, this function is supposed to be abstracted, that's why it's so ambiguous.
-void PCG_Environment::passParams_to_PCG(RID CompiledShader, bool isCPU_or_GPU, 
-                                        const String &EditFileLocation, const String &SVO_VertexFileLocation, 
-                                        const bool IS_STARTINGSCENE, const uint32_t &SEED, const uint32_t MAXVERTs, 
-                                        const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK, 
-                                        const uint32_t SVO_MAX_NODES_PER_CHUNK,  const uint8_t PASS_AMOUNT,
-                                        const PackedInt64Array CURRENT_ENTITY_LOCATION, const PackedInt64Array CURRENT_PLANET_POSITION,
-                                        const uint8_t GLOBAL_PASS_AMOUNT,
-                                        const bool FOR_EACH_ENTITY,
-                                        const bool CLEAR_RIDs, const bool DEBUG){
+void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU,
+                                        const uint8_t FOR_EACH_ENTITY,
+                                        const PackedInt64Array CURRENT_ENTITY_LOCATION, 
+                                        const PackedInt64Array CURRENT_PLANET_POSITION,
+                                        const uint8_t &PASS_AMOUNT,
+                                        const PackedInt32Array VOXELS_PER_CHUNK, 
+                                        const PackedInt32Array CHUNK_SIZE,
+                                        const bool DEBUG){
     if(isCPU_or_GPU){
-        RID Pipeline_RID = RenderingDevice->compute_pipeline_create(CompiledShader);
-
         int64_t ComputeList = RenderingDevice->compute_list_begin();
+        uint32Vec3 VecObj;
 
-        RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, Pipeline_RID);
+        LoopGenerationForEntity(FOR_EACH_ENTITY, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_POSITION,
+                                PASS_AMOUNT,
+                                VecObj, VOXELS_PER_CHUNK, CHUNK_SIZE,
+                                ComputeList);
 
-        ComputeUniformData UniformData;
+        PCG_Environment::DualContour_Generation_Pass(VecObj, VOXELS_PER_CHUNK, CHUNK_SIZE,
+                                                     ComputeList);
 
-        UniformData.SCENE_PROPERTIES.x = SEED;
-        UniformData.SCENE_PROPERTIES.y = MAXVERTs;
-        UniformData.SCENE_PROPERTIES.z = IS_STARTINGSCENE;
-        UniformData.SCENE_PROPERTIES.w = 0;
+        RenderingDevice->compute_list_end();
+        RenderingDevice->submit();
+        RenderingDevice->sync();
 
-        UniformData.NOISE_PARAMS.x = WORLD_SCALE;
+        if(DEBUG)
+            UtilityFunctions::print("Compute successful.");
 
-        SetVector4i(UniformData.CHUNK_SIZE, CHUNK_SIZE);
-
-        SetVector4i(UniformData.VOXELS_PER_CHUNK, VOXELS_PER_CHUNK);
-
-        UniformData.ENTITY_LOCATION.x = CURRENT_ENTITY_LOCATION[0];
-        UniformData.ENTITY_LOCATION.y = CURRENT_ENTITY_LOCATION[1];
-        UniformData.ENTITY_LOCATION.z = CURRENT_ENTITY_LOCATION[2];
-
-        PackedByteArray UniformDataArray;
-        size_t UDA_Size = sizeof(ComputeUniformData);
-        UniformDataArray.resize(UDA_Size);
-        memcpy(UniformDataArray.ptrw(), &UniformData, UDA_Size);
-
-        RID UniformBuffer_RID = RenderingDevice->uniform_buffer_create(UniformDataArray.size(), UniformDataArray);
-
-        returnedVoxel VoxelBuffer;
-
-        PackedByteArray VoxelBufferArray;
-        int64_t OutputSize = sizeof(returnedVoxel) * CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2];
-        VoxelBufferArray.resize(OutputSize);
-        memcpy(VoxelBufferArray.ptrw(), &VoxelBuffer, OutputSize);
-        
-        RID VoxelOutputBuffer_RID = RenderingDevice->storage_buffer_create(VoxelBufferArray.size(), VoxelBufferArray);    
-
-        SVO_NodeBuffer SVO_Node_Data;
-        PackedByteArray SVO_NodePool;
-        int64_t SVO_NodePoolSize = sizeof(SVO_NodeBuffer) * SVO_MAX_NODES_PER_CHUNK;
-        SVO_NodePool.resize(SVO_NodePoolSize);
-        memcpy(SVO_NodePool.ptrw(), &SVO_Node_Data, SVO_NodePoolSize);
-        
-        RID SVO_Node_RID = RenderingDevice->storage_buffer_create(SVO_NodePool.size(), SVO_NodePool);
-        
-
-        uint64_t MAXVERTS64 = 0;
-        if(MAXVERTs){
-            MAXVERTS64 = MAXVERTs;
-        } else {
-            MAXVERTS64 = VOXELS_PER_CHUNK[0] * VOXELS_PER_CHUNK[1] * VOXELS_PER_CHUNK[2]; 
-        }
-
-
-        uint32_t CubeGridSize = (VOXELS_PER_CHUNK[0] - 1) * (VOXELS_PER_CHUNK[1] - 1) * (VOXELS_PER_CHUNK[2] - 1);
-        RID ActiveCubes_RID = RenderingDevice->storage_buffer_create(sizeof(uint32_t) * CubeGridSize);
-
-        // for whoever is editing this afterwards, please, PLEASE order it like this. it saves so much time.
-        Ref<RDUniform> UniformConstants_Ref          = RefWrapper(0, UniformBuffer_RID, RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
-        Ref<RDUniform> VoxelStorageBuffer_UniformRef = RefWrapper(1, VoxelOutputBuffer_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-        Ref<RDUniform> SVO_Node_UniformRef           = RefWrapper(2, SVO_Node_RID, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-
-        TypedArray<Ref<RDUniform>> UniformsArray;
-        UniformsArray.push_back(UniformConstants_Ref);
-        UniformsArray.push_back(VoxelStorageBuffer_UniformRef);
-        UniformsArray.push_back(SVO_Node_UniformRef);
-
-        
-        RID UniformSet_RID = RenderingDevice->uniform_set_create(UniformsArray, CompiledShader, 0);
-        if(!CLEAR_RIDs){ // the actual game logic
-            uint32Vec3 VecObj;
-
-            LoopGenerationForEntity(FOR_EACH_ENTITY, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_POSITION,
-                                    PASS_AMOUNT,
-                                    VecObj,  VOXELS_PER_CHUNK, CHUNK_SIZE,
-                                    ComputeList, UniformData, UDA_Size, UniformBuffer_RID,
-                                    UniformDataArray);
-
-            UniformData.SCENE_PROPERTIES.w = 3;
-            memcpy(UniformDataArray.ptrw(), &UniformData, UDA_Size);
-            RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
-
-            VecObj.x = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[0] - 1) / CHUNK_SIZE[0]));
-            VecObj.y = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[1] - 1) / CHUNK_SIZE[1]));
-            VecObj.z = std::max(1u, (unsigned)((VOXELS_PER_CHUNK[2] - 1) / CHUNK_SIZE[2]));
-            RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
-
-            RenderingDevice->compute_list_add_barrier(ComputeList);
-
-            UniformData.SCENE_PROPERTIES.w = 4;
-            memcpy(UniformDataArray.ptrw(), &UniformData, UDA_Size);
-            RenderingDevice->buffer_update(UniformBuffer_RID, 0, UDA_Size, UniformDataArray);
-
-            VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
-            VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
-            VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
-            RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
-
-            RenderingDevice->compute_list_end();
-
-            RenderingDevice->submit();
-            RenderingDevice->sync();
-
-            if(DEBUG)
-                UtilityFunctions::print("Compute successful.");
-        }
-        
-        if(CLEAR_RIDs){
-            RenderingDevice->free_rid(VoxelOutputBuffer_RID);
-            RenderingDevice->free_rid(UniformBuffer_RID);
-            RenderingDevice->free_rid(UniformSet_RID);
-            RenderingDevice->free_rid(CompiledShader);
-            RenderingDevice->free_rid(Pipeline_RID);
-            RenderingDevice->free_rid(SVO_Node_RID);
-        }
-        return;
     }
 
-    // CPU specific logic (meant for servers)
+    // CPU-specific logic (intended for servers)
 }

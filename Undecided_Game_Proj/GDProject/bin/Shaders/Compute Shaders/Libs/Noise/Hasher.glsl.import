@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b8kl8772opd3s"
+path="res://.godot/imported/Hasher.glsl-153c36854034d31619ffad41fa03853d.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/Noise/Hasher.glsl"
+dest_files=["res://.godot/imported/Hasher.glsl-153c36854034d31619ffad41fa03853d.res"]
+
+[params]
+

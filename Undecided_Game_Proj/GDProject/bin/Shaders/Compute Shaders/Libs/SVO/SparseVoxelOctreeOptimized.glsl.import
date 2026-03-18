@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dta6fhngovoyu"
+path="res://.godot/imported/SparseVoxelOctreeOptimized.glsl-d84fe8270a46800019555a089d99dd42.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/SVO/SparseVoxelOctreeOptimized.glsl"
+dest_files=["res://.godot/imported/SparseVoxelOctreeOptimized.glsl-d84fe8270a46800019555a089d99dd42.res"]
+
+[params]
+

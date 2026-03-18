@@ -1,7 +1,5 @@
-#include "res://bin/Shaders/ComputeShaders/Libs/Noise/Hasher.gdshader"
-
 float pointProcess(vec3 inPoint, vec3 gradientHash){
-    const float RadiusFalloff = 0.7;
+    const float RadiusFalloff = 0.5;
 
     float n = 0.0;
     float t0_sq = dot(inPoint, inPoint);
@@ -84,5 +82,5 @@ float simplex3D(vec3 inVector, const uint SEED){
     N += pointProcess(pointTwo, gradientVec2);
     N += pointProcess(pointThree, gradientVec3);
 
-    return N * 42.0;
+    return clamp(N * 9, 0.0, 1.0);
 }

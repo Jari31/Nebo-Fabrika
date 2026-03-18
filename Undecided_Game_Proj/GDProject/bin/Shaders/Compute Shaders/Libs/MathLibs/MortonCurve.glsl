@@ -1,4 +1,5 @@
 // Morton Z Order Curve
+
 uint ExpandBits(uint x)
 {
     x = (x * 0x00010001) & 0xFF0000FF; // if x1 = 1; 0001 x 00010001 = 010001 & FF0000FF = 00000001 | 1

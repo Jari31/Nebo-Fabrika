@@ -11,9 +11,11 @@ float hash(ivec3 inVector){
 }
 
 vec3 gradient_hash(ivec3 inVector, const uint SEED){
+    int iSEED = int(SEED);
+
     float rand_X = hash(inVector);
-    float rand_Y = hash(inVector + (ivec3(4, 7, 13) * SEED));
-    float rand_Z = hash(inVector + (ivec3(19, 23, 29) * SEED));
+    float rand_Y = hash(inVector + (ivec3(4, 7, 13) * iSEED));
+    float rand_Z = hash(inVector + (ivec3(19, 23, 29) * iSEED));
 
     vec3 outVector = vec3(rand_X, rand_Y, rand_Z) * 2.0 - 1.0;
 

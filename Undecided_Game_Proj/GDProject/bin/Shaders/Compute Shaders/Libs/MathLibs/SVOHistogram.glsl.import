@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dfk7q7m1d3ndj"
+path="res://.godot/imported/SVOHistogram.glsl-1b4d0efedbd06434223410301f766c9a.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/MathLibs/SVOHistogram.glsl"
+dest_files=["res://.godot/imported/SVOHistogram.glsl-1b4d0efedbd06434223410301f766c9a.res"]
+
+[params]
+
