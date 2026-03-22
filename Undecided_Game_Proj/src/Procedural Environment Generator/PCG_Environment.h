@@ -88,6 +88,7 @@ namespace godot {
             {
                 uint32_t PassNum;
                 uint32_t PassOffset;
+                uint32_t PassStage;
 
                 Vector4i ENTITY_LOCATION;
                 Vector4i ENTITY_LOCATION_P2;

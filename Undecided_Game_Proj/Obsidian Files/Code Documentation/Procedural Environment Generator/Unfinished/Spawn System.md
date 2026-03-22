@@ -1,0 +1,1 @@
+CPU bound system that spawns objects.

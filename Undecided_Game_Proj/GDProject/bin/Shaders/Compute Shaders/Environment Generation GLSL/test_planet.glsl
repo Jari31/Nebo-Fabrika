@@ -14,9 +14,9 @@ layout(std140, set = 0, binding = 0) uniform ComputeUniforms
 
     uvec4 VOXELS_PER_CHUNK;
 
-    ivec4 ENTITY_LOCATION; 
+    ivec4 bENTITY_LOCATION; 
 
-    ivec4 ENTITY_LOCATION_P2;
+    ivec4 bENTITY_LOCATION_P2;
 
     vec4 PLANET_BOUNDS;
 };
@@ -25,6 +25,21 @@ struct VoxelDataArray
 {
     float matID;
     float density;
+};
+
+layout(push_constant) uniform PushConstants 
+{
+    uint PassNum;
+    uint PassOffset;
+    uint PassStage;
+
+    uint SEED;
+    
+    ivec3 ENTITY_LOCATION;
+    ivec3 ENTITY_LOCATION_P2;
+
+    ivec3 CHUNK_SIZE;
+    ivec3 VOXELS_PER_CHUNK;
 };
 
 layout(std430, set = 1, binding = 0) buffer voxelData {
@@ -66,7 +81,7 @@ void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you
 
     vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz;
     vec3 ChunkWorldPosition = convert_to_ivec64(ENTITY_LOCATION.xyz, ENTITY_LOCATION_P2.xyz);
-    vec3 VoxelWorldPosition = vec3(ChunkWorldPosition) + vec3(VoxelLocalCoordinates);
+    // vec3 VoxelWorldPosition = vec3(ChunkWorldPosition) + vec3(VoxelLocalCoordinates);
 
     uint Index = GetMortonCode(ivec3(VoxelLocalCoordinates));  // flatten_coord(VoxelLocalCoordinates, VOXELS_PER_CHUNK.xyz);
 

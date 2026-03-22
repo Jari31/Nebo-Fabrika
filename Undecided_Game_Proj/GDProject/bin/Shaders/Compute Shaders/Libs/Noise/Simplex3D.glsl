@@ -82,5 +82,5 @@ float simplex3D(vec3 inVector, const uint SEED){
     N += pointProcess(pointTwo, gradientVec2);
     N += pointProcess(pointThree, gradientVec3);
 
-    return clamp(N * 9, 0.0, 1.0);
+    return clamp(N * 40, -1.0f, 1.0);
 }

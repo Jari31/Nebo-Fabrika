@@ -1,0 +1,15 @@
+___
+Explorative generation is the process where the virtual camera shoots out probes that hit the first inactive [[Notes/Super Chunks|super chunk]] that they encounter and activate it. After activation, the super chunk constructs the  $y^3$ chunks into a volatile [[Notes/Sparse Chunks (Inactive)|sparse voxel octree]]. Volatile meaning that after the mesh generation stage is complete, the SVO discards its data, only leaving behind the generated vertices and their attributes.
+
+The probes diverge in XYZ based on the field of view of the camera. The probes are also [[Notes/Async|asynchronous]]. They store their data in a centralized buffer to then be combined by a central dual contouring pass that patches the disconnected geometry between different super chunks together - that is, if the player is close enough. If two chunks are thousands of meters away, the system does not bother to do that. Instead, a "skirt" is added at the edges of each super chunk. Then, the skirt inherits the data from the vertices around it and impersonates itself as a part of the mesh. But if the super chunk is far enough away, even the skirting process is skipped.
+
+Of course, you rightfully might be thinking, "Well, what if the player does a 360? Does it have to generate all of the visible super chunks again?" The answer is - sort of. If the player does not look at the super chunk for more than a set amount of time, the super chunks are deactivated. If the player looks back after the super chunks have been deactivated, the system has to recalculate all of them again. This is a form of *Least Recently Used cache*.
+# Storing modifications made by other players or objects
+---
+If another player ($p_{1}$) modifies a chunk hundreds of thousands of meters away and the player does not see it, the server stores it within the super chunk and sends that super chunk's ID to every player and marks it as "dirty". After another player ($p_{2}$) launches a probe that hits super chunk $p_{1}$, the player ($p_{2}$) queries the server for the modification file and retrieves it to reconstruct the SVO.
+
+Lastly, every super chunk caches its data to disk as separate files. All of the data is localized to the chunk itself, allowing for efficient quantization. Alongside, player structures are simply stored as a point + the ID of the object - local to the super chunk.
+
+*This process is linear to save on VRAM usage. If this were to be parallel, the entire system would end up costing nearly 2 gigabytes of VRAM to run. Not to mention keeping in track hundreds of buffers and pipelines.* The system is also center-first; the probe in the center gets the first priority before other nodes are considered. 
+
+Though, crucially, this process **is** parallelizable. You can simply call more instances of the Planet Manager node. Calling them won't consume memory unless the buffers and RIDs are assigned using the init() function. Memory size depends on the chunk size, max vertices and voxels per chunk size. Refer to their specific documentation for more info. 

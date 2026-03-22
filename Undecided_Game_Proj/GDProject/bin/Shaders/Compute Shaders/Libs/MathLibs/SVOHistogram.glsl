@@ -32,14 +32,17 @@ layout(std430, set = 3, binding = 1) buffer OffsetBuffer
 layout(push_constant) uniform PushConstants {
     uint PassNum;
     uint PassOffset;
-    uint padding[2];
+    uint PassStage;
+    
+    ivec4 ENTITY_LOCATION;
+    ivec3 ENTITY_LOCATION_P2;
 };
 
 shared uint LocalHistogram[16];
 
 void Scatter()
 {
-    uint passNum = PassNum - 7;
+    uint passNum = PassNum;
     uint GlobalIndex = gl_GlobalInvocationID.x;  
 
     if(GlobalIndex >= SVO_Node.length()) // bounds check
@@ -58,7 +61,7 @@ void Scatter()
 
 void main()
 {
-    if(PassNum <= 5)
+    if(PassStage == 1)
     {
         // histogram
         if(gl_GlobalInvocationID.x < 16)

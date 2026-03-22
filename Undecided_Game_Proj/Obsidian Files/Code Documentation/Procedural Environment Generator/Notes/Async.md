@@ -1,0 +1,3 @@
+(Development note: The active chunk should be generated per modification and the async chunks should be generated using a separate function loop.)
+
+[Async compute](https://en.wikipedia.org/wiki/Asynchrony_(computer_programming)) for [[Notes/Sparse Chunks (Inactive)|SVO chunks]] allows the CPU to quickly process important and [[Notes/Dense Chunks (Active)|active data]] without waiting for the lengthy process of generating every single perceptible [[Notes/Super Chunks|super chunk]].

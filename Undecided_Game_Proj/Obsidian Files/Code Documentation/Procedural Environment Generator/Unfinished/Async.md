@@ -1,0 +1,2 @@
+[[Godot GDScript]]
+[[GDExtension]]

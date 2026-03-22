@@ -1,0 +1,3 @@
+Dense chunks are chunks that are generated either per frame, or per modification (i.e., when something explodes and some voxels are removed).
+
+They are composed of nodes and every node represents density and material ID. And most importantly, even if a node does not contain density (0.0), the node still counts towards memory. This specific characteristic is of a dense grid. If the node did not exist because it did not contain density, then it would be an [[Sparse Chunks (Inactive)|SVO]]. 

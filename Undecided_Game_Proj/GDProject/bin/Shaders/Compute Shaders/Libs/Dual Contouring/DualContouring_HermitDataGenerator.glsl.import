@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://d1u6cufcx8fl5"
+path="res://.godot/imported/DualContouring_HermitDataGenerator.glsl-e47fbbdda67ce82f665b863198cd61e5.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/Dual Contouring/DualContouring_HermitDataGenerator.glsl"
+dest_files=["res://.godot/imported/DualContouring_HermitDataGenerator.glsl-e47fbbdda67ce82f665b863198cd61e5.res"]
+
+[params]
+

@@ -95,7 +95,6 @@ void SetVector4i(Vector4i &Vector, PackedInt32Array InVector){
         Vector.w = InVector[3];
 };
 
-
 void PCG_Environment::Histogram_pass(int64_t &ComputeList,
                                      PackedInt32Array &VOXELS_PER_CHUNK, PackedInt32Array &CHUNK_SIZE)
 {
@@ -116,7 +115,7 @@ void PCG_Environment::PrefixSum(int64_t &ComputeList,
 void PCG_Environment::Density_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
                                               int64_t &ComputeList)
 {
-    VecObj.x = (VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0]) / 8;
+    VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
     VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
     VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
     RenderingDevice->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
@@ -141,7 +140,7 @@ void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array V
     RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.svo_storage,   2);
 
     uint32Vec3 CurrentDispatchDimension;
-    CurrentDispatchDimension.x = ((VOXELS_PER_CHUNK[0] * CHUNK_SIZE[0]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO;
+    CurrentDispatchDimension.x = ((VOXELS_PER_CHUNK[0] * CHUNK_SIZE[0]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO; // faster than ceil()
     CurrentDispatchDimension.y = ((VOXELS_PER_CHUNK[1] * CHUNK_SIZE[1]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO;
     CurrentDispatchDimension.z = ((VOXELS_PER_CHUNK[2] * CHUNK_SIZE[2]) + storage.WORKGROUP_SIZE_SVO - 1) / storage.WORKGROUP_SIZE_SVO;
 
@@ -151,9 +150,20 @@ void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array V
     RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.histogram_storage, 3);
     RenderingDevice->compute_list_bind_uniform_set(ComputeList, storage.svo_storage, 2);
 
-    
-    
-    for(int i = 0; i < 6; i++)
+    // i < 9 because k = 8; k = 8 because 1024^3 = 10000000000 x 10000000000 x 10000000000 || 11 digits each, but because 0 is an index, 10. 30 bits. 
+    // if you cover 4 bits every pass (which the radix sort algorithm does does), then k = ceil(30 / 4) = 8
+    uint32_t k = 0;
+    uint32_t Value = VOXELS_PER_CHUNK[0]; 
+    while(Value)
+    {
+        Value >>= 1u;
+        k++;
+    }
+
+    k = ((k * 3) + 4 - 1) / 4;
+
+    BasicPushConstant.PassStage = 1; // 1 is histogram; 2 is scatter (look at compute shader for reference)
+    for(int i = 0; i < k; i++)
     {
         memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
         RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
@@ -172,7 +182,8 @@ void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array V
 
     RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.histogram);
 
-    for(int i = 0; i < 6; i++)
+    BasicPushConstant.PassStage = 2;
+    for(int i = 0; i < k; i++)
     {
         memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
         RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
@@ -187,6 +198,7 @@ void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array V
 
     BasicPushConstant.PassNum    = 1;
     BasicPushConstant.PassOffset = 0;
+    BasicPushConstant.PassStage  = 1;
 
     while(CurrentDispatchDimension.x > 1 || CurrentDispatchDimension.y > 1 || CurrentDispatchDimension.z > 1)
     {
@@ -213,8 +225,13 @@ void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array V
 
         SVOPass(VecObj, CurrentDispatchDimension, ComputeList, CHUNK_SIZE);
 
-        BasicPushConstant.PassNum += 1;
+        BasicPushConstant.PassNum++;
+        BasicPushConstant.PassStage++;
     }
+
+    BasicPushConstant.PassStage = ceil(BasicPushConstant.PassStage % 2);
+    memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+    RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
 
     RenderingDevice->compute_list_add_barrier(ComputeList);
 }
@@ -249,6 +266,30 @@ void PCG_Environment::RegisterLocalLocation(PackedInt64Array LocalEntityLocation
     BasicPushConstant.ENTITY_LOCATION.w    = Stage;
 }
 
+void FEE_ChunkSize_CoordinateMath(PackedInt32Array LocalChunkSize, PackedInt32Array LocalVoxelSize, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE, PackedInt64Array LocalEntityLocation,
+                                  float &LocalSize_Offset, PackedInt64Array CURRENT_ENTITY_LOCATION, PackedInt64Array CURRENT_PLANET_LOCATION)
+{
+    for(int chunk_index = 0; chunk_index <= 2; chunk_index++){
+
+        int32_t localChSz = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5);
+        LocalChunkSize.append(localChSz);
+
+        int32_t LocalVxSz = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
+        LocalVoxelSize.append(LocalVxSz);
+
+        LocalSize_Offset *= 0.5;
+    }
+
+    for(int coordinate_index = 0; coordinate_index <= 2;){
+        int64_t LocalEtLc = CURRENT_ENTITY_LOCATION[coordinate_index] - CURRENT_PLANET_LOCATION[coordinate_index];
+        LocalEtLc += LocalChunkSize[coordinate_index];
+
+        LocalEntityLocation.append(LocalEtLc);
+        coordinate_index++;
+    }
+
+}
+
 void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, PackedInt64Array CURRENT_ENTITY_LOCATION, PackedInt64Array CURRENT_PLANET_LOCATION,
                                               const uint8_t &PASS_AMOUNT,
                                               uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
@@ -270,31 +311,15 @@ void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, Pac
         {
             RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.density);
 
-            for(int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){
-                for(int chunk_index = 0; chunk_index <= 2;){
-                    LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5);
-                    LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
-                    LocalSize_Offset *= 0.5;
-                    chunk_index++;
-                }
+            FEE_ChunkSize_CoordinateMath(LocalChunkSize, LocalVoxelSize, VOXELS_PER_CHUNK, CHUNK_SIZE, LocalEntityLocation, 
+                                            LocalSize_Offset, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_LOCATION);
 
-                for(int coordinate_index = 0; coordinate_index <= 2;){
-                    LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index] - CURRENT_PLANET_LOCATION[coordinate_index];
-                    LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
-                    coordinate_index++;
-                }
+            RegisterLocalLocation(LocalEntityLocation, Stage);
+            memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+            RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
 
-                RegisterLocalLocation(LocalEntityLocation, Stage);
-                memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-                RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
-
-                PCG_Environment::Density_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
-                                                         ComputeList);
-            }
-
-            PCG_Environment::SVO_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
-                                                  ComputeList);
-            break;
+            PCG_Environment::Density_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                        ComputeList);
         }
 
         case 1:
@@ -309,18 +334,8 @@ void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, Pac
                 LocalSize_Offset = 1.0;
 
                 for(int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){
-                    for(int chunk_index = 0; chunk_index <= 2;){
-                        LocalChunkSize[chunk_index] = CHUNK_SIZE[chunk_index] * (LocalSize_Offset * 0.5);
-                        LocalVoxelSize[chunk_index] = VOXELS_PER_CHUNK[chunk_index] * LocalSize_Offset;
-                        LocalSize_Offset *= 0.5;
-                        chunk_index++;
-                    }
-
-                    for(int coordinate_index = 0; coordinate_index <= 2;){
-                        LocalEntityLocation[coordinate_index] = CURRENT_ENTITY_LOCATION[coordinate_index + PassOffset] - CURRENT_PLANET_LOCATION[coordinate_index + PassOffset];
-                        LocalEntityLocation[coordinate_index] += LocalChunkSize[coordinate_index];
-                        coordinate_index++;
-                    }
+                    FEE_ChunkSize_CoordinateMath(LocalChunkSize, LocalVoxelSize, VOXELS_PER_CHUNK, CHUNK_SIZE, LocalEntityLocation, 
+                                                 LocalSize_Offset, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_LOCATION);
 
                     RegisterLocalLocation(LocalEntityLocation, Stage);
                     memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
@@ -337,7 +352,24 @@ void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, Pac
         }
 
         case 2:
-            // For each entity, but with SVO
+            RenderingDevice->compute_list_bind_compute_pipeline(ComputeList, pipelines.density);
+
+            for(int processing_pass = 0; processing_pass <= PASS_AMOUNT; processing_pass++){
+                FEE_ChunkSize_CoordinateMath(LocalChunkSize, LocalVoxelSize, VOXELS_PER_CHUNK, CHUNK_SIZE, LocalEntityLocation, 
+                                             LocalSize_Offset, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_LOCATION);
+
+                RegisterLocalLocation(LocalEntityLocation, Stage);
+                memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+                RenderingDevice->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+
+                PCG_Environment::Density_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                         ComputeList);
+            }
+
+            PCG_Environment::SVO_Generation_Pass(VecObj, LocalVoxelSize, LocalChunkSize,
+                                                  ComputeList);
+            break;
+            // For each entity, but with SVO. would be better to do this inside of GDScript instead. makes async easier because the player might just look away from what we're trying to compute
             break;
 
         default:
@@ -384,7 +416,7 @@ void PCG_Environment::initCompute(const int32_t &SEED, const int32_t &MAXVERTs, 
 
     returnedVoxel VoxelBuffer;
     PackedByteArray VoxelBufferArray;
-    int64_t OutputSize = sizeof(returnedVoxel) * CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2];
+    int64_t OutputSize = sizeof(returnedVoxel) * CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2] * VOXELS_PER_CHUNK[0] * VOXELS_PER_CHUNK[1] * VOXELS_PER_CHUNK[2];
     VoxelBufferArray.resize(OutputSize);
     memcpy(VoxelBufferArray.ptrw(), &VoxelBuffer, OutputSize);
     storage.voxel_output = RenderingDevice->storage_buffer_create(VoxelBufferArray.size(), VoxelBufferArray);
@@ -477,6 +509,8 @@ void PCG_Environment::initCompute(const int32_t &SEED, const int32_t &MAXVERTs, 
     it generates a single planet - it does not generate an entire galaxy. you still need to place galaxies, solar systems etc.,
     with an assignment function. this is only for generating local bodies. limited to, for now, planets.
 */
+
+// There's no point in doing a centralized passParams_to_PCG anymore; the system is way too complex. Break it down in GDScript for easier to understand logic.
 
 void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU,
                                         const uint8_t FOR_EACH_ENTITY,
