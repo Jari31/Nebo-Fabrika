@@ -1,0 +1,3 @@
+extends Node
+
+enum ShaderStages {COMPUTE_SHADER, VERTEX_SHADER, FRAGMENT_SHADER}

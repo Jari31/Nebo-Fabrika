@@ -9,4 +9,7 @@ Note: *Physics is calculated on the mesh (vertices); not the voxels themselves*.
 # As a scale of reference: 
 $12^3$ is the average amount of chunks a player in Minecraft sees all around them. That itself there is the active chunk size for this game. The inactive SVO chunks are also $12^3$ chunks big. You can now probably imagine how huge a single probe is. 
 
-You can imagine the voxels as the atoms, chunks as cells, super chunks as tissues, planets as multi-celled organisms, solar systems as societies, and so on and so forth.
+You can imagine the voxels as the atoms, chunks as cells, super chunks as tissues, planets as multi-cellular organisms, solar systems as societies, and so on and so forth.
+
+# Misc Connections
+[[Dual Contouring|About Dual Contouring]]

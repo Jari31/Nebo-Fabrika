@@ -10,6 +10,7 @@ uint ExpandBits(uint x)
     return x;
 }
 
+
 uint DeInterleave(uint x)
 {
     x &= 0x49249249;

@@ -1,0 +1,14 @@
+from SCons.Script import Glob, Import
+
+Import('env')
+
+src_files = Glob('src/*.cpp', True)
+src_files += Glob('src/*/*.cpp', True)
+src_files += Glob('src/*/*/*.cpp', True)
+
+lib = env.SharedLibrary(
+    target=env['GDEXTENSION_BUILD_DIR'] + '/' + env['SET_NAME'],
+    source=src_files
+)
+
+env.Alias(env['GDEXTENSION_BUILD_DIR'], lib)

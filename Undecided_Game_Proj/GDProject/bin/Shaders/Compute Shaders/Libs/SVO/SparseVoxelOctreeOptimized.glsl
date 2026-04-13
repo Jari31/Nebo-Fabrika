@@ -1,18 +1,26 @@
 #[compute]
 #version 450
 
-layout(local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = WORKGROUP_SIZE) in;
+/*
+    COPYRIGHT (c) 2026 Jari
+    Licensed under the MIT license. Refer to the license file provided within the README for details.
+*/
 
-struct VoxelDataArray 
-{
-    float matID;
-    float density;
-};
+#ifndef WORKGROUP_SIZE_X
+#define WORKGROUP_SIZE_X 8
+#endif
+#ifndef WORKGROUP_SIZE_Y
+#define WORKGROUP_SIZE_Y 8
+#endif
+#ifndef WORKGROUP_SIZE_Z
+#define WORKGROUP_SIZE_Z 8
+#endif
 
-layout(std430, set = 1, binding = 0) buffer voxelData {
-    VoxelDataArray VoxelData[];
-};
+layout(local_size_x = WORKGROUP_SIZE_X, local_size_y = WORKGROUP_SIZE_Y, local_size_z = WORKGROUP_SIZE_Z) in;
 
+// --------------------------------------------------- set 1
+
+// --------------------------------------------------- struct
 struct SVO_NodeArray
 {
     uint ChildPointer;
@@ -25,41 +33,70 @@ struct SVO_NodeArray
     uint densities_higher4;
 };
 
-layout(std430, set = 2, binding = 1) buffer atomicCounter
+struct VoxelDataArray 
 {
-    uint AtomicCounter;
+    float matID;
+    float density;
 };
 
-layout(std430, set = 2, binding = 3) buffer atomicCounter2 
-{
-    uint AtomicCounter2;
+// --------------------------------------------------- buff
+
+layout(std430, set = 0, binding = 0) buffer voxelData {
+    VoxelDataArray VoxelData[];
 };
 
-layout(push_constant) uniform PushConstants 
-{
-    uint PassNum;
-    uint PassOffset;
-    uint PassStage;
-
-    uint SEED;
-    
-    ivec3 ENTITY_LOCATION;
-    ivec3 ENTITY_LOCATION_P2;
-
-    ivec3 CHUNK_SIZE;
-    ivec3 VOXELS_PER_CHUNK;
-};
-
-layout(std430, set = 2, binding = 0) buffer SVONodeBuffer
+layout(std430, set = 0, binding = 1) buffer SVONodeBuffer
 {
     SVO_NodeArray SVO_Node[]; //Buffer A
 };
 
-layout(std430, set = 2, binding = 2) buffer SVOAuxNodeBuffer
+layout(std430, set = 0, binding = 2) buffer SVOAuxNodeBuffer
 {
     SVO_NodeArray SVO_AuxNode[]; //Buffer B
 };
 
+layout(std430, set = 0, binding = 3) buffer atomicCounter
+{
+    uint AtomicCounter;
+    uint AtomicCounter2;
+
+    uint VertexCounter;
+};
+
+layout(std430, set = 0, binding = 4) buffer HistogramBuffer
+{
+    uint Histogram[6][16];
+};
+
+layout(std430, set = 0, binding = 5) buffer OffsetBuffer 
+{
+    uint Offsets[6][16];
+};
+
+//-------------------------------------------------------- push const
+layout(push_constant) uniform PushConstants 
+{
+    uint  PassNum;
+    uint  PassOffset;
+    uint  PassStage;
+    uint  Dense_SaveAsMortonCode;
+
+    uint  Dense_TotalNodes;
+    uint  SEED;
+    float SVO_VoxelSize;
+    uint SVO_BufferSize;
+
+    uint HASH_SIZE;
+    uint pad1;
+    uint pad2;
+    uint pad3;
+    
+    ivec4 dCHUNK_SIZE;
+    ivec4 dVOXELS_PER_CHUNK;
+};
+
+ivec3 CHUNK_SIZE = ivec3(dCHUNK_SIZE);
+ivec3 VOXELS_PER_CHUNK = ivec3(dVOXELS_PER_CHUNK);
 void Stage_BuildSVOFromLeaves(){
     float SumDensity = 0;
     uint SumMatID = 0;
@@ -168,29 +205,26 @@ void BuildHigherLayer_AUX_NODE_AtomicCounter()
             ChildCount++;
         }
 
+        if(ChildCount == 0)
+            return;
+
         uint AverageDensity = uint(((SumDensity / float(ChildCount)) + 1) * 127.5);
 
-        if(AverageDensity == 0.0f)
+        if(AverageDensity == 0.0f) // when avg density = 0, child count is also zero. since where did the density come from if there were no children?
             return;
 
-        if(!ChildCount)
-            return;
 
         uint HigherDensities = 0;
         uint LowerDensities = 0;
 
-        vec3 deInterleavedCoordinates;
-
-        float SampledDensity = 0.0f;
-
         for(uint i = 0; i < 4; i++)
         {   
-            if(ChildMask & (1u << i))
+            if((ChildMask & (1u << i)) > 0)
                 LowerDensities |= uint(((SVO_AuxNode[NodeIndex + i].Data & 0xFF) + 1) * 127.5) << 8 * i;
         }
         for(uint i = 4; i < 8; i++)
         {
-            if(ChildMask & (1u << i))
+            if((ChildMask & (1u << i)) > 0)
                 HigherDensities |= uint(((SVO_AuxNode[NodeIndex + i].Data & 0xFF) + 1) * 127.5) << 8 * (i - 4);
         }
 
@@ -262,29 +296,25 @@ void BuildHigherLayer_NODE_AUX_AtomicCounter2()
             ChildCount++;
         }
 
+        if(ChildCount == 0)
+            return;
+
         uint AverageDensity = uint(((SumDensity / float(ChildCount)) + 1) * 127.5);
 
         if(AverageDensity == 0.0f)
             return;
 
-        if(!ChildCount)
-            return;
-
         uint HigherDensities = 0;
         uint LowerDensities = 0;
 
-        vec3 deInterleavedCoordinates;
-
-        float SampledDensity = 0.0f;
-
         for(uint i = 0; i < 4; i++)
         {   
-            if(ChildMask & (1u << i))
+            if((ChildMask & (1u << i)) > 0)
                 LowerDensities |= uint(((SVO_Node[NodeIndex + i].Data & 0xFF) + 1) * 127.5) << 8 * i;
         }
         for(uint i = 4; i < 8; i++)
         {
-            if(ChildMask & (1u << i))
+            if((ChildMask & (1u << i)) > 0)
                 HigherDensities |= uint(((SVO_Node[NodeIndex + i].Data & 0xFF) + 1) * 127.5) << 8 * (i - 4);
         }
 
@@ -323,9 +353,9 @@ void Stage_BuildSVOHigherLayers(uint passNum)
     }
 }
 void main(){
-    uint passNum = PushConstants.PassNum;
+    uint passNum = PassNum;
 
-    if(!passNum)
+    if(passNum <= 0)
     {
         Stage_BuildSVOFromLeaves();
     };

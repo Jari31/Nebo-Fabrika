@@ -1,33 +1,39 @@
-# this is AI generated boilerplate. Feel free to change it if you really want to, as I certainly don't want to write my own SConstruct.
-# if you're confused, do this inside of .../Undecided_Game_Proj : scons --setName=Name_of_your_lib
-# use VS Code or VS Studio 2022
-
 import os
 import platform
 from SCons.Script import Default, Environment, Glob, AddOption, GetOption
-
+from SCons.Errors import UserError
 env = Environment(
-    tools=['default', 'textfile'],
-    ENV=os.environ
+tools=['msvc', 'mslink', 'textfile'], ENV=os.environ
 )
 
 AddOption('--target', dest='lib_name', type='string', default='my_extension', help='Name of the output library (e.g., my_extension)')
+AddOption('--targetFolder', dest='target_folder', type='string', default='err', help='Name of the target folder. "src" is considered the root - everything else must be local to it.')
 AddOption('--godot-cpp-root', dest='godot_cpp_root', type='string', default='godot-cpp', help='Path to the godot-cpp repository.')
 AddOption('--build-folder', dest='build_folder', type='string', default='build', help='Name of the output build directory (e.g., build).')
 AddOption('--setName', dest='selectedName', type='string', default="gameModuleCPP", help="Sets the name without explicitly searching for the file, unlike --target.")
+AddOption('--productionBuild', dest='prod_build', type='int', default='false', help='Determines if debug mode should be activated or not.')
 
 env['LIB_NAME'] = GetOption('lib_name')
 env['GODOT_CPP_ROOT'] = GetOption('godot_cpp_root')
 env['BUILD_FOLDER'] = GetOption('build_folder')
 env['SET_NAME'] = GetOption('selectedName')
+env['SWITCH_CASE'] = 0
+env['TARGET_FOLDER'] = GetOption("target_folder")
+env['PRODUCTION_BUILD'] = GetOption("prod_build")
 
-build_dir = env['BUILD_FOLDER']
+build_dir = ''
 
-if (build_dir == 'build'):
-    if(env['LIB_NAME'] != 'my_extension'):
-        build_dir = env['LIB_NAME']
-    
+if(env['LIB_NAME'] != 'my_extension' and env['SET_NAME'] == 'gameModuleCPP'):
+    build_dir = env['LIB_NAME']
+    env['SWITCH_CASE'] = 0
+elif(env['LIB_NAME'] != 'my_extension' and env['SET_NAME'] != 'gameModuleCPP'):
     build_dir = env['SET_NAME']
+    env['SWITCH_CASE'] = 1
+else:
+    raise UserError("--target is undefined.")
+
+if env['TARGET_FOLDER'] == 'err':
+    raise UserError("--targetFolder is undefined.")
 
 env['BUILD_FOLDER'] = build_dir
 
@@ -35,11 +41,15 @@ env['GDEXTENSION_BUILD_DIR'] = '#GDProject/Bin/build/' + env['BUILD_FOLDER']
 
 print("Building for architecture x86_64 on platform windows (MSVC)")
 
+if env['PRODUCTION_BUILD'] == 1:
+    env.Append(CPPDEFINES=['PRODUCTION_BUILD'])
+    print("Appending production build definition.")
+
 env.Append(CXXFLAGS=['/EHsc', '/Zi', '/O2', '/std:c++17', '/DTYPED_METHOD_BIND']) 
 env.Append(LINKFLAGS=['/DEBUG'])
 
 env.Append(CPPPATH=[
-    '#src',
+'#src',
     env['GODOT_CPP_ROOT'] + '/include',
     env['GODOT_CPP_ROOT'] + '/gen/core/include',
     env['GODOT_CPP_ROOT'] + '/gen/gdextension/include',

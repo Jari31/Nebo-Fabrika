@@ -1,14 +1,47 @@
 from SCons.Script import Glob, Import
-
+import os
 Import('env')
 
-src_files = Glob('src/*.cpp', True)
-src_files += Glob('src/*/*.cpp', True)
-src_files += Glob('src/*/*/*.cpp', True)
+def LogBuild():
+    LogFile = "build_manifest.txt"
+    isProductionBuild = "PRODUCTION_BUILD" in env.get('CPPDEFINES', [])
+    Status = "PRODUCTION" if isProductionBuild else "DEBUG"
 
-lib = env.SharedLibrary(
-    target=env['GDEXTENSION_BUILD_DIR'] + '/' + env['SET_NAME'],
-    source=src_files
-)
+    Lines = []
+    if os.path.exists(LogFile):
+        with open(LogFile, "r") as File:
+            Lines = File.readlines()
+
+    CurrentManifest = {}
+    for Line in Lines:
+        if ":" in Line:
+            Name, CurStatus = Line.strip().split(":", 1)
+            CurrentManifest[Name.strip()] = CurStatus.strip()
+
+
+    CurrentManifest[env['LIB_NAME']] = Status
+
+    with open(LogFile, "w") as File:
+        for Name, CurStatus in sorted(CurrentManifest.items()):
+            File.write(f"{Name} : {CurStatus}\n")
+
+src_files = Glob(f'src/{env['TARGET_FOLDER']}/{env['LIB_NAME']}.cpp', True)
+src_files += Glob(f'src/{env['TARGET_FOLDER']}/Register_{env['LIB_NAME']}.cpp', True)
+#src_files += Glob('src/*/*.cpp', True)
+#src_files += Glob('src/*/*/*.cpp', True)
+
+lib = ''
+if env['SWITCH_CASE'] == 1:
+    lib = env.SharedLibrary(
+        target=env['GDEXTENSION_BUILD_DIR'] + '/' + env['SET_NAME'],
+        source=src_files
+    )
+else:
+    lib = env.SharedLibrary(
+        target=env['GDEXTENSION_BUILD_DIR'] + '/' + env['LIB_NAME'],
+        source=src_files
+    )
 
 env.Alias(env['GDEXTENSION_BUILD_DIR'], lib)
+
+LogBuild()

@@ -12,4 +12,4 @@ Lastly, every super chunk caches its data to disk as separate files. All of the 
 
 *This process is linear to save on VRAM usage. If this were to be parallel, the entire system would end up costing nearly 2 gigabytes of VRAM to run. Not to mention keeping in track hundreds of buffers and pipelines.* The system is also center-first; the probe in the center gets the first priority before other nodes are considered. 
 
-Though, crucially, this process **is** parallelizable. You can simply call more instances of the Planet Manager node. Calling them won't consume memory unless the buffers and RIDs are assigned using the init() function. Memory size depends on the chunk size, max vertices and voxels per chunk size. Refer to their specific documentation for more info. 
+Though, crucially, this process **is** parallelizable. You can simply call more instances of the Planet Manager node. Calling them won't consume memory unless the buffers and RIDs are assigned using the init() function. Memory size depends on the chunk size, max vertices and voxels per chunk size. Refer to their specific documentation for more info. But for synchronization? Yeah, good luck.

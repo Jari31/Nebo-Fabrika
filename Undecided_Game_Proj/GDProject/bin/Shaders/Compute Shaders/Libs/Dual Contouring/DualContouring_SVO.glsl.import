@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b2v7fmxwgpkgv"
+path="res://.godot/imported/DualContouring_SVO.glsl-b99b95fdac1c5e9962ea9bc993071f0d.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/Dual Contouring/DualContouring_SVO.glsl"
+dest_files=["res://.godot/imported/DualContouring_SVO.glsl-b99b95fdac1c5e9962ea9bc993071f0d.res"]
+
+[params]
+

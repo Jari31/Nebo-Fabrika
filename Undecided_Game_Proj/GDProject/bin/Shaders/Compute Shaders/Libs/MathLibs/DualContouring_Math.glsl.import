@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dwu2ddislocx7"
+path="res://.godot/imported/DualContouring_Math.glsl-6d9a70a187a1d5e69d697f186a36afaa.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/MathLibs/DualContouring_Math.glsl"
+dest_files=["res://.godot/imported/DualContouring_Math.glsl-6d9a70a187a1d5e69d697f186a36afaa.res"]
+
+[params]
+

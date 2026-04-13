@@ -1,3 +1,8 @@
+/*
+    COPYRIGHT (c) 2026 Jari
+    Licensed under the MIT license. Refer to the license file provided within the README for details.
+*/
+
 float pointProcess(vec3 inPoint, vec3 gradientHash){
     const float RadiusFalloff = 0.5;
 
@@ -11,7 +16,7 @@ float pointProcess(vec3 inPoint, vec3 gradientHash){
     return n;
 }
 
-// Based off of Open Simplex 2
+// Based off of Open Simplex 2 - https://github.com/KdotJPG/OpenSimplex2
 float simplex3D(vec3 inVector, const uint SEED){
     const float skewFactor = 0.333333333;
     const float unskewingFactor = 0.166666666;
@@ -72,10 +77,10 @@ float simplex3D(vec3 inVector, const uint SEED){
     float i3_sum = float(i3_offset.x + i3_offset.y + i3_offset.z);
     vec3 pointThree = pointZero - (vec3(i3_offset) - i3_sum * unskewingFactor);
 
-    vec3 gradientVec = gradient_hash(i0_cell, SEED);
-    vec3 gradientVec1 = gradient_hash(i1_cell, SEED);
-    vec3 gradientVec2 = gradient_hash(i2_cell, SEED);
-    vec3 gradientVec3 = gradient_hash(i3_cell, SEED);
+    vec3 gradientVec  = cast_gradient_hash(i0_cell, SEED);
+    vec3 gradientVec1 = cast_gradient_hash(i1_cell, SEED);
+    vec3 gradientVec2 = cast_gradient_hash(i2_cell, SEED);
+    vec3 gradientVec3 = cast_gradient_hash(i3_cell, SEED);
 
     float N = pointProcess(pointZero, gradientVec);
     N += pointProcess(pointOne, gradientVec1);

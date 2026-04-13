@@ -1,4 +1,4 @@
-extends GDTest
+#extends GDTest
 
-func _ready():
-	CPP_Print("Hello, World!")
+#func _ready():
+	#CPP_Print("Hello, World!")

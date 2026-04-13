@@ -10,3 +10,8 @@ $RECYCLE.BIN/
 desktop.ini
 .vs
 /build/
+.venv
+.idea
+*.xml
+/Undecided_Game_Proj/RustSetup/target/debug
+Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Generator/.obsidian/community-plugins.json
