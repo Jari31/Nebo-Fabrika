@@ -5,6 +5,8 @@
     Licensed under the MIT license. Refer to the license file provided within the README for details.
 */
 
+
+
 float UnpackDensity(uint PackedData, uint Index)
 {
     uint byte = (PackedData >> (Index * 8)) & 0xFF;
@@ -27,7 +29,7 @@ float TrilinearSample(vec3 Point, vec3 CellMin, float CellSize, float[8] CornerD
 
 vec3 TrilinearGradient(vec3 Point, vec3 CellMin, float CellSize, float[8] CornerDensities)
 {
-    vec3 t = (Point - CellMin) / CellSize;
+    vec3 t = (Point - CellMin) / CellSize; // localize it
     float tx = t.x, ty = t.y, tz = t.z;
 
     float wx0 = 1.0 - tx, wx1 = tx; // w = weight. I'm too lazy to full-form it
@@ -70,5 +72,31 @@ int FindNodeByMortonCode(uint MortonCode, uint TotalNodes)
             return int(Mid);
     }
     return -1;
+}
+
+void store_index(uint flat_idx, int vertex_val) {
+    int x = int(flat_idx % dVOXELS_PER_CHUNK.w);
+    int y = int(flat_idx / dVOXELS_PER_CHUNK.w);
+    imageStore(IndexTexture, ivec2(x, y), vec4(float(vertex_val), 0, 0, 0));
+}
+
+uint store_vertices_and_normals(vec4 Centroid, vec4 Normals) {
+    uint VertexIndex = atomicAdd(VertexCounter, 1);
+
+    int VertexIndex_x = int(VertexIndex % dCHUNK_SIZE.w);
+    int VertexIndex_y = int(VertexIndex / dCHUNK_SIZE.w);
+    //Vertices[VertexIndex] = vec4(Centroid, 0.0) + vec4(gl_GlobalInvocationID.xyz, 0.0);
+
+    //float SIZE_THRESHOLD = 255 - 1; // the hashing algorithm in the simplex implementation overflows int32 above a certain coordinate. not sure what exactly, but this magic number works for it, so yeah.
+                                    // get rid of it if you need to do anything above 64^3 * 4^3. but first replace the hashing algorithm
+    //if(Centroid.x > SIZE_THRESHOLD || Centroid.y > SIZE_THRESHOLD || Centroid.z > SIZE_THRESHOLD) return;
+    //vec4 GlobalPos = (Centroid + vec4(gl_GlobalInvocationID.xyz, 0.0));
+    vec4 VertexData = vec4(Centroid.x, Centroid.y, Centroid.z, Centroid.w);
+    vec4 NormalData  = vec4(Normals.x, Normals.y, Normals.z, Normals.w);
+
+    imageStore(VertexTexture, ivec2(VertexIndex_x, VertexIndex_y), VertexData);
+    imageStore(NormalTexture, ivec2(VertexIndex_x, VertexIndex_y), NormalData);
+
+    return VertexIndex;
 }
 #endif

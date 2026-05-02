@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://d07v7j8ktghhk"
+path="res://.godot/imported/PCG_GENERATION_PushConstant.glsl-7586c64d4885b4096f0b05d20dc26fa6.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/General/PCG_GENERATION_PushConstant.glsl"
+dest_files=["res://.godot/imported/PCG_GENERATION_PushConstant.glsl-7586c64d4885b4096f0b05d20dc26fa6.res"]
+
+[params]
+

@@ -1,4 +1,4 @@
-//! compile with: scons --target=ShaderComp --targetFolder='Shader compiler'
+//! compile with: scons --target=ShaderComp --targetFolder='Shader compiler' --productionBuild=0
 
 #include "ShaderComp.h"
 using namespace godot;
@@ -23,7 +23,7 @@ ShaderCompiler::~ShaderCompiler()
 RID ShaderCompiler::LoadOrCompileShader(const String &path_to_compute_shader, const String &CompileTo, const bool doCompilation,
                                     RenderingDevice *RenderingDevice_Local, const int SHADER_STAGE, 
                                     const Vector3i WORKGROUP_SIZE, const bool DEBUG){
-    RID ComplacentValue;
+    RID ComplacentValue; // idk why i used this variable name but whatever ig
     G_DEBUG = DEBUG;
     if(doCompilation)
     {
@@ -107,8 +107,10 @@ RID ShaderCompiler::LoadOrCompileShader(const String &path_to_compute_shader, co
                     File->store_buffer(ShaderFile);
                     File->flush();
                     
+                    #ifndef PRODUCTION_BUILD
                     if(DEBUG)
                         UtilityFunctions::print("File saved successfully.");
+                    #endif
                 }
                 else
                     ERR_PRINT("File failed to save!");

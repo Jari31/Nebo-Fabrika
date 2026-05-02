@@ -75,26 +75,27 @@ layout(std430, set = 0, binding = 5) buffer OffsetBuffer
 };
 
 //---------------------------------------------------------- set 2
-layout(std430, set = 1, binding = 0) buffer vertexBuffer 
-{
-    vec3 Vertices[];    
-};
+/*
+    layout(std430, set = 1, binding = 0) buffer vertexBuffer 
+    {
+        vec4 Vertices[];    
+    };
 
-layout(std430, set = 1, binding = 1) buffer DC_NormalBuffer
-{
-    vec3 Normals[];
-};
+    layout(std430, set = 1, binding = 1) buffer DC_NormalBuffer
+    {
+        vec4 Normals[];
+    };
 
-layout(std430, set = 1, binding = 2) buffer DC_UVBuffer
-{
-    vec2 UV[];
-};
+    layout(std430, set = 1, binding = 2) buffer DC_UVBuffer
+    {
+        vec2 UV[];
+    };
 
-layout(std430, set = 1, binding = 3) buffer indexBuffer
-{
-    uint Indices[];
-};
-
+    layout(std430, set = 1, binding = 3) buffer indexBuffer
+    {
+        uint Indices[];
+    };
+*/
 
 layout(std430, set = 1, binding = 4) buffer nodeVertexBuffer
 {
@@ -107,6 +108,10 @@ layout(std430, set = 1, binding = 5) buffer nodeEdgeMaskBuffer
     uint Node_EdgeMask[];
 };
 
+layout(set = 1, binding = 0, rgba32f) writeonly uniform image2D  VertexTexture;
+layout(set = 1, binding = 1, rgba32f) writeonly uniform image2D  NormalTexture;
+layout(set = 1, binding = 2, rg32f)   writeonly uniform image2D  UVTexture;
+layout(set = 1, binding = 3, r32ui)   writeonly uniform uimage2D IndexTexture;
 
 //-------------------------------------------------------- push const
 layout(push_constant) uniform PushConstants 
@@ -257,7 +262,12 @@ void main()
             }
 
             uint VertexIndex = atomicAdd(VertexCounter, 1);
-            Vertices[VertexIndex] = Centroid;
+            int VertexIndex_x = int(VertexIndex % uint(dCHUNK_SIZE.w));
+            int VertexIndex_y = int(VertexIndex / uint(dCHUNK_SIZE.w));
+            //Vertices[VertexIndex] = vec4(Centroid, 0.0) + vec4(gl_GlobalInvocationID.xyz, 0.0);
+            vec4 VertexData = vec4(Centroid, 1.0) + vec4(gl_GlobalInvocationID.xyz, 0.0);
+
+            imageStore(VertexTexture, ivec2(VertexIndex_x, VertexIndex_y), VertexData);
 
             Node_VertexIndex[Index] = int(VertexIndex);
             Node_EdgeMask[Index]    = EdgeMask;
@@ -358,14 +368,15 @@ void main()
         int Vertex_2 = Node_VertexIndex[NodeIndices[2]];
         int Vertex_3 = Node_VertexIndex[NodeIndices[3]];
 
-        uint AtomicIndex   = atomicAdd(AtomicCounter2, 6);
-        Indices[AtomicIndex]     = uint(Vertex_0);
-        Indices[AtomicIndex + 1] = uint(Vertex_1);
-        Indices[AtomicIndex + 2] = uint(Vertex_2);
+        uint AtomicIndex = atomicAdd(AtomicCounter2, 6);
         
-        Indices[AtomicIndex + 3] = uint(Vertex_0);
-        Indices[AtomicIndex + 4] = uint(Vertex_2);
-        Indices[AtomicIndex + 5] = uint(Vertex_3);
+        store_index(AtomicIndex + 0u, Vertex_0);
+        store_index(AtomicIndex + 1u, Vertex_1);
+        store_index(AtomicIndex + 2u, Vertex_2);
+
+        store_index(AtomicIndex + 3u, Vertex_0);
+        store_index(AtomicIndex + 4u, Vertex_2);
+        store_index(AtomicIndex + 5u, Vertex_3);
     }
     /*
     for(int i = 0; i < 3; i++)

@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cjr6tmfjf1ni5"
+path="res://.godot/imported/DUAL_CONTOURING_Set2.glsl-c784cef92799065b2134c3af98a545ce.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/Dual Contouring/DUAL_CONTOURING_Set2.glsl"
+dest_files=["res://.godot/imported/DUAL_CONTOURING_Set2.glsl-c784cef92799065b2134c3af98a545ce.res"]
+
+[params]
+

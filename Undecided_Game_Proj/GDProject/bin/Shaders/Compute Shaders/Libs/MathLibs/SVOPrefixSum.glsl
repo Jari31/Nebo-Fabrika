@@ -95,7 +95,7 @@ ivec3 VOXELS_PER_CHUNK = ivec3(dVOXELS_PER_CHUNK);
 
 shared uint localOffsets[6][16]; // y | x because why not
 
-void main() // 4 steps; O(log2 n)
+void main()
 {
     uint Row = gl_LocalInvocationID.y;
     uint Column = gl_LocalInvocationID.x;
@@ -137,11 +137,11 @@ void main() // 4 steps; O(log2 n)
 
     if(Column == 0)
     {
-        Offsets[Row][Column] = 0; // exclusive, so the first index is always zero
+        Offsets[Row][Column] = 0;
     }
     else
     {
-        Offsets[Row][Column] = localOffsets[Row][Column - 1]; // again, exclusive, so offset by - 1 make up for the fact
+        Offsets[Row][Column] = localOffsets[Row][Column - 1];
     }
 }
 

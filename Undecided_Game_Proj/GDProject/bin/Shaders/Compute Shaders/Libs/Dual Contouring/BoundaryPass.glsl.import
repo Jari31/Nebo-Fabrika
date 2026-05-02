@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://k06s08auqnm3"
+path="res://.godot/imported/BoundaryPass.glsl-053d57d5b65d1c227891ff8085ef8a61.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/Dual Contouring/BoundaryPass.glsl"
+dest_files=["res://.godot/imported/BoundaryPass.glsl-053d57d5b65d1c227891ff8085ef8a61.res"]
+
+[params]
+

@@ -1,0 +1,51 @@
+Mesh_RID = RenderingServer::get_singleton()->mesh_create();
+    Material_RID = RenderingServer::get_singleton()->material_create();
+
+    Ref<ArrayMesh> Mesh;
+    Mesh.instantiate();
+
+    RenderingServer::get_singleton()->material_set_shader(Material_RID, compiled_shaders.CompiledShader_VertexPull);
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "IndexTexture" , storage.dc_index_texture );
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "VertexTexture", storage.dc_vertex_texture);
+
+    PackedVector3Array Vertices;
+    Vertices.resize(MAXVERTs);
+    Vertices.fill(Vector3(0,0,0));
+    Vertices.set(0, Vector3(0.01, 0.01, 0.01));
+
+    PackedInt32Array Indices;
+    Indices.resize(MAXVERTs);
+    for (int i = 0; i < MAXVERTs; i++) {
+        Indices[i] = i;
+    }
+
+    Array MeshArray;
+    MeshArray.resize(Mesh::ARRAY_MAX);
+    MeshArray[Mesh::ARRAY_VERTEX] = Vertices;
+    MeshArray[Mesh::ARRAY_INDEX] = Indices;
+    
+    //RenderingServer::get_singleton()->mesh_add_surface_from_arrays(Mesh_RID, RenderingServer::PRIMITIVE_TRIANGLES, MeshArray);
+    Mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, MeshArray);
+    Mesh->surface_set_material(0, Material_RID);
+    Scenario = get_viewport()->find_world_3d()->get_scenario();
+    UtilityFunctions::print(Scenario);
+
+    InstanceRID = RenderingServer::get_singleton()->instance_create();
+    RenderingServer::get_singleton()->instance_set_base(InstanceRID, Mesh_RID);
+    RenderingServer::get_singleton()->instance_set_scenario(InstanceRID, Scenario);
+
+    RenderingServer::get_singleton()->mesh_surface_set_material(Mesh_RID, 0, Material_RID);
+    RenderingServer::get_singleton()->instance_geometry_set_material_override(InstanceRID, Material_RID);
+    //RenderingServer::get_singleton()->mesh_surface_set_material(Mesh_RID, 0, Material_RID);
+
+    RenderingServer::get_singleton()->instance_set_layer_mask(InstanceRID, 1);
+    
+    int TotalUnitSize = CHUNK_SIZE[0] * 64;
+    const AABB BOUNDING_BOX = AABB(Vector3(-10000, -10000, -10000), Vector3(20000, 20000, 20000));//AABB(Vector3(-TotalUnitSize, -TotalUnitSize, -TotalUnitSize), Vector3(TotalUnitSize, TotalUnitSize, TotalUnitSize));
+    RenderingServer::get_singleton()->instance_set_custom_aabb(InstanceRID, BOUNDING_BOX);
+
+    RenderingServer::get_singleton()->instance_set_transform(InstanceRID, Transform3D());
+    RenderingServer::get_singleton()->instance_set_visible(InstanceRID, true);
+
+    int SurfaceCount = RenderingServer::get_singleton()->mesh_get_surface_count(Mesh_RID);
+    UtilityFunctions::print("Mesh surfaces: ", SurfaceCount);

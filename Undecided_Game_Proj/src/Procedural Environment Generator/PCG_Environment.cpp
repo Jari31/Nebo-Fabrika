@@ -8,7 +8,7 @@
 #include "PCG_Environment.h"
 
 using namespace godot;
-
+//#define CMP_SHADER_DEBUG
 #ifndef PRODUCTION_BUILD
 
 #define CHECK_RENDERING_DEVICE()\
@@ -18,6 +18,11 @@ using namespace godot;
             ERR_PRINT("THE RENDERING DEVICE HAS NOT BEEN INITIALIZED. INITIALIZE IT FIRST USING SetSettings(true...). GOD SPEED.");\
             return;\
         }\
+    }
+
+#define ERR_PRINT_LINE()\
+    {\
+        ERR_PRINT(UtilityFunctions::str(__LINE__));\
     }
 
 #define COMPUTE_LIST_CHECK()\
@@ -49,36 +54,47 @@ void PCG_Environment::_bind_methods() {
     ClassDB::bind_method(D_METHOD("passParams_to_PCG", "isCPU_or_GPU", "SYNC_CPU_TO_GPU", "FOR_EACH_ENTITY", "CURRENT_ENTITY_LOCATION", "CURRENT_PLANET_POSITION", 
                                     "PASS_AMOUNT", "VOXELS_PER_CHUNK", "CHUNK_SIZE"), &PCG_Environment::passParams_to_PCG);
 
+    /*
+        void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs, const int32_t &IS_STARTINGSCENE,
+        const bool SKIP_SVO, const bool SKIP_MORTON_CODE_LUT, const bool SKIP_PRE_INIT_TEXTURES,
+        const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK,
+        const PackedInt32Array CURRENT_ENTITY_LOCATION, const PackedInt32Array CURRENT_PLANET_POSITION,
+        const uint32_t &SVO_MAX_NODES_PER_CHUNK, RID MeshInstance=RID(), const uint32_t INDEX_FACTOR)
+    */
+
     ClassDB::bind_method(D_METHOD("initCompute", 
         "SEED", "MAXVERTs", "IS_STARTINGSCENE", 
-        "SKIP_SVO", "SKIP_MORTON_CODE_LUT", 
-        "MORTON_CODE_LUT_FileName", 
+        "SKIP_SVO", "SKIP_MORTON_CODE_LUT", "SKIP_PRE_INIT_TEXTURES",
         "CHUNK_SIZE", "VOXELS_PER_CHUNK", 
         "CURRENT_ENTITY_LOCATION", "CURRENT_PLANET_POSITION", 
-        "SVO_MAX_NODES_PER_CHUNK"), 
+        "SVO_MAX_NODES_PER_CHUNK", "MeshInstance", "INDEX_COEFFICIENT"), 
         &PCG_Environment::initCompute);
         
     ClassDB::bind_method(D_METHOD("GetRID"), &PCG_Environment::GetRID);
 
-    godot::ClassDB::bind_method(
-        godot::D_METHOD("SetCompiledShaders", 
+    ClassDB::bind_method(
+        D_METHOD("SetCompiledShaders", 
             "planet_shader", 
             "svo_shader", 
             "dc_dense", 
             "dc_sparse", 
             "radix_prefix", 
-            "radix_scatter"), 
+            "radix_scatter",
+            "vertex_pull"), 
         &PCG_Environment::SetCompiledShaders
     );
 
-    godot::ClassDB::bind_method(godot::D_METHOD("SetSettings", 
-                                                "initLocalRenderingServer", 
-                                                "DEBUG",
-                                                "DC_WORKGROUP_SIZE",
-                                                "SVO_WORKGROUP_SIZE",
-                                                "PLANET_GEN_WORKGROUP_SIZE"),
-                                                &PCG_Environment::SetSettings,
-                                                DEFVAL(8), DEFVAL(8), DEFVAL(8));
+    ClassDB::bind_method(D_METHOD("SetSettings", 
+                                "initLocalRenderingServer", 
+                                "DEBUG",
+                                "DC_WORKGROUP_SIZE",
+                                "SVO_WORKGROUP_SIZE",
+                                "PLANET_GEN_WORKGROUP_SIZE"),
+                                &PCG_Environment::SetSettings,
+                                DEFVAL(8), DEFVAL(8), DEFVAL(8));
+    ClassDB::bind_method(D_METHOD("PrintGeneratedData"), &PCG_Environment::PrintGeneratedData);
+
+    ClassDB::bind_method(D_METHOD("SetRIDStorage", "VertexTexture", "NormalTexture", "UVTexture", "IndexTexture"), &PCG_Environment::SetRIDStorage);
 }
 
 PCG_Environment::PCG_Environment(){
@@ -127,16 +143,64 @@ PCG_Environment::~PCG_Environment(){
     SAFE_FREE_RID(RenderingDevice_Local, storage.dc_vertex_buffer);
     SAFE_FREE_RID(RenderingDevice_Local, storage.dc_vertex_index_buffer);
 
+    SAFE_FREE_RID(RenderingDevice_Local, storage.dc_vertex_texture);
+    SAFE_FREE_RID(RenderingDevice_Local, storage.dc_index_texture);
+    SAFE_FREE_RID(RenderingDevice_Local, storage.dc_normal_texture);
+    SAFE_FREE_RID(RenderingDevice_Local, storage.dc_uv_texture);
+
+    SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_vertex_texture);
+    SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_index_texture );
+
     // --- Arrays ---
     for(int i = 0; i < 2; i++) {
         SAFE_FREE_RID(RenderingDevice_Local, storage.dc_dense_storage[i]);
         SAFE_FREE_RID(RenderingDevice_Local, storage.dc_sparse_storage[i]);
     }
+
+    SAFE_FREE_RID(RenderingDevice_Local, InstanceRID);
+    SAFE_FREE_RID(RenderingDevice_Local, Mesh_RID);
+    SAFE_FREE_RID(RenderingDevice_Local, Material_RID);
+    SAFE_FREE_RID(RenderingDevice_Local, Scenario);
 }
 
 Variant PCG_Environment::GetRID()
 {
     return RenderingDevice_Local;
+}
+
+void PCG_Environment::SetRIDStorage(RID VertexTexture, RID NormalTexture, RID UVTexture, RID IndexTexture)
+{
+    storage.dc_vertex_texture = VertexTexture;
+    storage.dc_index_texture = IndexTexture;
+    storage.dc_uv_texture = UVTexture;
+    storage.dc_normal_texture = NormalTexture;
+}
+
+void PCG_Environment::PrintGeneratedData()
+{
+    PackedByteArray Data = RenderingDevice_Local->texture_get_data(storage.dc_vertex_texture, 0);
+    const Vector4* DataPtr = reinterpret_cast<const Vector4*>(Data.ptr());
+    for(int i = 1428200; i < 1428200 + 6; i++)
+        UtilityFunctions::print("Vertex found: ", i, " | ", DataPtr[i]);
+    
+    PackedByteArray counterData = RenderingDevice_Local->buffer_get_data(storage.atomic_counter);
+    const uint32_t* counterPtr = reinterpret_cast<const uint32_t*>(counterData.ptr());
+    for(int i = 0; i < 3; i++)
+        UtilityFunctions::print("Counter data: ", counterPtr[i]);
+
+    PackedByteArray IndexData = RenderingDevice_Local->texture_get_data(storage.dc_index_texture, 0);
+    const float* IndexPtr = reinterpret_cast<const float*>(IndexData.ptr());
+    if(IndexData.is_empty())
+        UtilityFunctions::print("Index data is empty.");
+    else
+        for(int i = 8542626 - 12; i < 8542626; i++)
+            UtilityFunctions::print("Indice data", "[", i, "]",":", IndexPtr[i]);
+    /*
+    PackedByteArray VIData = RenderingDevice_Local->buffer_get_data(storage.dc_vertex_index_buffer, 0);
+    const int* VIndexPtr = reinterpret_cast<const int*>(VIData.ptr());
+    for(int i = 0; i < 20; i++)
+        UtilityFunctions::print("Vertex index data: ", VIndexPtr[i]);
+    */
 }
 
 void PCG_Environment::SetSettings(bool initLocalRenderingServer, bool DEBUG, 
@@ -152,6 +216,40 @@ void PCG_Environment::SetSettings(bool initLocalRenderingServer, bool DEBUG,
     storage.WORKGROUP_SIZE_SVO = SVO_WORKGROUP_SIZE;
     storage.WORKGROUP_SIZE_PLANET = PLANET_GEN_WORKGROUP_SIZE;
 }
+
+void PCG_Environment::SetCompiledShaders(RID PlanetShader, RID SVOShader, RID DualContouring_Dense, RID DualContouring_Sparse, 
+                                        RID RadixSort_PrefixSum_Shader, RID RadixSort_Histogram_Scatter_Shader, Ref<Shader> VertexPull_Shader)
+{
+    compiled_shaders.CompiledShader = PlanetShader;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader));
+    #endif
+    compiled_shaders.CompiledShader_SVO = SVOShader;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader_SVO));
+    #endif
+    compiled_shaders.CompiledShader_DualContour_Dense = DualContouring_Dense;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader_DualContour_Dense));
+    #endif
+    compiled_shaders.CompiledShader_DualContour_Sparse = DualContouring_Sparse;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader_DualContour_Sparse));
+    #endif
+    compiled_shaders.CompiledShader_Radix = RadixSort_PrefixSum_Shader;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader_Radix));
+    #endif
+    compiled_shaders.CompiledShader_Histogram = RadixSort_Histogram_Scatter_Shader;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader_Histogram));
+    #endif
+    compiled_shaders.CompiledShader_VertexPull = VertexPull_Shader;
+    #ifdef CMP_SHADER_DEBUG
+        WARN_PRINT(UtilityFunctions::str(compiled_shaders.CompiledShader_VertexPull));
+    #endif
+}
+
 
 RID PCG_Environment::DEPRECATED_loadGDShader(const String &path_to_compute_shader, const String &CompileTo, const bool doCompilation, 
                                     int MacroDefPos, const uint64_t WORKGROUP_SIZE, const bool DEBUG){
@@ -265,11 +363,12 @@ void PCG_Environment::PrefixSum(int64_t &ComputeList,
 void PCG_Environment::Density_Generation_Pass(PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
                                               int64_t &ComputeList)
 {
-    uint32Vec3 VecObj;
-    VecObj.x = VOXELS_PER_CHUNK[0] / CHUNK_SIZE[0];
-    VecObj.y = VOXELS_PER_CHUNK[1] / CHUNK_SIZE[1];
-    VecObj.z = VOXELS_PER_CHUNK[2] / CHUNK_SIZE[2];
-    RenderingDevice_Local->compute_list_dispatch(ComputeList, VecObj.x, VecObj.y, VecObj.z);
+    size_t DispatchSize = G_GRID_SIZE / storage.WORKGROUP_SIZE_PLANET;
+    RenderingDevice_Local->compute_list_dispatch(ComputeList, DispatchSize, DispatchSize, DispatchSize);
+    #ifndef PRODUCTION_BUILD
+    if(G_DEBUG)
+        UtilityFunctions::print("Density pass computed.", DispatchSize);
+    #endif
 
     RenderingDevice_Local->compute_list_add_barrier(ComputeList);
 }
@@ -310,8 +409,8 @@ void PCG_Environment::SVO_Generation_Pass(uint32Vec3 &VecObj, PackedInt32Array V
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.histogram_storage, 3);
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.svo_storage, 2);
 
-    // i < 9 because k = 8; k = 8 because 1024^3 = 10000000000 x 10000000000 x 10000000000 || 11 digits each, but because 0 is an index, 10. 30 bits. 
-    // if you cover 4 bits every pass (which the radix sort algorithm does does), then k = ceil(30 / 4) = 8
+    // i < 9 because k = 8; k = 8 because 1024^3 = 10000000000 | 10000000000 | 10000000000 || 11 digits each, but because 0 is an index, 10. 30 bits. 
+    // if you cover 4 bits every pass (which the current implementation of the radix sort algorithm does), then k = ceil(30 / 4) = 8
     {
     uint32_t k = 0;
     uint32_t Value = VOXELS_PER_CHUNK[0]; 
@@ -404,28 +503,64 @@ void PCG_Environment::DualContour_Generation_Pass(PackedInt32Array VOXELS_PER_CH
 {
     RenderingDevice_Local->compute_list_bind_compute_pipeline(ComputeList, pipelines.dual_contour_dense);
 
-    BasicPushConstant.PassNum = 4;
+    BasicPushConstant.PassNum = 0;
     BasicPushConstant.PassOffset = 0;
-    
-    memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-    RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
 
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.dc_dense_storage[0], 0);
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.dc_dense_storage[1], 1);
 
-    uint32_t DispatchSize = (VOXELS_PER_CHUNK[0] * CHUNK_SIZE[0]) / storage.WORKGROUP_SIZE_DUAL_CONTOUR; // no floor because if the user inputs anything non-warp friendly, 
-                                                                                                         // they might want to rethink their career path
-                                                                                                         // okay, but for real though, computers like working in powers of two
-    RenderingDevice_Local->compute_list_dispatch(ComputeList, DispatchSize, DispatchSize, DispatchSize);
-    RenderingDevice_Local->compute_list_add_barrier(ComputeList);
+    uint32_t DispatchSize = G_GRID_SIZE / storage.WORKGROUP_SIZE_DUAL_CONTOUR; // no floor because if the user inputs anything non-warp friendly, 
+                                                                                // they might want to rethink their career path
+                                                                                // okay, but for real though, computers like working in powers of two
+    auto pass = [&]()
+    {
+        memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
+        RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+
+        RenderingDevice_Local->compute_list_dispatch(ComputeList, DispatchSize, DispatchSize, DispatchSize);
+        RenderingDevice_Local->compute_list_add_barrier(ComputeList);
+    };
+
+    pass();
+
+    { // Boundary generation. negative pass
+    BasicPushConstant.PassNum = 1;
+    BasicPushConstant.PassOffset = 4206967;
+    //pass();
+
+    BasicPushConstant.PassNum = 2; // positive pass
+    //pass();
+    } 
 
     BasicPushConstant.PassOffset = 1;
+    int Iterations = 0;
+    for(int i = 0; i < Iterations; i++) // smoothing iterations
+    {
+        if(BasicPushConstant.PassOffset > 2)
+        {
+            BasicPushConstant.PassOffset = 1;
+        }
 
-    memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-    RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+        pass();
 
-    RenderingDevice_Local->compute_list_dispatch(ComputeList, DispatchSize, DispatchSize, DispatchSize);
-    RenderingDevice_Local->compute_list_add_barrier(ComputeList);
+        if(BasicPushConstant.PassOffset == 1)
+        {
+            BasicPushConstant.PassOffset = 3; // transfer over the buffers to the visual one
+            pass();
+
+            BasicPushConstant.PassOffset = 1;
+        }
+    
+        BasicPushConstant.PassOffset++;
+    }
+
+    BasicPushConstant.PassOffset = 2147483647; // INT32_MAX. It serves as a special condition for the index generation pass. 
+                                                 // If the pass offset is this specific value, the index generation runs. Otherwise, it does not.
+    pass(); // triangle generation pass
+    #ifndef PRODUCTION_BUILD
+    if(G_DEBUG)
+        UtilityFunctions::print("DC Finished.", DispatchSize);
+    #endif
 }
 /*
 void PCG_Environment::RegisterLocalLocation(PackedInt32Array LocalEntityLocation, uint32_t &Stage)
@@ -494,6 +629,11 @@ void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, Pac
             */
             //RegisterLocalLocation(LocalEntityLocation, Stage);
             
+
+            #ifndef PRODUCTION_BUILD
+            if(G_DEBUG)
+                UtilityFunctions::print("Starting density pass.");
+            #endif
             memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
             RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
             RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.uniform_set, 0);
@@ -501,6 +641,11 @@ void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, Pac
   
             PCG_Environment::Density_Generation_Pass(VOXELS_PER_CHUNK, CHUNK_SIZE,
                                                         ComputeList);
+
+            #ifndef PRODUCTION_BUILD
+            if(G_DEBUG)
+                UtilityFunctions::print("Density finished.");
+            #endif
 
             PCG_Environment::DualContour_Generation_Pass(VOXELS_PER_CHUNK, CHUNK_SIZE, ComputeList);
 
@@ -556,25 +701,14 @@ void PCG_Environment::LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, Pac
     }
 }
 
-void PCG_Environment::SetCompiledShaders(RID PlanetShader, RID SVOShader, RID DualContouring_Dense, RID DualContouring_Sparse, 
-                                        RID RadixSort_PrefixSum_Shader, RID RadixSort_Histogram_Scatter_Shader)
-{
-    compiled_shaders.CompiledShader = PlanetShader;
-    compiled_shaders.CompiledShader_SVO = SVOShader;
-    compiled_shaders.CompiledShader_DualContour_Dense = DualContouring_Dense;
-    compiled_shaders.CompiledShader_DualContour_Sparse = DualContouring_Sparse;
-    compiled_shaders.CompiledShader_Radix = RadixSort_PrefixSum_Shader;
-    compiled_shaders.CompiledShader_Histogram = RadixSort_Histogram_Scatter_Shader;
-}
 
 
 // i love writing boilerplate i love writing boilerplate i love writing boilerplate i love writing boilerplate i love writing boilerplate
 void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs, const int32_t &IS_STARTINGSCENE,
-                                const bool SKIP_SVO, const bool SKIP_MORTON_CODE_LUT,
-                                const PackedStringArray MORTON_CODE_LUT_FileName,
+                                const bool SKIP_SVO, const bool SKIP_MORTON_CODE_LUT, const bool SKIP_PRE_INIT_TEXTURES,
                                 const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK,
                                 const PackedInt32Array CURRENT_ENTITY_LOCATION, const PackedInt32Array CURRENT_PLANET_POSITION,
-                                const uint32_t &SVO_MAX_NODES_PER_CHUNK)
+                                const uint32_t &SVO_MAX_NODES_PER_CHUNK, RID MeshInstance, const float INDEX_COEFFICIENT) // coefficient 
 { // implement a SKIP_SVO system so the player's PC doesn't wake up to beat them up
     pipelines.density            = RenderingDevice_Local->compute_pipeline_create(compiled_shaders.CompiledShader);
     pipelines.svo                = RenderingDevice_Local->compute_pipeline_create(compiled_shaders.CompiledShader_SVO);
@@ -584,7 +718,26 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     pipelines.prefixsum          = RenderingDevice_Local->compute_pipeline_create(compiled_shaders.CompiledShader_Radix);
     pipelines.histogram          = RenderingDevice_Local->compute_pipeline_create(compiled_shaders.CompiledShader_Histogram);
 
-    UtilityFunctions::print(pipelines.density);
+
+    //BasicPushConstant.CHUNK_SIZE = Vector4i(CHUNK_SIZE[0], CHUNK_SIZE[1], CHUNK_SIZE[3], 0);
+    //BasicPushConstant.VOXELS_PER_CHUNK = Vector4i(VOXELS_PER_CHUNK[0], VOXELS_PER_CHUNK[1], VOXELS_PER_CHUNK[3], 0);
+
+    SetVector4i(BasicPushConstant.CHUNK_SIZE,       CHUNK_SIZE      );
+    SetVector4i(BasicPushConstant.VOXELS_PER_CHUNK, VOXELS_PER_CHUNK);
+
+    const int SQRT_MAX_VERTS = ceil(sqrt(MAXVERTs));
+    const int IDX_SQRT_MAX_VERTS = int(ceil(sqrt(MAXVERTs * INDEX_COEFFICIENT)));
+    BasicPushConstant.CHUNK_SIZE.w = SQRT_MAX_VERTS;
+    BasicPushConstant.VOXELS_PER_CHUNK.w = IDX_SQRT_MAX_VERTS;
+
+    BasicPushConstant.GridSize = BasicPushConstant.CHUNK_SIZE.x * BasicPushConstant.VOXELS_PER_CHUNK.x;
+    G_GRID_SIZE = BasicPushConstant.GridSize;
+    #ifndef PRODUCTION_BUILD
+    if(G_DEBUG)
+        UtilityFunctions::print("Chunk size: ", BasicPushConstant.CHUNK_SIZE, "\n", 
+                                "Voxels per chunk: ", BasicPushConstant.VOXELS_PER_CHUNK, "\n",
+                                "Grid size: ", BasicPushConstant.GridSize);
+    #endif
 
     BasicPushConstant.SEED = SEED;
 
@@ -593,6 +746,8 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     G_SKIP_SVO             = SKIP_SVO;
 
     pushconst_buffer.resize(sizeof(PushConstant));
+
+    int BufferPadding = 0;
 
     ComputeUniformData UniformData;
 
@@ -620,12 +775,26 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     }
 
     {
-    uint32_t TotalDenseNodes = CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2] * VOXELS_PER_CHUNK[0] * VOXELS_PER_CHUNK[1] * VOXELS_PER_CHUNK[2];
-    BasicPushConstant.Dense_TotalNodes = TotalDenseNodes + 3;
+    BasicPushConstant.Dense_TotalNodes = (CHUNK_SIZE[0]) * (CHUNK_SIZE[1]) * (CHUNK_SIZE[2] ) * 
+                                         (VOXELS_PER_CHUNK[0]) * (VOXELS_PER_CHUNK[1]) * (VOXELS_PER_CHUNK[2]);
+                                         /*(CHUNK_SIZE[0] + 1) * (CHUNK_SIZE[1] + 1) * (CHUNK_SIZE[2] + 1) * 
+                                         (VOXELS_PER_CHUNK[0] + 1) * (VOXELS_PER_CHUNK[1] + 1) * (VOXELS_PER_CHUNK[2] + 1);*/
+    #ifndef PRODUCTION_BUILD
+        if(G_DEBUG)
+        UtilityFunctions::print("Voxel grid's total nodes per axis: ", BasicPushConstant.Dense_TotalNodes);
+    #endif
     returnedVoxel VoxelBuffer;
     PackedByteArray VoxelBufferArray;
-    int64_t OutputSize = sizeof(returnedVoxel) * TotalDenseNodes + (3 * sizeof(returnedVoxel)); // ghost padding
+    int64_t OutputSize = sizeof(voxelData) * (CHUNK_SIZE[0] + BufferPadding) * (CHUNK_SIZE[1] + BufferPadding) * (CHUNK_SIZE[2] + BufferPadding) 
+                         * (VOXELS_PER_CHUNK[0] + BufferPadding) * (VOXELS_PER_CHUNK[1] + BufferPadding) * (VOXELS_PER_CHUNK[2] + BufferPadding); // ghost padding
+    
+    #ifndef PRODUCTION_BUILD
+    if(G_DEBUG)
+        UtilityFunctions::print("Voxel grid size: ", OutputSize);
+    #endif
+    
     VoxelBufferArray.resize(OutputSize);
+    //VoxelBufferArray.fill(0);
     //memcpy(VoxelBufferArray.ptrw(), &VoxelBuffer, OutputSize);
     storage.voxel_output = RenderingDevice_Local->storage_buffer_create(VoxelBufferArray.size(), VoxelBufferArray);
     }
@@ -660,11 +829,8 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     }
 
     {
-    uint32_t AtomicCounter = 0;
+    AtomicBuffer AtomicCounter;
     storage.atomic_counter = create_storage_buffer(AtomicCounter, 1);
-    
-    uint32_t AtomicCounter2 = 0;
-    storage.atomic_counter2 = create_storage_buffer(AtomicCounter2, 1);
     }
 
     {
@@ -678,71 +844,80 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     }
     }
 
-    {
-    Morton_LUT MortonCode_LUT;
-    PackedByteArray MortonCode_LUTArray;
-    int64_t MLutSize = sizeof(Morton_LUT);
-    MortonCode_LUTArray.resize(MLutSize);
-    
-    if(!SKIP_MORTON_CODE_LUT){
-        LoadLUT(MORTON_CODE_LUT_FileName.get(0).utf8().get_data(), MortonCode_LUT.Interleave_Table);
-        LoadLUT(MORTON_CODE_LUT_FileName.get(0).utf8().get_data(), MortonCode_LUT.De_Interleave_Table);
-    }
-
-    memcpy(MortonCode_LUTArray.ptrw(), &MortonCode_LUT, MLutSize);
-    storage.morton_lookuptable_buffer = RenderingDevice_Local->storage_buffer_create(MortonCode_LUTArray.size(), MortonCode_LUTArray);
-    }
-
 
     {
-    {
-    DC_VertexBuffer VertexBuffer;
-    storage.dc_vertex_buffer = create_storage_buffer(VertexBuffer, MAXVERTs);
-    }
-
-    {
-    DC_NormalBuffer NormalBuffer;
-    storage.dc_normal_buffer = create_storage_buffer(NormalBuffer, MAXVERTs);
-    }
-
-    {
-    DC_UVBuffer UVBuffer;
-    storage.dc_UV_buffer = create_storage_buffer(UVBuffer, MAXVERTs);
-    }
 
     {
     DC_VertexIndexBuffer VIndexBuffer;
-    storage.dc_vertex_index_buffer = create_storage_buffer(VIndexBuffer, MAXVERTs);
-    }
+    PackedByteArray VIndexBufferArray;
+    int64_t BufferSize = int64_t(sizeof(DC_VertexIndexBuffer) * std::pow((G_GRID_SIZE), 3));
+    VIndexBufferArray.resize(BufferSize);
 
-    {
-    DC_IndexBuffer IndexBuffer;
-    storage.dc_index_buffer = create_storage_buffer(IndexBuffer, MAXVERTs, 1.5f);
+    #ifndef PRODUCTION_BUILD
+    if(G_DEBUG)
+        UtilityFunctions::print("VIndex buffer set to size (bytes): ", sizeof(DC_VertexIndexBuffer) * std::pow((G_GRID_SIZE), 3));
+    #endif
+
+    storage.dc_vertex_index_buffer = RenderingDevice_Local->storage_buffer_create(VIndexBufferArray.size(), VIndexBufferArray);
+    //storage.dc_vertex_index_buffer = create_storage_buffer(VIndexBuffer, std::pow((G_GRID_SIZE + 1), 3));
     }
 
     {
     DC_EdgeMaskBuffer EdgeMaskBuffer;
-    storage.dc_edge_mask_buffer = create_storage_buffer(EdgeMaskBuffer, MAXVERTs);
+    storage.dc_edge_mask_buffer = create_storage_buffer(EdgeMaskBuffer, std::pow((G_GRID_SIZE), 3));
     }
-    }   
+    }  
+
+    // texture because godot spatial shaders don't support buffers and i don't want to go and write my own damn rendering pipeline
+    if(!SKIP_PRE_INIT_TEXTURES){
+    Ref<RDTextureFormat> TextureFormat;
+    TextureFormat.instantiate();
+    TextureFormat->set_format(RenderingDevice::DATA_FORMAT_R32G32B32A32_SFLOAT);
+    
+    TextureFormat->set_width(SQRT_MAX_VERTS);
+    TextureFormat->set_height(SQRT_MAX_VERTS);
+    TextureFormat->set_usage_bits(RenderingDevice::TEXTURE_USAGE_SAMPLING_BIT | RenderingDevice::TEXTURE_USAGE_STORAGE_BIT | RenderingDevice::TEXTURE_USAGE_CAN_COPY_FROM_BIT
+                                    | RenderingDevice::TEXTURE_USAGE_CAN_COPY_TO_BIT);
+
+    Ref<RDTextureView> TextureView;
+    TextureView.instantiate();
+
+    storage.dc_vertex_texture = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
+    
+    storage.dc_normal_texture = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
+    
+    TextureFormat->set_format(RenderingDevice::DATA_FORMAT_R32G32_SFLOAT);
+
+    storage.dc_uv_texture     = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
+    
+    TextureFormat->set_format(RenderingDevice::DATA_FORMAT_R32_SFLOAT);
+    TextureFormat->set_width(IDX_SQRT_MAX_VERTS);
+    TextureFormat->set_height(IDX_SQRT_MAX_VERTS);
+
+    storage.dc_index_texture   = RenderingDevice_Local->texture_create(TextureFormat, TextureView); 
+    }
 
     Ref<RDUniform> UniformConstants_Ref          = RefWrapper(0, storage.uniform_buffer,            RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
 
     Ref<RDUniform> VoxelStorageBuffer_UniformRef = RefWrapper(0, storage.voxel_output,              RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> MortonCodeLUT_UniformRef      = RefWrapper(1, storage.morton_lookuptable_buffer, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> SVO_Node_UniformRef           = RefWrapper(2, storage.svo_storage,               RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> SVO_NodeAux_UniformRef        = RefWrapper(3, storage.svo_aux,                   RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> AtomicCounter_UniformRef      = RefWrapper(4, storage.atomic_counter,            RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> Histogram_UniformRef          = RefWrapper(5, storage.histogram_buffer,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> PrefixsumOffset_UniformRef    = RefWrapper(6, storage.prefixsum_offset,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    //Ref<RDUniform> MortonCodeLUT_UniformRef      = RefWrapper(1, storage.morton_lookuptable_buffer, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> SVO_Node_UniformRef           = RefWrapper(1, storage.svo_storage,               RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> SVO_NodeAux_UniformRef        = RefWrapper(2, storage.svo_aux,                   RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> AtomicCounter_UniformRef      = RefWrapper(3, storage.atomic_counter,            RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> Histogram_UniformRef          = RefWrapper(4, storage.histogram_buffer,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> PrefixsumOffset_UniformRef    = RefWrapper(5, storage.prefixsum_offset,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
 
-    Ref<RDUniform> DC_VertexBuffer_UniformRef    = RefWrapper(0, storage.dc_vertex_buffer,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_NormalBuffer_UniformRef    = RefWrapper(1, storage.dc_normal_buffer,         RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_UVBuffer_UniformRef        = RefWrapper(2, storage.dc_UV_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_IndexBuffer_UniformRef     = RefWrapper(3, storage.dc_index_buffer,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    /*Ref<RDUniform> DC_VertexBuffer_UniformRef    = RefWrapper(0, storage.dc_vertex_buffer,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_NormalBuffer_UniformRef    = RefWrapper(1, storage.dc_normal_buffer,          RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_UVBuffer_UniformRef        = RefWrapper(2, storage.dc_UV_buffer,              RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);*/
+    //Ref<RDUniform> DC_IndexBuffer_UniformRef     = RefWrapper(3, storage.dc_index_buffer,           RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
     Ref<RDUniform>DC_VertexIndexBuffer_UniformRef= RefWrapper(4, storage.dc_vertex_index_buffer,    RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_EdgeMaskBuffer_UniformRef  = RefWrapper(5, storage.dc_edge_mask_buffer,      RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_EdgeMaskBuffer_UniformRef  = RefWrapper(5, storage.dc_edge_mask_buffer,       RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
 
+    Ref<RDUniform> VP_VertexTexture_UniformRef   = RefWrapper(0, storage.dc_vertex_texture,         RenderingDevice::UNIFORM_TYPE_IMAGE         );
+    Ref<RDUniform> VP_NormalTexture_UniformRef   = RefWrapper(1, storage.dc_normal_texture,         RenderingDevice::UNIFORM_TYPE_IMAGE         );
+    Ref<RDUniform> VP_UVTexture_UniformRef       = RefWrapper(2, storage.dc_uv_texture,             RenderingDevice::UNIFORM_TYPE_IMAGE         );
+    Ref<RDUniform> VP_IndexTexture_UniformRef    = RefWrapper(3, storage.dc_index_texture,          RenderingDevice::UNIFORM_TYPE_IMAGE         );
     
     TypedArray<Ref<RDUniform>> UniformsArray;
     UniformsArray.push_back(UniformConstants_Ref);
@@ -750,7 +925,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     TypedArray<Ref<RDUniform>> Voxel_SVO_Storage;
     Voxel_SVO_Storage.push_back(VoxelStorageBuffer_UniformRef);
 
-    Voxel_SVO_Storage.push_back(MortonCodeLUT_UniformRef);
+    //Voxel_SVO_Storage.push_back(MortonCodeLUT_UniformRef);
 
     Voxel_SVO_Storage.push_back(SVO_Node_UniformRef);
     Voxel_SVO_Storage.push_back(SVO_NodeAux_UniformRef);
@@ -762,12 +937,19 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     Voxel_SVO_Storage.push_back(PrefixsumOffset_UniformRef);
 
     TypedArray<Ref<RDUniform>> GeometryArray;
+    /*
     GeometryArray.push_back(DC_VertexBuffer_UniformRef);
     GeometryArray.push_back(DC_NormalBuffer_UniformRef);
     GeometryArray.push_back(DC_UVBuffer_UniformRef);
     GeometryArray.push_back(DC_IndexBuffer_UniformRef);
+    */
+    GeometryArray.push_back(VP_VertexTexture_UniformRef);
+    GeometryArray.push_back(VP_NormalTexture_UniformRef);
+    GeometryArray.push_back(VP_UVTexture_UniformRef);
+    GeometryArray.push_back(VP_IndexTexture_UniformRef);
     GeometryArray.push_back(DC_VertexIndexBuffer_UniformRef);
     GeometryArray.push_back(DC_EdgeMaskBuffer_UniformRef);
+    
 
     /*
     TypedArray<Ref<RDUniform>> SVOStorage;
@@ -798,7 +980,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     if(G_DEBUG)
         WARN_PRINT("Creating for DC dense shader. NOT AN ERROR; IGNORE THIS.");
     #endif
-    storage.dc_dense_storage[0]              = RenderingDevice_Local->uniform_set_create(Voxel_SVO_Storage, compiled_shaders.CompiledShader_Histogram,         0);
+    storage.dc_dense_storage[0]              = RenderingDevice_Local->uniform_set_create(Voxel_SVO_Storage, compiled_shaders.CompiledShader_DualContour_Dense, 0);
     storage.dc_dense_storage[1]              = RenderingDevice_Local->uniform_set_create(GeometryArray,     compiled_shaders.CompiledShader_DualContour_Dense, 1);
 
     #ifndef PRODUCTION_BUILD
@@ -810,6 +992,41 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     //storage.histogram_storage = RenderingDevice->uniform_set_create(HistogramStorage, compiled_shaders.CompiledShader_Histogram, 2);
     //storage.voxel_storage     = RenderingDevice->uniform_set_create(VoxelStorage,     compiled_shaders.CompiledShader,           1);
     //storage.svo_storage       = RenderingDevice->uniform_set_create(SVOStorage,       compiled_shaders.CompiledShader_SVO,       2);
+
+    // create the actual mesh to display DC generated verts
+    if(!SKIP_PRE_INIT_TEXTURES){
+    InstanceRID = MeshInstance;
+    Material_RID = RenderingServer::get_singleton()->material_create();
+    RenderingServer::get_singleton()->material_set_shader(Material_RID, compiled_shaders.CompiledShader_VertexPull->get_rid());
+
+    storage.rendering_server_vertex_texture = RenderingServer_Local->texture_rd_create(storage.dc_vertex_texture);
+    storage.rendering_server_index_texture = RenderingServer_Local->texture_rd_create(storage.dc_index_texture);
+    storage.rendering_server_normal_texture = RenderingServer_Local->texture_rd_create(storage.dc_normal_texture);
+
+    RenderingServer::get_singleton()->instance_geometry_set_material_override(InstanceRID, Material_RID);
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "IndexTexture", storage.rendering_server_index_texture);
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "VertexTexture", storage.rendering_server_vertex_texture);
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "NormalTexture", storage.rendering_server_normal_texture);
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "GridSizeIndex", int(IDX_SQRT_MAX_VERTS));
+    RenderingServer::get_singleton()->material_set_param(Material_RID, "GridSizeVertex", int(SQRT_MAX_VERTS));
+    #ifndef PRODUCTION_BUILD
+    if(G_DEBUG)
+    {
+        UtilityFunctions::print("GridSizeIndex: ", int(IDX_SQRT_MAX_VERTS), " | ", BasicPushConstant.VOXELS_PER_CHUNK.w);
+        UtilityFunctions::print("GridSizeVertex: ", int(SQRT_MAX_VERTS), " | ", BasicPushConstant.CHUNK_SIZE.w);
+    }
+    #endif
+    }
+    {
+    PackedInt32Array PreInitVal;
+    PreInitVal.resize(sizeof(DC_VertexIndexBuffer) * std::pow((G_GRID_SIZE), 3));
+    PreInitVal.fill(-1);
+    RenderingDevice_Local->buffer_update(storage.dc_vertex_index_buffer, 0, PreInitVal.size(), PreInitVal.to_byte_array());
+
+    PreInitVal.resize(sizeof(voxelData) * std::pow((G_GRID_SIZE + BufferPadding), 3));
+    PreInitVal.fill(1.0);
+    RenderingDevice_Local->buffer_update(storage.voxel_output, 0, PreInitVal.size(), PreInitVal.to_byte_array());
+    }
 }
 
 /*
@@ -830,32 +1047,58 @@ void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC
                                         const PackedInt32Array CHUNK_SIZE){
     if(isCPU_or_GPU){
         CHECK_RENDERING_DEVICE();
+        BasicPushConstant.SEED += 1;
+        #ifndef PRODUCTION_BUILD
+        RenderingDevice_Local->capture_timestamp("COMPUTE_BEGIN");
+        #endif
+        RenderingDevice_Local->buffer_clear(storage.atomic_counter, 0, sizeof(AtomicBuffer));
+        RenderingDevice_Local->texture_clear(storage.dc_vertex_texture, Color(0,0,0,0), 0, 1, 0, 1);
+        RenderingDevice_Local->texture_clear(storage.dc_index_texture, Color(0,0,0,0), 0, 1, 0, 1);
 
+        //UtilityFunctions::print(RenderingServer::get_singleton()->material_get_param(Material_RID, "VertexTexture"));
+        //UtilityFunctions::print(storage.dc_vertex_texture);
+        
+        
         int64_t ComputeList = RenderingDevice_Local->compute_list_begin();
         COMPUTE_LIST_CHECK();
         uint32Vec3 VecObj;
+        
 
         LoopGenerationForEntity(FOR_EACH_ENTITY, CURRENT_ENTITY_LOCATION, CURRENT_PLANET_POSITION,
                                 PASS_AMOUNT,
                                 VecObj, VOXELS_PER_CHUNK, CHUNK_SIZE,
                                 ComputeList);
-
-        RenderingDevice_Local->compute_list_end();
-
-        #ifndef PRODUCTION_BUILD
-        if(G_DEBUG)
-            UtilityFunctions::print("Compute successful.");
-        #endif
-
-        RenderingDevice_Local->submit();
         
-        if(SYNC_CPU_TO_GPU)
-            RenderingDevice_Local->sync();
-
+        RenderingDevice_Local->compute_list_end();
+        #ifndef PRODUCTION_BUILD
+        RenderingDevice_Local->capture_timestamp("COMPUTE_END");
+        #endif
+        #ifndef PRODUCTION_BUILD
+        if(G_DEBUG){
+            uint32_t count = RenderingDevice_Local->get_captured_timestamps_count();
+            UtilityFunctions::print(count);
+            for(uint32_t i = 0; i < count; i++)
+            {
+                String CaptureName = RenderingDevice_Local->get_captured_timestamp_name(i);
+                uint64_t GPU_Time = RenderingDevice_Local->get_captured_timestamp_gpu_time(i);
+                uint64_t CPU_Time = RenderingDevice_Local->get_captured_timestamp_cpu_time(i);
+                UtilityFunctions::print("Capture name: ", CaptureName, " | GPU Time: ", GPU_Time, " | CPU Time: ", CPU_Time);
+            }
+        }
+        #endif
+       
         #ifndef PRODUCTION_BUILD
         if(G_DEBUG)
             UtilityFunctions::print("Compute list recorded: ", ComputeList);
         #endif
+        
+        #ifndef PRODUCTION_BUILD
+        if(G_DEBUG)
+            UtilityFunctions::print("Compute successful. Setting mesh visibility.");
+        #endif
+
+        if(SYNC_CPU_TO_GPU)
+            RenderingDevice_Local->sync();
     }
 
     // CPU-specific logic (intended for servers)

@@ -49,12 +49,12 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "Unfinished/Importance Field (SVO).md",
+                    "file": "Notes/Unorganized and unfinished notes/Planet shader setup.md",
                     "mode": "source",
                     "source": false
                   },
                   "icon": "lucide-file",
-                  "title": "Importance Field (SVO)"
+                  "title": "Planet shader setup"
                 }
               },
               {
@@ -301,9 +301,10 @@
   },
   "active": "47d4c5e4e7218efa",
   "lastOpenFiles": [
+    "Notes/Unorganized and unfinished notes/Planet shader setup.md",
+    "Notes/Unorganized and unfinished notes/Async, caching for the active dense chunk and more.md",
     "Unfinished/Importance Field (SVO).md",
     "Notes/Active and Inactive chunks.md",
-    "Notes/Unorganized and unfinished notes/Async, caching for the active dense chunk and more.md",
     "Notes/Untitled.md",
     "Notes/GPU Based Placement System.md",
     "Notes/Roadmap/Roadmap.md",
@@ -330,7 +331,6 @@
     "Unfinished/Client View (Probe Origin).md",
     "Unfinished/Case 2 (Client Probe).md",
     "Finished/SVO_Generation_Pass.md",
-    "Unfinished/Planet Management System.md",
     "Untitled.base",
     "Untitled.canvas",
     "Unfinished",

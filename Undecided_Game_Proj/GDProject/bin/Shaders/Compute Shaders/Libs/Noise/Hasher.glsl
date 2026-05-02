@@ -3,7 +3,7 @@
     Licensed under the MIT license. Refer to the license file provided within the README for details.
 */
 
-float hash(ivec3 inVector){
+float hash(uvec3 inVector){
     uint MultSum =  uint(inVector.x) * 374761393u ^ 
                     uint(inVector.y) * 1664525u ^
                     uint(inVector.z) * 1103515245u;
@@ -15,16 +15,29 @@ float hash(ivec3 inVector){
     return float(MultSum) * 2.3283064365386963e-10; // conv int to normal (normalized float)
 } // convert these into LUTs
 
-vec3 gradient_hash(ivec3 inVector, const uint SEED){
-    int iSEED = int(SEED);
+vec3 dgradient_hash(uvec3 inVector, const uint SEED){
+    uint iSEED = SEED;
 
     float rand_X = hash(inVector);
-    float rand_Y = hash(inVector + (ivec3(4, 7, 13) * iSEED));
-    float rand_Z = hash(inVector + (ivec3(19, 23, 29) * iSEED));
+    float rand_Y = hash(inVector + (uvec3(4, 7, 13) * iSEED));
+    float rand_Z = hash(inVector + (uvec3(19, 23, 29) * iSEED));
 
     vec3 outVector = vec3(rand_X, rand_Y, rand_Z) * 2.0 - 1.0;
 
     return outVector;
+}
+
+vec3 gradient_hash(uvec3 p, uint seed) {
+    uvec3 v = p;
+    v = v * 1664525u + seed;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    
+    uint h = v.x & 15u;
+    vec3 grad = vec3(1,1,0);
+    if ((h & 8u) == 0u) grad = vec3(h&1u, h&2u, h&4u); 
+    return normalize(v * 2.0 - 1.0); 
 }
 
 float cast_hash(float Var){

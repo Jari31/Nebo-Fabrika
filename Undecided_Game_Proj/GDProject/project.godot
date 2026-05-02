@@ -23,6 +23,12 @@ config/icon="res://icon.svg"
 
 WorldManager="*uid://btp6jhmww68jk"
 
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/vsync/vsync_mode=0
+
 [editor_plugins]
 
 enabled=PackedStringArray()

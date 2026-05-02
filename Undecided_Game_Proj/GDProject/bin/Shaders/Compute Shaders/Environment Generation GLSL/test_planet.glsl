@@ -92,31 +92,10 @@ layout(std430, set = 1, binding = 5) buffer OffsetBuffer
     uint Offsets[6][16];
 };
 
-//-------------------------------------------------------- push const
-layout(push_constant) uniform PushConstants 
-{
-    uint  PassNum;
-    uint  PassOffset;
-    uint  PassStage;
-    uint  Dense_SaveAsMortonCode;
-
-    uint  Dense_TotalNodes;
-    uint  SEED;
-    float SVO_VoxelSize;
-    uint SVO_BufferSize;
-
-    uint HASH_SIZE;
-    uint pad1;
-    uint pad2;
-    uint pad3;
-    
-    ivec4 dCHUNK_SIZE;
-    ivec4 dVOXELS_PER_CHUNK;
-};
+#include "res://bin/Shaders/Compute Shaders/Libs/General/PCG_GENERATION_PushConstant.glsl"
 
 ivec3 CHUNK_SIZE = ivec3(dCHUNK_SIZE);
 ivec3 VOXELS_PER_CHUNK = ivec3(dVOXELS_PER_CHUNK);
-
 
 #include "res://bin/Shaders/Compute Shaders/Libs/Noise/Hasher.glsl"
 #include "res://bin/Shaders/Compute Shaders/Libs/Noise/Simplex3D.glsl"
@@ -149,43 +128,86 @@ vec3 convert_to_ivec64(ivec3 low, ivec3 high){
     return vec3(high_f) * 4294967296.0 + vec3(low_f);
 }
 
+float smooth_max(float a, float b, float k){
+    float h = max(k - abs(a - b), 0.0)/k;
+
+    return float(max(a, b) + (h * h) * k * 0.25);
+}
+
+float sdBox( vec3 p, vec3 b )
+{
+  vec3 q = abs(p) - b;
+  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+}
+
+float sdSphere( vec3 p, float r )
+{
+  return length(p) - r;
+}
+
+float calculate_distance_to_boundary(vec3 point, float radius)
+{
+    vec3 absolute_position = abs(point);
+
+    float max_distance = max(absolute_position.x, max(absolute_position.y, absolute_position.z));
+    
+    return radius - max_distance;
+}
+
+float converge_boundary(float raw_value, float margin)
+{
+    float _distance = calculate_distance_to_boundary(gl_GlobalInvocationID.xyz, GridSize);
+    float t = clamp(_distance / margin, 0.0f, 1.0f);
+
+    float smooth_t = t * t * (3.0f - 2.0f * t);
+
+    return mix(0.1f, raw_value, smooth_t);
+}
+
+
 // todo: switch to shared memory access. the GPU can more than handle the 2ms goal. it's just that it's taking too long to write to the global buffer
 // *maybe
 
 void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you're insane enough to optimize the other parts 
     uvec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz;
-    // uvec3 ChunkWorldPosition = convert_to_ivec64(ENTITY_LOCATION.xyz, ENTITY_LOCATION_P2.xyz);
-    // vec3 VoxelWorldPosition = vec3(ChunkWorldPosition) + vec3(VoxelLocalCoordinates);
 
+    uint pGridSize = GridSize;
     uint Index = 0;  
-    if(Dense_SaveAsMortonCode != 0)
-        Index = GetMortonCode(ivec3(VoxelLocalCoordinates));
-    else
-        Index = VoxelLocalCoordinates.x + (VoxelLocalCoordinates.x * (VoxelLocalCoordinates.y + VoxelLocalCoordinates.y * VoxelLocalCoordinates.z));
+    //if((FLAG & 1u) != 0)
+    //    Index = GetMortonCode(ivec3(VoxelLocalCoordinates));
+    //else
+        Index = VoxelLocalCoordinates.x + (VoxelLocalCoordinates.y * pGridSize) + (VoxelLocalCoordinates.z * pGridSize * pGridSize);
 
-    // inefficient; just calculate the distance on the CPU and pass it with a push constant and approximate the bounds on the GPU
-    // float PlanetRadius = PLANET_BOUNDS.w; 
-    /*
-    if(distance(VoxelWorldPosition, PLANET_BOUNDS.xyz) > PlanetRadius){
-        VoxelData[Index].density = 0.0;
-        VoxelData[Index].matID = 0.0;
-        return;
-    };
-    */
-
-    const uint SEED = SCENE_PROPERTIES.x;
     const float WorldScale = NOISE_PARAMS.y;
-    const float NoiseScale1 = 0.02;
-    const float NoiseScale2 = 0.04;
+    const float NoiseScale1 = 0.017;
+    const float NoiseScale2 = 0.01;
+    const float NoiseScale3 = 0.015;
     const float SDF_ApproxDistance = 2.0;
 
     float noiseLayer1 = simplex3D(VoxelLocalCoordinates * NoiseScale1, SEED);
-    float noiseLayer2 = simplex3D(VoxelLocalCoordinates * NoiseScale2, SEED);
+    //float noiseLayer2 = -simplex3D(VoxelLocalCoordinates * NoiseScale2, SEED);
+    //float noiseLayer3 = -simplex3D(VoxelLocalCoordinates * NoiseScale3, SEED + 1);
 
-    vec2 Dens_MatID = pickMatID(noiseLayer1, noiseLayer2, 1.0, 2.0);
+    float Amp = 15.0f;
 
-    VoxelData[Index].matID = floor(Dens_MatID.y);
-    VoxelData[Index].density = Dens_MatID.x;
+    //vec2 Dens_MatID = pickMatID(noiseLayer1, noiseLayer2, 1.0, 2.0);
+    
+    //float Sphere2 = sdSphere(vec3(gl_GlobalInvocationID) - vec3(GridSize/2 + 20), 147.5);
+    float Sphere = -sdSphere(vec3(gl_GlobalInvocationID) - vec3(GridSize/2), GridSize/2);
+    float Box = -sdBox(vec3(gl_GlobalInvocationID.xyz), vec3(GridSize/2 - 50));
+
+    float FinalDensity = noiseLayer1;//min(Box, Sphere);//-Sphere;//max(Sphere, smooth_max(noiseLayer3, noiseLayer1, 0.2) * Amp);
+    //if(VoxelLocalCoordinates.x > 0 && VoxelLocalCoordinates.x < GridSize -1 && 
+    //    VoxelLocalCoordinates.y > 0 && VoxelLocalCoordinates.y < GridSize -1 &&
+    //    VoxelLocalCoordinates.z > 0 && VoxelLocalCoordinates.z < GridSize -1)
+    //    FinalDensity = min(-1.0f, FinalDensity);
+    if(abs(FinalDensity) < 1e-6)
+    {
+        FinalDensity = (FinalDensity >= 0) ? 1e-6 : -1e-6;
+    }
+
+    VoxelData[Index].matID = 0;//floor(Dens_MatID.y);
+    VoxelData[Index].density = -FinalDensity;
 }
 
 void main() {

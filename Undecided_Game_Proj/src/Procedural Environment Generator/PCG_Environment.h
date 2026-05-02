@@ -18,6 +18,16 @@
 #include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/classes/rd_uniform.hpp>
 #include <godot_cpp/classes/rd_shader_spirv.hpp>
+#include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/mesh.hpp>
+#include <godot_cpp/classes/viewport.hpp>
+#include <godot_cpp/classes/world3d.hpp>
+#include <godot_cpp/classes/rd_texture_format.hpp>
+#include <godot_cpp/classes/rd_texture_view.hpp>
+#include <godot_cpp/variant/aabb.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/texture2drd.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -58,13 +68,12 @@ namespace godot {
                 Vector4 PLANET_BOUNDS;
             };
 
+            struct voxelData {
+                float matID;
+                float density;
+            };
             struct returnedVoxel
             {
-                struct voxelData {
-                    float matID;
-                    float density;
-                };
-
                 voxelData VoxelData[];
             };
 
@@ -104,24 +113,24 @@ namespace godot {
                 uint32_t PassOffset = 0;
                 uint32_t PassStage = 0;
 
-                uint32_t  Dense_SaveAsMortonCode = 0;
-                uint32_t  Dense_TotalNodes = 1024;
+                uint32_t  FLAG = 0;
+                uint32_t  Dense_TotalNodes = 16777216;
 
                 uint32_t SEED = 0;
                 float    SVO_VoxelSize = 1.0;
                 uint32_t SVO_BufferSize = 1024;
 
                 uint32_t HashSize = 0;
-                uint32_t pad1;
+                uint32_t GridSize = 256;
                 uint32_t pad2;
                 uint32_t pad3;
                 //Vector3i ENTITY_LOCATION = Vector3i(0, 0, 0);
 
                 //Vector3i ENTITY_LOCATION_P2 = Vector3i(0, 0, 0);
 
-                Vector4i CHUNK_SIZE = Vector4i(4, 4, 4, 0);
+                Vector4i CHUNK_SIZE = Vector4i(4, 4, 4, 256);
 
-                Vector4i VOXELS_PER_CHUNK = Vector4i(64, 64, 64, 0);
+                Vector4i VOXELS_PER_CHUNK = Vector4i(64, 64, 64, 64);
             };
 
             struct Histogram
@@ -134,14 +143,21 @@ namespace godot {
                 uint32_t Offsets[6][16];
             };
 
+            struct AtomicBuffer
+            {
+                uint32_t AtomicCounter1 = 0;
+                uint32_t AtomicCounter2 = 0;
+
+                uint32_t VertexCounter  = 0;
+            };
             struct DC_VertexBuffer
             {
-                Vector3 Vertices[];
+                Vector4 Vertices[];
             };
 
             struct DC_NormalBuffer
             {
-                Vector3 Normals[];
+                Vector4 Normals[];
             };
             
             struct DC_UVBuffer
@@ -201,6 +217,15 @@ namespace godot {
                 RID dc_vertex_index_buffer = RID();
                 RID dc_edge_mask_buffer    = RID();
 
+                RID dc_vertex_texture      = RID();
+                RID dc_normal_texture      = RID();
+                RID dc_uv_texture          = RID();
+                RID dc_index_texture       = RID();
+
+                RID rendering_server_vertex_texture = RID();
+                RID rendering_server_index_texture  = RID();
+                RID rendering_server_normal_texture = RID();
+
                 // doesn't have to be limited to just RIDs; I'm too lazy to refactor everything into this
 
                 int32_t WORKGROUP_SIZE_PLANET = 8;
@@ -216,6 +241,8 @@ namespace godot {
                 RID CompiledShader_DualContour_Sparse= RID();
                 RID CompiledShader_Radix             = RID();
                 RID CompiledShader_Histogram         = RID();
+
+                Ref<Shader> CompiledShader_VertexPull= RID();
             };
 
             CompiledShaders compiled_shaders;
@@ -229,6 +256,12 @@ namespace godot {
             bool G_SKIP_SVO = 0; // G = global
             bool G_SKIP_MORTON_CODE_LUT = 0;
             bool G_DEBUG = 0;
+            uint32_t G_GRID_SIZE = 0;
+
+            RID InstanceRID  = RID();
+            RID Mesh_RID     = RID();
+            RID Material_RID = RID();
+            RID Scenario     = RID();
         protected:
             static void _bind_methods();
 
@@ -283,18 +316,19 @@ namespace godot {
                             PackedInt32Array &VOXELS_PER_CHUNK, PackedInt32Array &CHUNK_SIZE);
 
             void initCompute(const uint32_t &SEED, const int32_t &MAXVERTs, const int32_t &IS_STARTINGSCENE,
-                            const bool SKIP_SVO, const bool SKIP_MORTON_CODE_LUT,
-                            const PackedStringArray MORTON_CODE_LUT_FileName,
+                            const bool SKIP_SVO, const bool SKIP_MORTON_CODE_LUT, const bool SKIP_PRE_INIT_TEXTURES,
                             const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK,
                             const PackedInt32Array CURRENT_ENTITY_LOCATION, const PackedInt32Array CURRENT_PLANET_POSITION,
-                            const uint32_t &SVO_MAX_NODES_PER_CHUNK);
+                            const uint32_t &SVO_MAX_NODES_PER_CHUNK, RID MeshInstance, const float INDEX_COEFFICIENT);
 
             void LoadLUT(const std::string &FileName, uint32_t *Buffer);
 
-            void SetCompiledShaders(RID PlanetShader, RID SVOShader, RID DualContouring_Dense, RID DualContouring_Sparse, RID RadixSort_PrefixSum_Shader, RID RadixSortHistogram_Scatter_Shader);
+            void SetCompiledShaders(RID PlanetShader, RID SVOShader, RID DualContouring_Dense, RID DualContouring_Sparse, 
+                                        RID RadixSort_PrefixSum_Shader, RID RadixSort_Histogram_Scatter_Shader, Ref<Shader> VertexPull_Shader);
 
             Variant GetRID();
             void SetSettings(bool initLocalRenderingServer, bool DEBUG, uint32_t DC_WORKGROUP_SIZE=8, uint32_t SVO_WORKGROUP_SIZE=8, uint32_t PLANET_GEN_WORKGROUP_SIZE=8);
-            
+            void SetRIDStorage(RID VertexTexture, RID NormalTexture, RID UVTexture, RID IndexTexture);
+            void PrintGeneratedData();
     }; 
 }

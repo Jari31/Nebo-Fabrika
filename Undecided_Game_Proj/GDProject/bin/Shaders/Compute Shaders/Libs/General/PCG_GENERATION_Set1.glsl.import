@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://c72m5b6u3uj3e"
+path="res://.godot/imported/PCG_GENERATION_Set1.glsl-fe0be9b173236207bb1b5c9455462df8.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/General/PCG_GENERATION_Set1.glsl"
+dest_files=["res://.godot/imported/PCG_GENERATION_Set1.glsl-fe0be9b173236207bb1b5c9455462df8.res"]
+
+[params]
+
