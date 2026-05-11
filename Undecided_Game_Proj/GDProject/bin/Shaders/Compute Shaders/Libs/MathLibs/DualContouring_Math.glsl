@@ -49,7 +49,7 @@ vec3 TrilinearGradient(vec3 Point, vec3 CellMin, float CellSize, float[8] Corner
 
     return vec3(gx, gy, gz) / CellSize;
 }
-
+/*
 // Binary search
 int FindNodeByMortonCode(uint MortonCode, uint TotalNodes)
 {
@@ -73,7 +73,7 @@ int FindNodeByMortonCode(uint MortonCode, uint TotalNodes)
     }
     return -1;
 }
-
+*/
 void store_index(uint flat_idx, int vertex_val) {
     int x = int(flat_idx % dVOXELS_PER_CHUNK.w);
     int y = int(flat_idx / dVOXELS_PER_CHUNK.w);
@@ -81,7 +81,7 @@ void store_index(uint flat_idx, int vertex_val) {
 }
 
 uint store_vertices_and_normals(vec4 Centroid, vec4 Normals) {
-    uint VertexIndex = atomicAdd(VertexCounter, 1);
+    uint VertexIndex = atomicAdd(VertexCounter, 1) + StorageOffset;
 
     int VertexIndex_x = int(VertexIndex % dCHUNK_SIZE.w);
     int VertexIndex_y = int(VertexIndex / dCHUNK_SIZE.w);

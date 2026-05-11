@@ -30,6 +30,14 @@ The file structure can get a bit confusing, so here are the current important fo
 |[C++ Source](Undecided_Game_Proj/src/)|
 |[GLSL/GDShader Files](Undecided_Game_Proj/GDProject/bin/Shaders/)|
 
+# Variable Naming Conventions
+The naming convention has been quite mixed overtime. Though project mostly uses snake-case and Pascal-case. Either in mixture, or exclusively. For now, snake-case is mostly for smaller functions. Main functions must use Pascal-case. You might see camel-case here and there, but they are a relic of when the project started out. 
+
+Verbose naming is a must.
+
+### A few legends:
+UB $-$ Universal Base. Classes (or functions) that act as basses for other objects to inherit.
+
 # About Open Source
 This project is *semi-open source*[^1]. As in, the music and 3D assets are not open, but the code (aside from some exceptions) is.
 
@@ -42,7 +50,7 @@ This project is *semi-open source*[^1]. As in, the music and 3D assets are not o
 
 # Q/A
 ### Why Taichi Lang?
-Taichi makes unit tests for parallel operations a million times easier. Alongside, it allows for me to be able to prototype much faster than through C++, GLSL and Godot.
+Taichi makes unit tests for parallel operations a million times easier. Alongside, it allows for prototyping much faster than through C++, GLSL and Godot.
 In essence, it is more of a testing and prototyping tool rather than being a production tool.
 ### AI use?
 Yes and no. So far, AI has been used to help write boiler plate and translate code from one language to another. But mostly, LLMs and diffusion models have not been used (so far) for other purposes.

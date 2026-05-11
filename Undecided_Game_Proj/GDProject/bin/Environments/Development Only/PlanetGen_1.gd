@@ -27,49 +27,26 @@ func AppendImagesArray(TextureArray, TexturePaths):
 			
 func _ready():
 	var MAXVERTS = 3999999
-	var IDX_COEFFICIENT = 2.2;
-	var MAXINDICES = MAXVERTS * IDX_COEFFICIENT + 2;
+	var IDX_COEFFICIENT = 2.3;
+	var MAXINDICES = ceil(MAXVERTS * IDX_COEFFICIENT);
 	var SQRT_MAX_VERTS = ceil(sqrt(MAXVERTS))
 	var IDX_SQRT_MAX_VERTS = ceil(sqrt(MAXINDICES))
 	
-	SetSettings(true, true)
+	SetSettings(true, false, true)
 	var ShaderCompObject = ShaderCompiler.new()
 	var ShaderCompObject1 = ShaderCompiler.new()
-	var DoCompilation = false
 	
 	var CompileDense = true
-	var CompileSparse = false
 	var CompilePlanet = true
 	
 	var ShaderComp_DEBUG = true
 	var Workgroups = Vector3i(8, 8, 8)
-	var RenderingDevice_Local = GetRID()
+	var RenderingDevice_Local = GetLocalRenderingDeviceRID()
 	
 	var PathToComputeShader = "res://bin/Shaders/Compute Shaders/Libs/Dual Contouring/DualContouring.glsl"
 	var CompileTo = "res://bin/Shaders/Compute Shaders/Compiled/dual_contouring.spv"
 	
 	var DualContouring_Compiled = ShaderCompObject.LoadOrCompileShader(PathToComputeShader, CompileTo, CompileDense,
-									RenderingDevice_Local, WorldManager.ShaderStages.COMPUTE_SHADER, 
-									Workgroups, ShaderComp_DEBUG)
-
-	PathToComputeShader = "res://bin/Shaders/Compute Shaders/Libs/SVO/SparseVoxelOctreeOptimized.glsl"
-	CompileTo = "res://bin/Shaders/Compute Shaders/Compiled/svo.spv"
-	
-	var SVO_Compiled = ShaderCompObject.LoadOrCompileShader(PathToComputeShader, CompileTo, DoCompilation,
-									RenderingDevice_Local, WorldManager.ShaderStages.COMPUTE_SHADER, 
-									Workgroups, ShaderComp_DEBUG)
-	
-	PathToComputeShader = "res://bin/Shaders/Compute Shaders/Libs/MathLibs/SVOHistogram.glsl"
-	CompileTo = "res://bin/Shaders/Compute Shaders/Compiled/svo_histogram.spv"
-	
-	var Histogram_Compiled = ShaderCompObject.LoadOrCompileShader(PathToComputeShader, CompileTo, DoCompilation,
-									RenderingDevice_Local, WorldManager.ShaderStages.COMPUTE_SHADER, 
-									Workgroups, ShaderComp_DEBUG)
-	
-	PathToComputeShader = "res://bin/Shaders/Compute Shaders/Libs/MathLibs/SVOPrefixSum.glsl"
-	CompileTo = "res://bin/Shaders/Compute Shaders/Compiled/svo_prefixsum.spv"
-	
-	var PrefixSum_Compiled = ShaderCompObject.LoadOrCompileShader(PathToComputeShader, CompileTo, DoCompilation,
 									RenderingDevice_Local, WorldManager.ShaderStages.COMPUTE_SHADER, 
 									Workgroups, ShaderComp_DEBUG)
 	
@@ -80,12 +57,6 @@ func _ready():
 									RenderingDevice_Local, WorldManager.ShaderStages.COMPUTE_SHADER, 
 									Workgroups, ShaderComp_DEBUG)
 									
-	PathToComputeShader = "res://bin/Shaders/Compute Shaders/Libs/Dual Contouring/DualContouring_SVO.glsl"
-	CompileTo = "res://bin/Shaders/Compute Shaders/Compiled/dual_contouring_sparse.spv"
-
-	var DualContouringSparse_Compiled = ShaderCompObject.LoadOrCompileShader(PathToComputeShader, CompileTo, CompileSparse,
-										RenderingDevice_Local, WorldManager.ShaderStages.COMPUTE_SHADER, 
-										Workgroups, ShaderComp_DEBUG)
 
 	MCLUT_FileName.append("")
 	for i in range(3):
@@ -102,7 +73,7 @@ func _ready():
 	var Mesh_local = ArrayMesh.new()
 	var Vertices = PackedVector3Array()
 	Vertices.resize(MAXINDICES)
-	Vertices.fill(Vector3.ZERO);
+	Vertices.fill(Vector3.ZERO)
 	
 	#var Indices = PackedInt32Array()
 	#Indices.resize(MAXVERTS)
@@ -123,7 +94,6 @@ func _ready():
 	#textures (moved from C++ for better modularity)
 	var TextureFormat = RDTextureFormat.new()
 	var TextureView = RDTextureView.new()
-	
 
 	TextureFormat.height = SQRT_MAX_VERTS
 	TextureFormat.width = SQRT_MAX_VERTS
@@ -177,7 +147,6 @@ func _ready():
 	rendering_server_normal_texture = RenderingServer.texture_rd_create(NormalTexture)
 	rendering_server_index_texture = RenderingServer.texture_rd_create(IndexTexture)
 	
-	
 	Material_RID = RenderingServer.material_create()
 	RenderingServer.material_set_shader(Material_RID, VP_Shader)
 	RenderingServer.instance_geometry_set_material_override(MeshInstance.get_instance(), Material_RID)
@@ -192,19 +161,16 @@ func _ready():
 	print(int(IDX_SQRT_MAX_VERTS))
 	
 	SetRIDStorage(VertexTexture, NormalTexture, VertexTexture_B, IndexTexture)
-	SetCompiledShaders(TestPlanet_Compiled, SVO_Compiled, DualContouring_Compiled, 
-						DualContouringSparse_Compiled, PrefixSum_Compiled, Histogram_Compiled,
-						VP_Shader)
-	initCompute(13231, MAXVERTS, true, 
-				true, true, true,
-				CHUNK_SIZE, VOXELS_PER_CHUNK, 
-				CurrentEntityLocation, CurrentPlanetLocation, 1, MeshInstance.get_instance(), IDX_COEFFICIENT)
+	SetCompiledShaders(TestPlanet_Compiled, DualContouring_Compiled, VP_Shader)
+	initCompute(13231, MAXVERTS, true,
+				CHUNK_SIZE, VOXELS_PER_CHUNK,
+				MeshInstance.get_instance(), IDX_COEFFICIENT)
 	Ready = true
 	
 func _input(event):
 	if event is InputEventKey and event.is_pressed():
 		if event.keycode == KEY_F1:
-			passParams_to_PCG(true, false, 0, CurrentEntityLocation, CurrentPlanetLocation, 1, VOXELS_PER_CHUNK, CHUNK_SIZE)
+			PassParamsToPCG(true, false, VOXELS_PER_CHUNK, CHUNK_SIZE)
 	
 	
 func _process(_delta: float):

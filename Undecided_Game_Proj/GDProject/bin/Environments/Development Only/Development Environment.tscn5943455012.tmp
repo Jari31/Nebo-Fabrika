@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://bx6xbotrj7tvq" path="res://bin/Models/5_8_box.fbx" id="2_f3knc"]
 [ext_resource type="Script" uid="uid://si7o6comy0cw" path="res://bin/Environments/Development Only/beginnermv.gd" id="3_8uepj"]
-[ext_resource type="Script" uid="uid://dgqatu4s4u2wy" path="res://bin/Environments/Development Only/VisualGenerationManager.gd" id="4_4g2gj"]
+[ext_resource type="Script" uid="uid://dgqatu4s4u2wy" path="res://bin/Environments/Development Only/Planet1.gd" id="4_4g2gj"]
 [ext_resource type="Script" uid="uid://dgndu203ukwij" path="res://bin/Environments/Development Only/camera_basic.gd" id="4_8uepj"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_s08hj"]
@@ -36,12 +36,11 @@ transform = Transform3D(0.9705233, -0.19957331, 0.13511114, 0, 0.5606101, 0.8280
 current = true
 script = ExtResource("4_8uepj")
 
-[node name="Node3D" type="Node3D" parent="Camera3D" unique_id=1562709368]
-transform = Transform3D(0.9705234, 0, -0.24100734, -0.19957332, 0.56061023, -0.80367094, 0.13511114, 0.82808, 0.54408526, -1.4600211, 0.54384804, -4.1095834)
-script = ExtResource("4_4g2gj")
-
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1057294711]
 transform = Transform3D(1, 0, 0, 0, 0.9920928, 0.12550639, 0, -0.12550639, 0.9920928, 0, 0, 0)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="DirectionalLight3D" unique_id=1169744624]
 transform = Transform3D(-0.9955274, 0.023526443, -0.091496825, -0.011856978, 0.92972356, 0.3680678, 0.093726076, 0.3675064, -0.92528623, 0, 0.8245085, -6.517508)
+
+[node name="Node3D" type="Node3D" parent="." unique_id=1562709368]
+script = ExtResource("4_4g2gj")

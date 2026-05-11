@@ -22,6 +22,8 @@ config/icon="res://icon.svg"
 [autoload]
 
 WorldManager="*uid://btp6jhmww68jk"
+GlobalFlags="*uid://dyeb18k1rbopy"
+SCPB_Server="*uid://c5g28vhppeiso"
 
 [display]
 

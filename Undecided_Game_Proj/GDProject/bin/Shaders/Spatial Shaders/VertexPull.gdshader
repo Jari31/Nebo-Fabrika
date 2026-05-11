@@ -1,6 +1,6 @@
 shader_type spatial;
 
-render_mode cull_disabled;  //depth_test_disabled;//unshaded
+//render_mode wireframe;// cull_disabled;  //depth_test_disabled;//unshaded
 
 uniform sampler2D IndexTexture   : filter_nearest;
 uniform sampler2D VertexTexture  : filter_nearest;
@@ -85,7 +85,7 @@ vec3 sampleTex_triplanar(vec3 WorldPosition, vec3 Normals, float TextureScale, f
 
 void vertex()
 {
-	float ScaleOffset = 0.1f;
+	float ScaleOffset = 0.1;
 	float so = 0.000001f;
 	//POINT_SIZE = 10.0f;
 	ivec2 IndiceIndex = ivec2(VERTEX_ID % GridSizeIndex, VERTEX_ID/GridSizeIndex); 
@@ -106,20 +106,20 @@ void vertex()
 	float MaterialID = 0.0f;//VERTEX.w;
 	G_MaterialID = MaterialID;
 	
+	//Color = NORMAL * 0.5 + 0.5;
 	ROUGHNESS = 1.0;
+	NORMAL = sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 1, G_MaterialID, 1u);
 }
 
 void fragment() {
-	vec3 WorldSpaceNormal = sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 1, G_MaterialID, 1u);
 	//vec3 TangentSpaceNormal = normalize(transpose(G_TBN) * WorldSpaceNormal);
-	
 	Color = mix(sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 0.5, G_MaterialID, 0u), 
 				sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 2, G_MaterialID, 0u), 0.5);
 	//if (dot(TangentSpaceNormal, vec3(0.0, 0.0, 0.0)) < 0.0) {
 	//	TangentSpaceNormal = TangentSpaceNormal;
 	//}
 	
-	//NORMAL = vec4(VIEW_MATRIX * vec4(WorldSpaceNormal, 0.0)).xyz;
+	
 	//Color = vec3(0.1, 0.1, 0.1);
 	
     ALBEDO = Color;

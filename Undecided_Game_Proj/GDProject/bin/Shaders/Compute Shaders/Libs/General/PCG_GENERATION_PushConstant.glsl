@@ -8,14 +8,16 @@ layout(push_constant) uniform PushConstants
 
     uint  Dense_TotalNodes;
     uint  SEED;
-    float SVO_VoxelSize;
-    uint SVO_BufferSize;
+    float VoxelSize;
+    uint LOD_Index;
 
     uint HASH_SIZE;
     uint GridSize;
-    uint pad2;
+    float IndexCoefficient;
     uint pad3;
     
     ivec4 dCHUNK_SIZE;
     ivec4 dVOXELS_PER_CHUNK;
+
+    ivec4 VertexOffsetLoD;
 };

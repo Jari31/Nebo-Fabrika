@@ -28,14 +28,20 @@ layout(local_size_x = WORKGROUP_SIZE_X, local_size_y = WORKGROUP_SIZE_Y, local_s
 
 
 #define BOUNDARY_GENERATION_PASS 4206967
+bool GENERATE_BOUNDARIES = true;
 
 ivec3 CHUNK_SIZE = ivec3(dCHUNK_SIZE);
 ivec3 VOXELS_PER_CHUNK = ivec3(dVOXELS_PER_CHUNK);
+
+vec3 NodeMin = vec3(0);
+vec3 NodeMax = vec3(0);
 
 float MAT_ID = 0.0;
 float SIZE_OFFSET = 1.0;
 
 bool INDEX_PASS = true;
+
+uint StorageOffset = 0;
 
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/DualContouring_Math.glsl"
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/MortonCurve.glsl"
@@ -46,6 +52,7 @@ int FlattenCoordinates(ivec3 Coordinates)
     uint pGridSize = GridSize;
     if(Coordinates.x < 0 || Coordinates.y < 0 || Coordinates.z < 0) return -1; 
     if(Coordinates.x >= GridSize || Coordinates.y >= GridSize || Coordinates.z >= GridSize) return -1;
+    //else if(GENERATE_BOUNDARIES) if(Coordinates.x >= GridSize - 1 || Coordinates.y >= GridSize - 1 || Coordinates.z >= GridSize - 1) return  -1;
 
     int flat_coords = int(Coordinates.x + (Coordinates.y * pGridSize) + (Coordinates.z * pGridSize * pGridSize));
     
@@ -57,7 +64,7 @@ float GetCornerDensities(vec3 f_point)
     ivec3 point = ivec3(round(f_point));
 
     int flat_coords = FlattenCoordinates(point);
-    if(flat_coords == -1) return 1e-6;
+    if(flat_coords == -1 && GENERATE_BOUNDARIES) return 1e-6;
     //else if(flat_coords == -1) return 1e-6;
 
     return VoxelData[flat_coords].density;   
@@ -91,7 +98,7 @@ ivec2 GetFlattenedCoordinateIndex(ivec3 index)
 
 vec4 GetCellVertex(ivec3 index, bool get_from_buffer_b)
 {
-    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index);
+    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + StorageOffset;
     if(flat_coords_xy.x == -1)
         return vec4(-1.0, -1.0, -1.0, -1.0);
     vec4 Vertex = (get_from_buffer_b == true) ? imageLoad(VertexTexture_B, flat_coords_xy) : imageLoad(VertexTexture, flat_coords_xy);
@@ -102,7 +109,7 @@ vec4 GetCellVertex(ivec3 index, bool get_from_buffer_b)
 
 void SetCellVertex(ivec3 index, vec4 pos, bool set_to_buffer_b)
 {
-    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index);
+    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + StorageOffset;
     if(flat_coords_xy.x == -1)
         return;
      
@@ -112,7 +119,7 @@ void SetCellVertex(ivec3 index, vec4 pos, bool set_to_buffer_b)
 
 vec3 GetCellNormal(ivec3 index)
 {
-    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index);
+    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + StorageOffset;
     if(flat_coords_xy.x == -1)
         return vec3(-2.0, -2.0, -2.0);
 
@@ -146,14 +153,6 @@ vec3 GetAverageNeighborPos(ivec3 base_pos, bool get_from_buffer_b)
     return (vert_sum_count > 0) ? neighbor_pos_sum / vert_sum_count : (GetCellVertex(base_pos, get_from_buffer_b).xyz);
 }
 
-/*
-void store_index(uint flat_idx, uint vertex_val) {
-    int x = int(flat_idx % uint(dVOXELS_PER_CHUNK.w));
-    int y = int(flat_idx / uint(dVOXELS_PER_CHUNK.w));
-    imageStore(IndexTexture, ivec2(x, y), vec4(float(vertex_val), 0, 0, 0));
-}
-*/
-
 void StoreIndices(int V0, int V1, int V2, int V3)
 {
     if(V0 < 0 || V1 < 0 || V2 < 0 || V3 < 0){
@@ -161,7 +160,7 @@ void StoreIndices(int V0, int V1, int V2, int V3)
         return;
     }
     
-    uint AtomicIndex = atomicAdd(AtomicCounter2, 6);
+    uint AtomicIndex = atomicAdd(AtomicCounter2, 6) + ((StorageOffset > 0) ? uint(ceil(float(StorageOffset) * IndexCoefficient)) : 0u);
     
     store_index(AtomicIndex + 0u, V0);
     store_index(AtomicIndex + 1u, V1);
@@ -172,12 +171,34 @@ void StoreIndices(int V0, int V1, int V2, int V3)
     store_index(AtomicIndex + 5u, V3);
 }
 
+vec3 CalculateSobelNormals(vec3 f_point)
+{
+    ivec3 point = ivec3(round(f_point));
+    vec3 Normals = vec3(0);
+
+    for(int x = -1; x <= 1; x++){
+        for(int y = -1; y <= 1; y++){
+            for(int z = -1; z <= 1; z++){
+                float d = GetCornerDensities(point + ivec3(x, y, z)); 
+
+                int weight = (x == 0 ? 2 : 1) * (y == 0 ? 2 : 1) * (z == 0 ? 2 : 1);
+
+                Normals.x += float(x) * float(weight) * d;
+                Normals.y += float(y) * float(weight) * d;
+                Normals.z += float(z) * float(weight) * d;
+            }
+        }
+    }
+
+    return normalize(Normals);
+}
+
 float CalculateCentralDifference(float center_density, float f_point_axis, float point_axis, int di0, int di1)
 {
     float n;
 
-    float d0 = (di0 != 1) ? VoxelData[di0].density : 0.0;
-    float d1 = (di1 != 1) ? VoxelData[di1].density : 0.0;
+    float d0 = (di0 != -1) ? VoxelData[di0].density : 0.0;
+    float d1 = (di1 != -1) ? VoxelData[di1].density : 0.0;
 
     if(di0 != -1 && di1 != -1)
     {
@@ -219,10 +240,9 @@ vec3 CalculateNormals(vec3 f_point)
 
     float Length = length(Normal); 
     if(Length > 0.001f){
-        //Normal /= vec3(2.0, 2.0, 2.0);
         return Normal;
     }
-    return vec3(center_density, center_density, center_density);
+    return vec3(0, 0, 0);
 }
 
 float CalculateTrilinearNormals(vec3 point)
@@ -238,17 +258,7 @@ float CalculateTrilinearNormals(vec3 point)
     float d101 = GetCornerDensities(base_p + ivec3(1,0,1));
     float d011 = GetCornerDensities(base_p + ivec3(0,1,1));
     float d111 = GetCornerDensities(base_p + ivec3(1,1,1));
-    
-    /*
-    float d000 = VoxelData[FlattenCoordinates(base_p + ivec3(0,0,0))].density;
-    float d100 = VoxelData[FlattenCoordinates(base_p + ivec3(1,0,0))].density;
-    float d010 = VoxelData[FlattenCoordinates(base_p + ivec3(0,1,0))].density;
-    float d110 = VoxelData[FlattenCoordinates(base_p + ivec3(1,1,0))].density;
-    float d001 = VoxelData[FlattenCoordinates(base_p + ivec3(0,0,1))].density;
-    float d101 = VoxelData[FlattenCoordinates(base_p + ivec3(1,0,1))].density;
-    float d011 = VoxelData[FlattenCoordinates(base_p + ivec3(0,1,1))].density;
-    float d111 = VoxelData[FlattenCoordinates(base_p + ivec3(1,1,1))].density;
-    */
+
     float ip_x0 = mix(d000, d100, frac_pos.x); // ip_x = interpolated point x
     float ip_x1 = mix(d010, d110, frac_pos.x);
     float ip_x2 = mix(d001, d101, frac_pos.x);
@@ -260,7 +270,7 @@ float CalculateTrilinearNormals(vec3 point)
 
 vec3 CalculateNormalGradient(vec3 point)
 {
-    float SizeOffset = 1;
+    float SizeOffset = VoxelSize;
     vec3 gradient;
 
     gradient.x = (CalculateTrilinearNormals(point + vec3(SizeOffset,0,0)) - CalculateTrilinearNormals(point - vec3(SizeOffset,0,0))) / (2.0*SizeOffset);
@@ -277,21 +287,197 @@ bool OutOfBoundsCheck(vec3 point)
     return false;
 }
 
-/*
-carbon-copy of the sparse solver in some parts, but it's like different in such tiny ways, 
-that separating parts of it into its own compute shader will take more work than just copy pasting parts after modifying it
-*/
+vec3 SolveCholeskyQEF(vec3 IntersectionNormals[12], vec3 IntersectionPoints[12], 
+                vec3 Centroid, uint EdgeMask, vec3 AverageNormals)
+{
+    mat3 ATA = mat3(0.0);
+    vec3 ATb = vec3(0.0);
+
+    float p_count = 0;
+
+    float n_divergence = 0;
+
+    for(int i = 0; i < 12; i++)
+    {
+        if((EdgeMask & (1u << i)) == 0u) continue;
+
+        n_divergence += (1.0 - dot(AverageNormals, IntersectionNormals[i]));
+
+        p_count++;
+    }
+
+    if(p_count < 2) return Centroid;
+
+    for(int e = 0; e < 12; e++) {
+        if((EdgeMask & (1u << e)) == 0u) continue;
+        vec3 n = IntersectionNormals[e];
+        vec3 p = IntersectionPoints[e];
+        
+        ATA[0][0] += n.x * n.x;
+        ATA[0][1] += n.x * n.y;
+        ATA[0][2] += n.x * n.z;
+
+        ATA[1][0] += n.y * n.x;
+        ATA[1][1] += n.y * n.y;
+        ATA[1][2] += n.y * n.z;
+
+        ATA[2][0] += n.z * n.x;
+        ATA[2][1] += n.z * n.y;
+        ATA[2][2] += n.z * n.z;
+        
+        ATb += n * dot(n, p);
+    }
+
+    float Lambda = 0.0001;
+
+    vec3 Bias = Centroid;
+    ATA[0][0] += Lambda;
+    ATA[1][1] += Lambda;
+    ATA[2][2] += Lambda;
+    ATb += Bias * Lambda;
+    
+    if(determinant(ATA) < 1e-8) return Centroid;
+
+    vec3 result;
+    float L11 = sqrt(ATA[0][0]);
+    float L21 = ATA[1][0] / L11;
+    float L31 = ATA[2][0] / L11;
+
+    if(L11 < 0 || L21 < 0 || L31 < 0) return Centroid;
+
+    float L22 = sqrt(ATA[1][1] - L21 * L21);
+    float L32 = 1/L22 * (ATA[2][1] - L31 * L21);
+    
+    float L33 = sqrt(ATA[2][2] - (L31 * L31 + L32 * L32));
+
+    vec3 forward_subs;
+    forward_subs.x = ATb.x / L11;
+    forward_subs.y = (ATb.y - (L21 * forward_subs.x)) / L22;
+    forward_subs.z = (ATb.z - (L31 * forward_subs.x + L32 * forward_subs.y)) / L33;
+    
+    // backward substitution
+    result.z = forward_subs.z / L33;
+    result.y = (forward_subs.y - (L32 * result.z)) / L22;
+    result.x = (forward_subs.x - (L21 * result.y + L31 * result.z)) / L11;
+
+    if(length(result - Centroid) > 2)
+        return Centroid;
+
+    //if(isinf(result.x) || isinf(result.y) || isinf(result.z)) return Centroid;
+
+    float StabilityThreshold = 0.2;
+    float t = clamp(n_divergence / StabilityThreshold, 0.0, 1.0);
+
+    return mix(result, Centroid, t);
+}
+
+vec3 SolveQEF(vec3 IntersectionNormals[12], vec3 IntersectionPoints[12], // broken
+                vec3 Centroid, uint EdgeMask, vec3 AverageNormals)
+{
+    mat3 ATA = mat3(0.0);
+    vec3 ATb = vec3(0.0);
+
+    float n_divergence = 0.0f;
+    float p_spread = 0.0f;
+    float p_count = 0;
+
+    vec3 p_sum = vec3(0.0);
+    for(int i = 0; i < 12; i++)
+    {
+        vec3 p = IntersectionPoints[i];
+        
+        p_sum += p;
+        p_count++;
+    }
+
+    if(p_count < 2) return Centroid;
+
+    vec3 p_center = p_sum / p_count;
+    n_divergence = clamp(n_divergence / p_count, 0.0f, 1.0f);
+
+    float total_weight = 0.0f;
+
+    for(int e = 0; e < 12; e++) {
+        if((EdgeMask & (1u << e)) == 0u) continue;
+        vec3 n = IntersectionNormals[e];
+        vec3 p = IntersectionPoints[e];
+
+        float dist_center = length(p - p_center);
+        float weight = exp(-dist_center * dist_center / 0.1); // sort of like GRB
+        weight *= (1.0 + n_divergence);
+        
+        ATA[0][0] += n.x * n.x * weight;
+        ATA[0][1] += n.x * n.y * weight;
+        ATA[0][2] += n.x * n.z * weight;
+
+        ATA[1][0] += n.y * n.x * weight;
+        ATA[1][1] += n.y * n.y * weight;
+        ATA[1][2] += n.y * n.z * weight;
+
+        ATA[2][0] += n.z * n.x * weight;
+        ATA[2][1] += n.z * n.y * weight;
+        ATA[2][2] += n.z * n.z * weight;
+        
+        ATb += n * dot(n, p) * weight;
+        
+        p_spread += dist_center;
+        total_weight += weight;
+    }
+
+    if(total_weight < 1e-6)
+        return Centroid;
+
+    p_spread = clamp(p_spread / p_count, 0.0, 1.0);
+
+    // system check to make sure the normals aren't poisoned. the damn vertices be flying to meet artemis 2
+    float Lambda = 0.001;
+    float det = determinant(ATA);
+    float trace = ATA[0][0] + ATA[1][1] + ATA[2][2];
+    
+    float strength = pow(trace, 3);
+    float stability = abs(det) / (strength + 1e-6);
+
+    if(stability < 0.01)
+        Lambda = Lambda + (1e-4 - stability) * 2.0f;
+    
+    float t = stability * (1.0 - n_divergence) * (1.0 - p_spread);
+    t = clamp(t, 0.0, 1.0);
+
+    vec3 Bias = Centroid;
+    ATA[0][0] += Lambda;
+    ATA[1][1] += Lambda;
+    ATA[2][2] += Lambda;
+    ATb += Bias * Lambda;  // bias toward centroid to make it less erratic. too much and you get surface nets. a very expensive one at that
+
+    float det_regularized = determinant(ATA);
+    if(abs(det_regularized) > 1e-4) {
+        vec3 result;
+        result.x = determinant(mat3(ATb, ATA[1], ATA[2])) / det_regularized;
+        result.y = determinant(mat3(ATA[0], ATb, ATA[2])) / det_regularized;
+        result.z = determinant(mat3(ATA[0], ATA[1], ATb)) / det_regularized;
+
+        result = mix(Centroid, result, t);
+
+        if(length(result - Centroid) > 2)
+            return Centroid;
+
+        return result;
+    }
+    return Centroid;
+}
 
 void main() 
 {
     uint TotalNodes = Dense_TotalNodes - 1;
-    { uvec3 Index = gl_GlobalInvocationID.xyz; if(Index.x > GridSize || Index.y > GridSize || Index.z > GridSize) return; }
+    //{ uvec3 Index = gl_GlobalInvocationID.xyz; if(Index.x > GridSize || Index.y > GridSize || Index.z > GridSize) return; }
     
     float SizeOffset = 1;
     SIZE_OFFSET = SizeOffset;
     float CellSize   = 1;
 
-    if(PassOffset == 0 || PassOffset == BOUNDARY_GENERATION_PASS)
+    StorageOffset = (VertexOffsetLoD.w > 0) ? VertexOffsets[VertexOffsetLoD.w] : 0;
+
+    if(PassOffset == 0)
     {
         INDEX_PASS = false;
         int i_Index = int(FlattenCoordinates(ivec3(gl_GlobalInvocationID.xyz)));
@@ -300,20 +486,18 @@ void main()
 
         uvec3 InvocationID = gl_GlobalInvocationID.xyz;
 
-        Node_VertexIndex[Index] = -1;
+        Node_VertexIndex[Index] = -1; 
         Node_EdgeMask[Index]    = 0;
-        
-        //if(Index > TotalNodes) return;
 
-        vec3 NodeMin = vec3(InvocationID) * SizeOffset;
-        vec3 NodeMax =  vec3(InvocationID + 1) * SizeOffset;
+        NodeMin = vec3(InvocationID) * SizeOffset;
+        NodeMax =  vec3(InvocationID + 1) * SizeOffset;
 
         ivec3 ivec3_NodeMin = ivec3(round(NodeMin));
 
         // edge configuration
         vec3 Corners[8];
 
-        //if(PassNum == 2)
+        /*if(PassNum > 1)
         {
         Corners[0] = ivec3_NodeMin + vec3(0, 0, 0);
         Corners[1] = ivec3_NodeMin + vec3(1, 0, 0);
@@ -324,18 +508,17 @@ void main()
         Corners[6] = ivec3_NodeMin + vec3(0, 1, 1);
         Corners[7] = ivec3_NodeMin + vec3(1, 1, 1);
         }
-        //else
+        else*/
         {
-        //Corners[0] = ivec3_NodeMin + vec3(-SizeOffset, -SizeOffset, -SizeOffset);
-        //Corners[1] = ivec3_NodeMin + vec3(0,          -SizeOffset, -SizeOffset);
-        //Corners[2] = ivec3_NodeMin + vec3(-SizeOffset, 0,           -SizeOffset);
-       // Corners[3] = ivec3_NodeMin + vec3(0,          0,           -SizeOffset);
-        //Corners[4] = ivec3_NodeMin + vec3(-SizeOffset, -SizeOffset, 0         );
-        //Corners[5] = ivec3_NodeMin + vec3(0,          -SizeOffset, 0         );
-       //Corners[6] = ivec3_NodeMin + vec3(-SizeOffset, 0,           0         );
-       // Corners[7] = ivec3_NodeMin;
+        Corners[0] = ivec3_NodeMin + vec3(-SizeOffset, -SizeOffset, -SizeOffset);
+        Corners[1] = ivec3_NodeMin + vec3(0,          -SizeOffset, -SizeOffset);
+        Corners[2] = ivec3_NodeMin + vec3(-SizeOffset, 0,           -SizeOffset);
+        Corners[3] = ivec3_NodeMin + vec3(0,          0,           -SizeOffset);
+        Corners[4] = ivec3_NodeMin + vec3(-SizeOffset, -SizeOffset, 0         );
+        Corners[5] = ivec3_NodeMin + vec3(0,          -SizeOffset, 0         );
+        Corners[6] = ivec3_NodeMin + vec3(-SizeOffset, 0,           0         );
+        Corners[7] = ivec3_NodeMin;
         }
-
 
         float CornerDensities[8];
         CornerDensities[0] = GetCornerDensities(Corners[0]);
@@ -372,9 +555,11 @@ void main()
         vec3 Normals = vec3(0.0);
         
         int IntersectionCount = 0;
+        float IntersectionWeight = 0.0f;
         vec3 IntersectionSum = vec3(0.0);
         vec3 IntersectionNormals[12];
         vec3 IntersectionPoints[12];
+        float IntersectionSigns[12];
 
         uvec3 DEBUG_intersect_centroid = uvec3(0.0f);
 
@@ -389,46 +574,34 @@ void main()
             if(d0 * d1 < 0.0)
             {
                 float denom = d1 - d0;
-                //if (abs(denom) < 1e-6) continue;
-                float t = -d0 / denom;
-                //if(abs(t) < 0.00001) continue;
-                clamp(t, 0.00001, 1 - 0.00001);
+                float t = 0;
+                if(denom != 0.001)
+                t = -d0 / denom;
 
-                vec3 n;
+                vec3 n = vec3(0.0);
                 vec3 p;
 
                 vec3 CornerA = Corners[i0];
                 vec3 CornerB = Corners[i1];
 
-                //bool CornerA_OutOfBounds = OutOfBoundsCheck(CornerA);
-                //bool CornerB_OutOfBounds = OutOfBoundsCheck(CornerB);
-                
-                // normals
-                /*
-                if(!CornerA_OutOfBounds && !CornerB_OutOfBounds)
-                {
-                    n = mix(CalculateNormals(CornerA), CalculateNormals(CornerB), t);
-                }
-                else if(!CornerA_OutOfBounds && CornerB_OutOfBounds)
-                {
-                    n = CalculateNormals(CornerA);
-                }
-                else if(CornerA_OutOfBounds && !CornerB_OutOfBounds)
-                    n = CalculateNormals(CornerB);
-                else continue;*/
-
-
                 p = mix(CornerA, CornerB, t);
 
-
-                //vec3 p = mix(Corners[i0], Corners[i1], t);
-                n = mix(CalculateNormals(Corners[i0]), CalculateNormals(Corners[i1]), t);
-                //vec3 n = CalculateNormalGradient(p);
+                //vec3 CornerA_n = CalculateNormals(CornerA);
+                //vec3 CornerB_n = CalculateNormals(CornerB);
                 
-                Normals += n; 
+                n = CalculateNormals(p);
 
-                IntersectionSum += p;
+                if(isnan(n.x) || isnan(n.y) || isnan(n.z) || isinf(n.x) || isinf(n.y) || isinf(n.z))
+                    continue;
+
+                Normals += n;
+
+                float weight = dot(n, n); // magnitude weight
+
+                IntersectionSum += p * weight;
                 IntersectionCount++;
+                IntersectionWeight += weight;
+
                 IntersectionNormals[k] = n;
                 IntersectionPoints[k] = p;
 
@@ -436,72 +609,37 @@ void main()
                 if(d0 > d1)
                     EdgeMask |= (1u << (k + 12));
 
-                DEBUG_intersect_centroid = uvec3(t * 255.0, 0, 0);
-
-                //if(t < 0.01 || t > 0.99) {
-                //    DEBUG_intersect_centroid = uvec3(1, 0, 0);
-                //}
+                //DEBUG_intersect_centroid = uvec3(t * 255.0, 0, 0);
             }
         }
         
         vec3 Centroid = vec3(0.0, 0.0, 0.0); // or as an alias, position
 
-        // reminder: NodeMin = vec3(di_x, di_y, di_z) * SizeOffset;
         if(IntersectionCount > 0)
         {
-            Centroid = IntersectionSum / float(IntersectionCount);
+            if(IntersectionWeight > 0.0f)
+            Centroid = IntersectionSum / float(IntersectionWeight);
+            else
+            Centroid = (NodeMin + NodeMax) / 2;
+
             Normals /= IntersectionCount;
+            if(isnan(Normals.x) || isnan(Normals.y) || isnan(Normals.z))
+                return;
+            Normals = normalize(Normals);
             
-            if(PassOffset != BOUNDARY_GENERATION_PASS){
             const uint MAX_ITERATIONS = PassNum;
 
-            mat3 ATA = mat3(0.0);
-            vec3 ATb = vec3(0.0);
-
-            for(int e = 0; e < 12; e++) {
-                if((EdgeMask & (1u << e)) == 0u) continue;
-                vec3 n = IntersectionNormals[e];
-                vec3 p = IntersectionPoints[e];
-                
-                ATA[0][0] += n.x * n.x;
-                ATA[0][1] += n.x * n.y;
-                ATA[0][2] += n.x * n.z;
-
-                ATA[1][0] += n.y * n.x;
-                ATA[1][1] += n.y * n.y;
-                ATA[1][2] += n.y * n.z;
-
-                ATA[2][0] += n.z * n.x;
-                ATA[2][1] += n.z * n.y;
-                ATA[2][2] += n.z * n.z;
-                
-                ATb += n * dot(n, p);
-            }
-
-            vec3 Bias = Centroid;//(NodeMin + NodeMax) * 0.5;
-            float Lambda = 0.06;
-            ATA[0][0] += Lambda;
-            ATA[1][1] += Lambda;
-            ATA[2][2] += Lambda;
-            ATb += Bias * Lambda;  // bias toward centroid
-
-            float det = determinant(ATA);
-            if(abs(det) > 1e-6) {
-                vec3 result;
-                result.x = determinant(mat3(ATb, ATA[1], ATA[2])) / det;
-                result.y = determinant(mat3(ATA[0], ATb, ATA[2])) / det;
-                result.z = determinant(mat3(ATA[0], ATA[1], ATb)) / det;
-                Centroid = result;
-            }}
-
-            //Centroid = clamp(Centroid, NodeMin, NodeMax);
-
+            if(GridSize > 32)
+                Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
+            
             //uint DEBUG_color_packed = 0; DEBUG_color_packed |= ((DEBUG_intersect_centroid.x << 16u) | (DEBUG_intersect_centroid.y << 8u) | DEBUG_intersect_centroid.z);
 
             vec4 Normal = vec4(Normals, 1.0);
             MAT_ID = VoxelData[Index].matID;
-            vec4 Vertex = vec4(Centroid, MAT_ID);
-            uint VertexIndex = store_vertices_and_normals(Vertex, Normal);
+            
+            vec4 Vertex = vec4(Centroid * VoxelSize, MAT_ID);
+            
+            uint VertexIndex = store_vertices_and_normals(Vertex, Normal, Index);
 
             Node_VertexIndex[Index] = int(VertexIndex);
             Node_EdgeMask[Index]    = EdgeMask;
@@ -512,9 +650,10 @@ void main()
     int i_Index = int(FlattenCoordinates(ivec3(gl_GlobalInvocationID.xyz)));
     if(i_Index == -1) return;
     uint Index = FlattenCoordinates(ivec3(gl_GlobalInvocationID.xyz));
-    /*
+    
     if(PassOffset < 2147483647)
     {
+        if(PassOffset <= 3){
         if(PassOffset == 3)
         {
             vec4 Vertex = GetCellVertex(ivec3(gl_GlobalInvocationID.xyz), true);
@@ -523,7 +662,7 @@ void main()
             return;
         }
         
-        float SmoothFactor = 0;
+        float SmoothFactor = 0.5;
 
         bool GetFromBufferB = (PassOffset == 1) ? false : true;
         bool TransferToBufferB = (GetFromBufferB) ? true : false;
@@ -548,8 +687,9 @@ void main()
         ParentVertexPos.xyz += ParentVertexNormal * Projection * SmoothFactor;
         SetCellVertex(ivec3(gl_GlobalInvocationID.xyz), ParentVertexPos, TransferToBufferB);
         return;
+        }
     }
-    */
+    
     //if(Index > TotalNodes) return;
 
     int MC_x = int(gl_GlobalInvocationID.x); // mc = minimum corner

@@ -1,0 +1,11 @@
+class_name GenerationThreadWrapper
+## A class that handles generation pooling by acting as a wrapper for the pooling system.
+
+var Func: Callable
+var CallbackFunc: Callable
+var Priority: int
+
+func Init(p_Func: Callable, p_CallbackFunc: Callable, p_Priority: int):
+	CallbackFunc = p_CallbackFunc
+	Func = p_Func
+	Priority = p_Priority
