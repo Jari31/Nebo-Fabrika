@@ -83,20 +83,18 @@ void store_index(uint flat_idx, int vertex_val) {
 uint store_vertices_and_normals(vec4 Centroid, vec4 Normals) {
     uint VertexIndex = atomicAdd(VertexCounter, 1) + StorageOffset;
 
+    if(WriteToTexturesInFirstPass > 0){
     int VertexIndex_x = int(VertexIndex % dCHUNK_SIZE.w);
     int VertexIndex_y = int(VertexIndex / dCHUNK_SIZE.w);
-    //Vertices[VertexIndex] = vec4(Centroid, 0.0) + vec4(gl_GlobalInvocationID.xyz, 0.0);
 
-    //float SIZE_THRESHOLD = 255 - 1; // the hashing algorithm in the simplex implementation overflows int32 above a certain coordinate. not sure what exactly, but this magic number works for it, so yeah.
-                                    // get rid of it if you need to do anything above 64^3 * 4^3. but first replace the hashing algorithm
-    //if(Centroid.x > SIZE_THRESHOLD || Centroid.y > SIZE_THRESHOLD || Centroid.z > SIZE_THRESHOLD) return;
-    //vec4 GlobalPos = (Centroid + vec4(gl_GlobalInvocationID.xyz, 0.0));
-    vec4 VertexData = vec4(Centroid.x, Centroid.y, Centroid.z, Centroid.w);
-    vec4 NormalData  = vec4(Normals.x, Normals.y, Normals.z, Normals.w);
-
-    imageStore(VertexTexture, ivec2(VertexIndex_x, VertexIndex_y), VertexData);
-    imageStore(NormalTexture, ivec2(VertexIndex_x, VertexIndex_y), NormalData);
-
+    imageStore(VertexTexture, ivec2(VertexIndex_x, VertexIndex_y), Centroid);
+    imageStore(NormalTexture, ivec2(VertexIndex_x, VertexIndex_y), Normals);
+    }
+    else
+    {
+    VertexBuffer[VertexIndex] = Centroid;
+    NormalBuffer[VertexIndex] = Normals;
+    }
     return VertexIndex;
 }
 #endif

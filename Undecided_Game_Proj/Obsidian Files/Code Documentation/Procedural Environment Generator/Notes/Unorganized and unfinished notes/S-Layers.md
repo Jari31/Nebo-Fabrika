@@ -15,9 +15,9 @@ Though, we do still simulate Sn < S7 layers only if there's an observer to witne
 
 When Sn is simulated, it calls an event. Any children listening to that event adjust their positions as such. Then their children do the same, and so on. But Sn > S4 do not do this often - only simulation layers with a valid centroid do it. As the children of S7 are independent of centroids, as they look at particles near them, not an authoritative centroid. This is a dynamic rule.
 
-Or, to put it simply, S7 is a box that contains other boxes (S6, S5). As such, when you move the box, the rest of the boxes move naturally. Sn < S4 are a bunch of boxes too, but they are attracted by a magnet in the middle. The magnet moves from time to time, so we need to be reminded when the magnet moves, and where.
+Or, to put it simply, S7 is a box that contains other boxes (S6, S5). As such, when you move the box, the rest of the boxes move naturally. Sn < S5 are a bunch of boxes too, but they are attracted by a magnet in the middle. The magnet moves from time to time, so we need to be reminded when the magnet moves, and where.
 
-But maybe you want to add more boxes into S6 and S5. Then you tell S6 that you are opening the box and adding more (unions between super galaxy clusters). Then S6 tells S5 that there's more boxes coming. Then S5 tells... that only happens in events; not heartbeats. Sn < S4 does it per heartbeat of every Sn.
+But maybe you want to add more boxes into S6 and S5. Then you tell S6 that you are opening the box and adding more (unions between super galaxy clusters). Then S6 tells S5 that there's more boxes coming. Then S5 tells... that only happens in events; not heartbeats. Sn < S5 does it per heartbeat of every Sn.
 
 ### Light lies
 In the real world, light lies to us, as certain stars that burn bright in the sky are in reality dead. As light does not travel instantly - it still takes time.
@@ -52,3 +52,17 @@ Say our S3 coordinate is INT_MAX, INT_MAX, INT_MAX. Instead of incrementing it f
 ($i$ is always started at S2 in the case of geometry layers.)
 
 This same philosophy is repeated for S layers, allowing for practically infinite worlds. This shares the same philosophy with Sparse Voxel Octrees, but in this case it's reversed. We build top down, like a fractal.
+
+---
+# The natural extension
+To an extension of this idea, we can simulate economics, politics, mechanics and biology.
+
+Each run in their own worlds, but can query eachother, and are influenced by eachother. Ships move as particles, creatures too. Policies are made from the influence of said particles.
+
+At S2${geo}$, the terrain is a cloud of probabilities. It only collapses when you query it. At S3${geo}$, and above, it is the same. Which means, we *do not need* geometry to simulate it. We only need points and averages, and queries.
+
+An animal can evolve offscreen, simply by using coarser and coarser resolutions the further way it is - it gives it traits you wouldn't expect from a computer simulation, as the errors build up oddities you'd see in biology. It is the survival of the fit enough, much like reality. The animals physically evolve, much like Spore, but accounted into the environment.
+
+Economics fail because of a weird error that made two particles declare war on each other. Ships disappear, factories fail. 
+
+Intention is art. Intentionally failing is an art of its own.

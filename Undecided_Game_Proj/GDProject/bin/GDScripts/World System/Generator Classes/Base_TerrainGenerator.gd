@@ -1,15 +1,16 @@
 extends UB_CelestialGenerationBody
-class_name Base_Planet
-## An extension of its parent class, Base_Planet serves as the base for planet driven systems.
+class_name Base_TerrainGenerator
+## An extension of its parent class, Base_TerrainGenerator serves as the base for planet driven systems.
 ## It assumes more things, making it less flexible.
 ##
-## Don't let the planet name fool you. It can act as multitudes of different generation bodies.
-## Such as asteroids.
+## DO NOT use this to define planets with this. 
+## This is simply a wrapper around its base class.
+## i.e., this generates terrain by looking at parameters you feed it.
+## This is to keep things modular, so this class can be used to generate practically anything.
+## Define planets as particles.
 
 @export var NormalTextureArray_RID: RID = RID()
 @export var AlbedoTextureArray_RID: RID = RID()
-
-var TestArray = []
 
 @export var AutoClearRIDs: bool = true
 
@@ -36,7 +37,6 @@ func InitPlanet(InitTextures: bool, InitMesh: bool, AlbedoMaps: Array, NormalMap
 	if(InitTextures):
 		AlbedoTextureArray_RID = RenderingServer.texture_2d_layered_create(_load_image_array(AlbedoMaps), RenderingServer.TEXTURE_LAYERED_2D_ARRAY)
 		NormalTextureArray_RID = RenderingServer.texture_2d_layered_create(_load_image_array(NormalMaps), RenderingServer.TEXTURE_LAYERED_2D_ARRAY)
-		TestArray.append(str(AlbedoTextureArray_RID))
 		
 	RenderingServer.material_set_param(Material_RID, "AlbedoTextures", AlbedoTextureArray_RID)
 	RenderingServer.material_set_param(Material_RID, "NormalTextures", NormalTextureArray_RID)
@@ -47,9 +47,10 @@ func DeInitPlanet():
 	if(AlbedoTextureArray_RID.is_valid()):
 		RenderingServer.free_rid(AlbedoTextureArray_RID)
 
-func GenerateTerrain(LoD0: int = 0, LoD1: int = 0, LoD2: int = 0):
-	PassParamsToPCG(true, UseLocalRenderingDevice, VOXELS_PER_CHUNK, CHUNK_SIZE)
+func GenerateTerrain(VertexOffset: Vector3i, LoD: int = 0):
+	var VOffsetBuffer = PackedInt32Array([VertexOffset.x, VertexOffset.y, VertexOffset.z])
+	PassParamsToPCG(true, UseLocalRenderingDevice, VOXELS_PER_CHUNK, CHUNK_SIZE, VOffsetBuffer, LoD)
 	
-func _notification(what):
-	if(what == NOTIFICATION_PREDELETE and AutoClearRIDs):
+func _exit_tree() -> void:
+	if(AutoClearRIDs):
 		DeInitPlanet()

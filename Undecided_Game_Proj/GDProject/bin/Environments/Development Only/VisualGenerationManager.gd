@@ -16,8 +16,8 @@ var SaveShadersTo = "res://bin/Environments/Development Only/comp_shaders.dat"
 var AlbedoMaps = ["res://bin/Environments/Development Only/Textures/rock_face_03_diff_1k.jpg", "res://bin/Environments/Development Only/Textures/rock_face_03_diff_1k.jpg"]
 var NormalMaps = ["res://bin/Environments/Development Only/Textures/rock_face_03_nor_gl_1k.png", "res://bin/Environments/Development Only/Textures/rock_face_03_nor_gl_1k.png"]
 
-var Active_Visual_Thread: Base_Planet
-var Passive_Visual_Thread: Base_Planet
+var Active_Visual_Thread: Base_TerrainGenerator
+var Passive_Visual_Thread: Base_TerrainGenerator
 
 @onready var PlanetManager = Base_PlanetManager.new()
 
@@ -25,7 +25,7 @@ var Camera: Camera3D
 var TerrainProbe: Base_TerrainProbe
 	
 func _ready():
-	Camera = self.get_parent()
+	Camera = self.get_parent().get_child(0)
 	if(CompileShaders):
 		PlanetManager.CompileAndSaveShader(UberShaderLocation, CompileUShaderTo,
 										MesherShaderLocation, CompileMesherShaderTo, 
@@ -33,14 +33,15 @@ func _ready():
 										SaveShadersTo)
 	else:
 		PlanetManager.LoadComputeShaders(SaveShadersTo)
-	
-	Active_Visual_Thread = PlanetManager.InitPlanet(64, true, true, AlbedoMaps, NormalMaps)
-	Passive_Visual_Thread = PlanetManager.InitPlanet(32, true)
+		
+	Active_Visual_Thread = PlanetManager.InitPlanet(32, true, true, AlbedoMaps, NormalMaps)
+	#Passive_Visual_Thread = PlanetManager.InitPlanet(32, true, true, AlbedoMaps, NormalMaps)
 	add_child(Active_Visual_Thread)
+	#add_child(Passive_Visual_Thread)
 	
-	TerrainProbe = Base_TerrainProbe.new()
-	TerrainProbe.InitDDA(PlanetManager.GenerateTerrain, Camera)
-	TerrainProbe.InitMeshRingBuffer(ResourceLoader.load(VertexPullShaderLocation))
+	#TerrainProbe = Base_TerrainProbe.new()
+	print(Camera)
+	#TerrainProbe.InitDDA(PlanetManager.GenerateTerrain, Camera)
 	
 func _result(_x):
 	print("Terrain generated.")
@@ -49,9 +50,13 @@ func _input(event):
 	if event is InputEventKey and event.is_pressed():
 		if event.keycode == KEY_F1:
 			var Wrapper = GenerationThreadWrapper.new()
-			Wrapper.Init(Active_Visual_Thread.GenerateTerrain, _result, 0)
+			Wrapper.Init(Active_Visual_Thread.GenerateTerrain, _result, 0, Vector3i(0, 0, 0))
 			SCPB_Server.PriorityTaskSubmit(Wrapper)
 			print(PlanetManager.AlbedoTextureArray_RID)
+			#_dispatch_generation()
+	if event is InputEventKey and event.is_pressed():
+		if event.keycode == KEY_BACKSPACE:
+			Active_Visual_Thread.PrintGeneratedData()
 
 var _terrain_probe_occupied: bool = false
 
@@ -66,4 +71,4 @@ func _dispatch_generation():
 		_terrain_probe_occupied = true
 		
 func _process(_delta: float):
-	_dispatch_generation()
+	pass#_dispatch_generation()

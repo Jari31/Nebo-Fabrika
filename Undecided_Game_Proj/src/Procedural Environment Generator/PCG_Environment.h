@@ -89,10 +89,9 @@ namespace godot {
                 uint32_t PassNum = 0;
                 uint32_t PassOffset = 0;
                 uint32_t PassStage = 0;
+                uint32_t WriteToTexturesInFirstPass = 1;
 
-                uint32_t  FLAG = 0;
                 uint32_t  Dense_TotalNodes = 16777216;
-
                 uint32_t SEED = 0;
                 float    VoxelSize = 1.0;
                 uint32_t LOD_Index = 0;
@@ -100,7 +99,7 @@ namespace godot {
                 uint32_t HashSize = 0;
                 uint32_t GridSize = 256;
                 float IndexCoefficient = 3.8;
-                uint32_t pad3;
+                uint32_t ThreadAllocationPerTriangle = 64;
 
                 Vector4i CHUNK_SIZE = Vector4i(4, 4, 4, 256);
 
@@ -129,9 +128,16 @@ namespace godot {
                 Vector2 UV[];
             };
 
-            struct DC_IndexBuffer
+            struct Triangle
             {
-                uint32_t Indices[];
+                Vector4 OriginNormal;
+
+                uint32_t VIndex[4];
+                float EdgeBudget[4];
+            };
+            struct DC_TriangleBuffer
+            {
+                Triangle Indices[];
             };
 
             struct DC_VertexIndexBuffer
@@ -147,6 +153,14 @@ namespace godot {
             struct DC_VertexOffsetBuffer
             {
                 uint32_t VertexOffset[];
+            };
+
+            struct DC_Indirect_Dispatch_Buffer
+            {
+                uint32_t x;
+                uint32_t y;
+                uint32_t z;
+                uint32_t w;
             };
 
             struct PCGPipelines 
@@ -170,7 +184,7 @@ namespace godot {
                 RID dc_vertex_buffer       = RID();
                 RID dc_normal_buffer       = RID();
                 RID dc_UV_buffer           = RID();
-                RID dc_index_buffer        = RID();
+                RID dc_triangle_buffer        = RID();
                 RID dc_vertex_index_buffer = RID();
                 RID dc_edge_mask_buffer    = RID();
                 RID dc_vertex_offset_buffer= RID();
@@ -179,6 +193,8 @@ namespace godot {
                 RID dc_normal_texture      = RID();
                 RID dc_uv_texture          = RID();
                 RID dc_index_texture       = RID();
+
+                RID dc_indirect_dispatch_list_buffer = RID();
 
                 RID rendering_server_vertex_texture = RID();
                 RID rendering_server_index_texture  = RID();
@@ -232,14 +248,7 @@ namespace godot {
                                     const PackedInt32Array VERTEX_LOCATION_OFFSET,
                                     const uint32_t LEVEL_OF_DETAIL);
 
-            void LoopGenerationForEntity(const uint8_t FOR_EACH_ENTITY, PackedInt32Array CURRENT_ENTITY_LOCATION, PackedInt32Array CURRENT_PLANET_LOCATION,
-                                        const uint8_t &PASS_AMOUNT,
-                                        uint32Vec3 &VecObj, PackedInt32Array VOXELS_PER_CHUNK, PackedInt32Array CHUNK_SIZE,
-                                        int64_t &ComputeList);
-            
-           //void RegisterLocalLocation(PackedInt32Array LocalEntityLocation, uint32_t &Stage);
-
-            Ref<RDUniform> RefWrapper(int Binding, RID Buffer_RID, RenderingDevice::UniformType UniformType);
+            static Ref<RDUniform> RefWrapper(int Binding, RID Buffer_RID, RenderingDevice::UniformType UniformType);
 
             void Density_Generation_Pass(int64_t &ComputeList);        
 
@@ -249,7 +258,7 @@ namespace godot {
                             const bool SKIP_PRE_INIT_TEXTURES,
                             const PackedInt32Array CHUNK_SIZE, const PackedInt32Array VOXELS_PER_CHUNK,
                             RID MeshInstance, const float INDEX_COEFFICIENT,
-                            PackedInt32Array VertexLoDOffsets);
+                            PackedInt32Array VertexLoDOffsets, const int32_t &RefMeshVertexCount);
 
             void SetCompiledShaders(RID PlanetShader, RID DualContouring_Dense, Ref<Shader> VertexPull_Shader);
 

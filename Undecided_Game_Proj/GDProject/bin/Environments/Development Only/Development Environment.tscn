@@ -31,17 +31,19 @@ skeleton = NodePath("../..")
 [node name="OmniLight3D" type="OmniLight3D" parent="World" unique_id=811915896]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.0001106, -1.9422299)
 
-[node name="Camera3D" type="Camera3D" parent="." unique_id=187127318]
-transform = Transform3D(0.9705233, -0.19957331, 0.13511114, 0, 0.5606101, 0.8280799, -0.2410073, -0.8036708, 0.5440852, 2.0807724, 3.098176, 2.3211622)
-current = true
-script = ExtResource("4_8uepj")
-
-[node name="Node3D" type="Node3D" parent="Camera3D" unique_id=1562709368]
-transform = Transform3D(0.9705234, 0, -0.24100734, -0.19957332, 0.56061023, -0.80367094, 0.13511114, 0.82808, 0.54408526, -1.4600211, 0.54384804, -4.1095834)
-script = ExtResource("4_4g2gj")
-
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1057294711]
 transform = Transform3D(1, 0, 0, 0, 0.9920928, 0.12550639, 0, -0.12550639, 0.9920928, 0, 0, 0)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="DirectionalLight3D" unique_id=1169744624]
 transform = Transform3D(-0.9955274, 0.023526443, -0.091496825, -0.011856978, 0.92972356, 0.3680678, 0.093726076, 0.3675064, -0.92528623, 0, 0.8245085, -6.517508)
+
+[node name="Player" type="Node3D" parent="." unique_id=991513629]
+
+[node name="Camera3D" type="Camera3D" parent="Player" unique_id=187127318]
+transform = Transform3D(0.9705233, -0.19957331, 0.13511114, 0, 0.5606101, 0.8280799, -0.2410073, -0.8036708, 0.5440852, 2.0807724, 3.098176, 2.3211622)
+current = true
+script = ExtResource("4_8uepj")
+
+[node name="VisualGeometryGenerator" type="Node3D" parent="Player" unique_id=1562709368]
+transform = Transform3D(1.0000002, -7.450581e-09, -7.450581e-09, -1.4901161e-08, 1.0000002, 0, 7.450581e-09, 0, 1.0000004, -4.7683716e-07, -9.536743e-07, -7.1525574e-07)
+script = ExtResource("4_4g2gj")

@@ -10,14 +10,14 @@ float pointProcess(vec3 inPoint, vec3 gradientHash){
     float t0_sq = dot(inPoint, inPoint);
     float t0 = RadiusFalloff - t0_sq;
     if (t0 > 0.0) {
-        float t0_pow3 = t0 * t0 * t0; 
+        float t0_pow3 = t0 * t0 * t0 * t0; 
         return n += t0_pow3 * dot(gradientHash, inPoint);
     }
     return n;
 }
 
 // Based off of Open Simplex 2 - https://github.com/KdotJPG/OpenSimplex2
-float simplex3D(vec3 inVector, const uint SEED){
+float simplex3D(vec3 inVector, const uint SEED){ // shitty. I don't know what I was doing while implementing this dog shit
     const float skewFactor = 0.333333333;
     const float unskewingFactor = 0.166666666;
 

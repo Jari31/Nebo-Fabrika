@@ -20,8 +20,8 @@ var BaseIndexCoefficient: float = WorldManager.BaseTerrainThreadCoefficient
 
 func InitPlanet(VoxelsPerChunk: int, InitMesh: bool, 
 				InitTextures: bool = false, AlbedoMaps = [], 
-				NormalMaps = []) -> Base_Planet:
-	var Planet = Base_Planet.new()
+				NormalMaps = []) -> Base_TerrainGenerator:
+	var Planet = Base_TerrainGenerator.new()
 	Planet.AutoClearRIDs = false
 	Planet.LoadedShaders = LoadedShaders
 	Planet.UberShaderName = UberShaderName
@@ -80,8 +80,8 @@ func LoadComputeShaders(SaveShadersTo: String):
 	#AlbedoMaps = p_AlbedoMaps
 	#NormalMaps = p_NormalMaps
 	
-func GenerateTerrain(Planet: Base_Planet):
-	Planet.GenerateTerrain()
+func GenerateTerrain(Planet: Base_TerrainGenerator):
+	Planet.GenerateTerrain(Vector3(0, 0, 0))
 	return true
 
 func _notification(what: int) -> void:

@@ -116,7 +116,7 @@ void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you
     if(gl_GlobalInvocationID.x >= GridSize - 1 || gl_GlobalInvocationID.y >= GridSize - 1 || gl_GlobalInvocationID.z >= GridSize - 1)
     {
         VoxelData[Index].matID = 0;
-        VoxelData[Index].density = 1e-6;
+        VoxelData[Index].density = 0;
         return;
     }
     
@@ -125,7 +125,7 @@ void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you
     const float NoiseScale3 = 0.005;
     const float SDF_ApproxDistance = 2.0;
 
-    //float noiseLayer1 = simplex3D(VoxelLocalCoordinates * NoiseScale1, SEED);
+    float noiseLayer1 = simplex3D(VoxelLocalCoordinates * NoiseScale1, SEED);
     //float noiseLayer2 = -simplex3D(VoxelLocalCoordinates * NoiseScale2, SEED);
     float noiseLayer3 = -simplex3D(VoxelLocalCoordinates * NoiseScale3, SEED + 1);
 
@@ -135,10 +135,10 @@ void Stage_GenerateLeaves(){ // only thing you need to actually touch unless you
     
     //float Sphere2 = sdSphere(vec3(gl_GlobalInvocationID) - vec3(GridSize/2 + 20), 147.5);
     //float Sphere = sdSphere(VoxelLocalCoordinates - vec3(TRUTH_GRID_SIZE/2), TRUTH_GRID_SIZE/2);
-    //float Box = sdBox(VoxelLocalCoordinates.xyz, vec3(TRUTH_GRID_SIZE/2));
+    float Box = sdBox(VoxelLocalCoordinates.xyz, vec3(TRUTH_GRID_SIZE/2));
     //float Torus = sdTorus(VoxelLocalCoordinates - vec3(TRUTH_GRID_SIZE/2), vec2(TRUTH_GRID_SIZE/4, 50));
 
-    float FinalDensity = noiseLayer3;//max(noiseLayer3, noiseLayer1), Box;//Box;//max(Sphere, Box);//-Sphere;//
+    float FinalDensity = max(max(noiseLayer3, noiseLayer1), -Box);//Box;//max(Sphere, Box);//-Sphere;//
     if(abs(FinalDensity) < 1e-6)
     {
         FinalDensity = (FinalDensity >= 0) ? 1e-6 : -1e-6;

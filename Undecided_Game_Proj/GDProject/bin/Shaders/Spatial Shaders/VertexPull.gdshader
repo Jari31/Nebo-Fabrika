@@ -87,9 +87,11 @@ void vertex()
 {
 	float ScaleOffset = 0.1;
 	float so = 0.000001f;
-	//POINT_SIZE = 10.0f;
+	POINT_SIZE = 10.0f;
 	ivec2 IndiceIndex = ivec2(VERTEX_ID % GridSizeIndex, VERTEX_ID/GridSizeIndex); 
-	int VertexPointer = int(round(texelFetch(IndexTexture, IndiceIndex, 0).r));
+	float tf = texelFetch(IndexTexture, IndiceIndex, 0).r;
+	if(!isnan(tf)){
+	int VertexPointer = int(round(tf));
 	
 	int vx = VertexPointer % GridSizeVertex;//VERTEX_ID % GridSizeVertex;//
 	int vy = VertexPointer / GridSizeVertex;//VERTEX_ID / GridSizeVertex;//
@@ -108,13 +110,14 @@ void vertex()
 	
 	//Color = NORMAL * 0.5 + 0.5;
 	ROUGHNESS = 1.0;
-	NORMAL = sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 1, G_MaterialID, 1u);
+	//NORMAL = sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 1, G_MaterialID, 1u);
+	}
 }
 
 void fragment() {
 	//vec3 TangentSpaceNormal = normalize(transpose(G_TBN) * WorldSpaceNormal);
-	Color = mix(sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 0.5, G_MaterialID, 0u), 
-				sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 2, G_MaterialID, 0u), 0.5);
+	//Color = mix(sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 0.5, G_MaterialID, 0u), 
+	//			sampleTex_triplanar(G_WorldCoordinates, G_WorldNormals, 2, G_MaterialID, 0u), 0.5);
 	//if (dot(TangentSpaceNormal, vec3(0.0, 0.0, 0.0)) < 0.0) {
 	//	TangentSpaceNormal = TangentSpaceNormal;
 	//}

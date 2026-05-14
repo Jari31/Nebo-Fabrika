@@ -7,9 +7,9 @@ class_name UB_CelestialGenerationBody
 ##
 ## *It is not suited for bodies like stars, black-holes, etc. 
 
-## Name of the uber shader to look up in the ShaderLocation dict.
 @export var UseLocalRenderingDevice: bool = false
 
+## Name of the uber shader to look up in the ShaderLocation dict.
 @export var UberShaderName: String
 
 ## Compiled location of the uber shader.
@@ -28,12 +28,20 @@ class_name UB_CelestialGenerationBody
 ## The (max) vertex count of the terrain. 
 @export var MeshVertexCount: int = 1294914
 
+## The (max) verex count for the implicit triangles. 
+## (Don't worry about what that means. Just know: 
+## reference mesh lower than terrain mesh.)
+@export var RefMeshVertexCount: int = 8000
+
 ## Dictates how many GPU threads to launchs to emit triangles through index buffers. 
 ## If too low, there will be holes in the mesh. 
 ## If too high, then the performance cost will skyrocket. 
 ## Must be multiples of three, as per triangle primitives.
-@export var ThreadCount: int = 33294915
-
+@export var ThreadCount: int = 33294915 # I have no clue why this specific number works for 256^3 noise grids (matching indices doesn't result in enough threads)
+										# and I don't have the time to look at the engine code for Godot to figure it out
+										# Matching the index count should work, since thread spawns -> takes index -> spawns vertex
+										# BUT GUESS WHAT? IT DOESN'T. BECAUSE WHY SHOULD THING WORK LOGICALLY? FUCK MY CHUD LIF-
+										# The rendering device API is quite inconsistent, so this makes sense. Try setting a texture RID in another function. See where that gets you.
 ## Coefficient for index textures. Each triangle has 3 indices. 
 ## As the mesh becomes complex, the index count must increase to match it as well. 
 ## Again, too low and you will see holes in the mesh.
@@ -111,7 +119,7 @@ func _init_mesher_textures():
 func ResetChunkSize():
 	initCompute(Seed, MeshVertexCount, true,
 				CHUNK_SIZE, VOXELS_PER_CHUNK, MeshInstance.get_instance(), IndexCoefficient, 
-				WorldManager.VisualThreadLoDVertexCount)
+				WorldManager.VisualThreadLoDVertexCount, RefMeshVertexCount)
 
 func InitMesher(InitMesh: bool):
 	RenderingDevice_Local = RenderingServer.get_rendering_device()
@@ -148,14 +156,15 @@ func InitMesher(InitMesh: bool):
 		for LoD in LoDCounts:
 			MeshVertexCount += LoD * LoDVertexCounts[i]
 			i += 1
-	SQRT_MAX_VERTS = ceil(sqrt(MeshVertexCount))
+	SQRT_MAX_VERTS = ceil(sqrt(MeshVertexCount)) # because we can't use buffers. We gotta use textures because idk, ask Godot devs, man.
+												 # something something Mobile and Browser support. A vertex texture is something I thought I'd never see    
 	IDX_SQRT_MAX_VERTS = ceil(sqrt(MeshVertexCount * IndexCoefficient))
 	
 	_init_mesher_textures()
 	SetRIDStorage(VertexTexture, NormalTexture, VertexTexture_B, IndexTexture)
 	initCompute(Seed, MeshVertexCount, true,
 				CHUNK_SIZE, VOXELS_PER_CHUNK, MeshInstance.get_instance(), 
-				IndexCoefficient, WorldManager.VisualThreadLoDVertexCount)
+				IndexCoefficient, WorldManager.VisualThreadLoDVertexCount, RefMeshVertexCount)
 
 func InitVertexPullShader():
 	Material_RID = RenderingServer.material_create()

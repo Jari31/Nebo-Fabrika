@@ -1,2 +1,2 @@
 warning: unused manifest key: package.crate-type
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s

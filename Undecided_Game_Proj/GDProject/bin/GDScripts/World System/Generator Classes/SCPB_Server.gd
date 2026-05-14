@@ -43,6 +43,6 @@ func _server_loop():
 	_mutex.unlock()
 	
 	if Job != null:
-		var result = Job.Func.call()
+		var result = Job.Func.call() if Job.Params == null else Job.Func.call(Job.Params)
 		if Job.CallbackFunc.is_valid(): 
 			Job.CallbackFunc.call_deferred(result)

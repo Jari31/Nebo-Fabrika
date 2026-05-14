@@ -43,9 +43,12 @@ bool INDEX_PASS = true;
 
 uint StorageOffset = 0;
 
+uint WindingOrder = 0;
+
+uint VertexAllocationForEdges = 4;
+
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/DualContouring_Math.glsl"
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/MortonCurve.glsl"
-
 
 int FlattenCoordinates(ivec3 Coordinates)
 {
@@ -64,7 +67,7 @@ float GetCornerDensities(vec3 f_point)
     ivec3 point = ivec3(round(f_point));
 
     int flat_coords = FlattenCoordinates(point);
-    if(flat_coords == -1 && GENERATE_BOUNDARIES) return 1e-6;
+    if(flat_coords == -1 && GENERATE_BOUNDARIES) return 0;
     //else if(flat_coords == -1) return 1e-6;
 
     return VoxelData[flat_coords].density;   
@@ -98,7 +101,7 @@ ivec2 GetFlattenedCoordinateIndex(ivec3 index)
 
 vec4 GetCellVertex(ivec3 index, bool get_from_buffer_b)
 {
-    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + StorageOffset;
+    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + ivec2(StorageOffset, StorageOffset);
     if(flat_coords_xy.x == -1)
         return vec4(-1.0, -1.0, -1.0, -1.0);
     vec4 Vertex = (get_from_buffer_b == true) ? imageLoad(VertexTexture_B, flat_coords_xy) : imageLoad(VertexTexture, flat_coords_xy);
@@ -109,7 +112,7 @@ vec4 GetCellVertex(ivec3 index, bool get_from_buffer_b)
 
 void SetCellVertex(ivec3 index, vec4 pos, bool set_to_buffer_b)
 {
-    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + StorageOffset;
+    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + ivec2(StorageOffset, StorageOffset);
     if(flat_coords_xy.x == -1)
         return;
      
@@ -119,7 +122,7 @@ void SetCellVertex(ivec3 index, vec4 pos, bool set_to_buffer_b)
 
 vec3 GetCellNormal(ivec3 index)
 {
-    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + StorageOffset;
+    ivec2 flat_coords_xy = GetFlattenedCoordinateIndex(index) + ivec2(StorageOffset, StorageOffset);
     if(flat_coords_xy.x == -1)
         return vec3(-2.0, -2.0, -2.0);
 
@@ -153,6 +156,19 @@ vec3 GetAverageNeighborPos(ivec3 base_pos, bool get_from_buffer_b)
     return (vert_sum_count > 0) ? neighbor_pos_sum / vert_sum_count : (GetCellVertex(base_pos, get_from_buffer_b).xyz);
 }
 
+uvec3 CalculateTriEdgeBudget(vec4 P0, vec4 P1, vec4 P2, uint MaxEdgeThreadBudget)
+{
+    Triangle tri;
+    
+    tri.EdgeBudget[0] = clamp(distance(P0, P1) / VertexIntervalOnEdge, 1, MaxEdgeThreadBudget);
+    
+    tri.EdgeBudget[1] = clamp(distance(P1, P2) / VertexIntervalOnEdge, 1, MaxEdgeThreadBudget);
+
+    tri.EdgeBudget[2] = clamp(distance(P2, P0) / VertexIntervalOnEdge, 1, MaxEdgeThreadBudget);
+
+    return uvec3(tri.EdgeBudget[0], tri.EdgeBudget[1], tri.EdgeBudget[2]);
+}
+
 void StoreIndices(int V0, int V1, int V2, int V3)
 {
     if(V0 < 0 || V1 < 0 || V2 < 0 || V3 < 0){
@@ -160,8 +176,9 @@ void StoreIndices(int V0, int V1, int V2, int V3)
         return;
     }
     
-    uint AtomicIndex = atomicAdd(AtomicCounter2, 6) + ((StorageOffset > 0) ? uint(ceil(float(StorageOffset) * IndexCoefficient)) : 0u);
-    
+    if(WriteToTexturesInFirstPass != 0){
+    uint AtomicIndex = atomicAdd(AtomicCounter2, 6);
+
     store_index(AtomicIndex + 0u, V0);
     store_index(AtomicIndex + 1u, V1);
     store_index(AtomicIndex + 2u, V2);
@@ -169,6 +186,50 @@ void StoreIndices(int V0, int V1, int V2, int V3)
     store_index(AtomicIndex + 3u, V0);
     store_index(AtomicIndex + 4u, V2);
     store_index(AtomicIndex + 5u, V3);
+    return;
+    }
+
+    uint AtomicIndex = atomicAdd(AtomicCounter, 2);
+
+    uint MaxEdgeThreadBudget = ThreadAllocationPerTriangle / VertexAllocationForEdges;
+    vec4 P0 = VertexBuffer[V0];
+    vec4 P1 = VertexBuffer[V1];
+    vec4 P2 = VertexBuffer[V2];
+    vec4 P3 = VertexBuffer[V3];
+
+    Triangle tri;
+    tri.VIndex[0] = V0;
+    tri.VIndex[1] = V1;
+    tri.VIndex[2] = V2;
+
+    uvec3 TempTri = CalculateTriEdgeBudget(P0, P1, P2, MaxEdgeThreadBudget);
+
+    tri.EdgeBudget[0] = TempTri.x;
+    tri.EdgeBudget[1] = TempTri.y;
+    tri.EdgeBudget[2] = TempTri.z;
+
+    vec3 U = P1.xyz - P0.xyz;
+    vec3 V = P2.xyz - P0.xyz;
+
+    tri.OriginNormal = vec4(cross(U, V), 0);
+
+    TriangleBuffer[AtomicIndex] = tri;
+
+    tri.VIndex[1] = V2;
+    tri.VIndex[2] = V3; 
+
+    TempTri = CalculateTriEdgeBudget(P0, P2, P3, MaxEdgeThreadBudget);
+
+    tri.EdgeBudget[0] = TempTri.x; // p2, p0
+    tri.EdgeBudget[1] = TempTri.y;
+    tri.EdgeBudget[2] = TempTri.z;
+
+    U = P0.xyz - P2.xyz;
+    V = P3.xyz - P2.xyz;
+
+    tri.OriginNormal = vec4(cross(U, V), 0);
+
+    TriangleBuffer[AtomicIndex + 1u] = tri;
 }
 
 vec3 CalculateSobelNormals(vec3 f_point)
@@ -308,25 +369,31 @@ vec3 SolveCholeskyQEF(vec3 IntersectionNormals[12], vec3 IntersectionPoints[12],
 
     if(p_count < 2) return Centroid;
 
-    for(int e = 0; e < 12; e++) {
-        if((EdgeMask & (1u << e)) == 0u) continue;
-        vec3 n = IntersectionNormals[e];
-        vec3 p = IntersectionPoints[e];
+    for(int i = 0; i < 12; i++)
+    {
+        if((EdgeMask & (1u << i)) == 0u) continue;
+        
+        vec3 n = IntersectionNormals[i];
+        vec3 p = IntersectionPoints[i];
+        
+        n_divergence += (1.0 - dot(AverageNormals, n));
+        p_count++;
         
         ATA[0][0] += n.x * n.x;
         ATA[0][1] += n.x * n.y;
         ATA[0][2] += n.x * n.z;
-
-        ATA[1][0] += n.y * n.x;
+        
         ATA[1][1] += n.y * n.y;
         ATA[1][2] += n.y * n.z;
-
-        ATA[2][0] += n.z * n.x;
-        ATA[2][1] += n.z * n.y;
+        
         ATA[2][2] += n.z * n.z;
         
         ATb += n * dot(n, p);
     }
+
+    ATA[1][0] = ATA[0][1];
+    ATA[2][0] = ATA[0][2];
+    ATA[2][1] = ATA[1][2];
 
     float Lambda = 0.0001;
 
@@ -343,10 +410,10 @@ vec3 SolveCholeskyQEF(vec3 IntersectionNormals[12], vec3 IntersectionPoints[12],
     float L21 = ATA[1][0] / L11;
     float L31 = ATA[2][0] / L11;
 
-    if(L11 < 0 || L21 < 0 || L31 < 0) return Centroid;
+    //if(L11 < 0 || L21 < 0 || L31 < 0) return Centroid;
 
     float L22 = sqrt(ATA[1][1] - L21 * L21);
-    float L32 = 1/L22 * (ATA[2][1] - L31 * L21);
+    float L32 = (ATA[2][1] - L31 * L21)/L22;
     
     float L33 = sqrt(ATA[2][2] - (L31 * L31 + L32 * L32));
 
@@ -368,102 +435,45 @@ vec3 SolveCholeskyQEF(vec3 IntersectionNormals[12], vec3 IntersectionPoints[12],
     float StabilityThreshold = 0.2;
     float t = clamp(n_divergence / StabilityThreshold, 0.0, 1.0);
 
-    return mix(result, Centroid, t);
+    return result;
 }
 
-vec3 SolveQEF(vec3 IntersectionNormals[12], vec3 IntersectionPoints[12], // broken
-                vec3 Centroid, uint EdgeMask, vec3 AverageNormals)
+void SmoothVertexPositions()
 {
-    mat3 ATA = mat3(0.0);
-    vec3 ATb = vec3(0.0);
-
-    float n_divergence = 0.0f;
-    float p_spread = 0.0f;
-    float p_count = 0;
-
-    vec3 p_sum = vec3(0.0);
-    for(int i = 0; i < 12; i++)
-    {
-        vec3 p = IntersectionPoints[i];
+    if(PassOffset <= 3){
+        if(PassOffset == 3)
+        {
+            vec4 Vertex = GetCellVertex(ivec3(gl_GlobalInvocationID.xyz), true);
+            if(Vertex.w == -1) return;
+            SetCellVertex(ivec3(gl_GlobalInvocationID.xyz), Vertex, true);
+            return;
+        }
         
-        p_sum += p;
-        p_count++;
+        float SmoothFactor = 0.5;
+
+        bool GetFromBufferB = (PassOffset == 1) ? false : true;
+        bool TransferToBufferB = (GetFromBufferB) ? true : false;
+        
+        vec4 ParentVertexPos = GetCellVertex(ivec3(gl_GlobalInvocationID.xyz), GetFromBufferB);
+        if(ParentVertexPos.w == -1.0f)
+            return;
+        
+        vec3 ParentVertexNormal = GetCellNormal(ivec3(gl_GlobalInvocationID.xyz));
+        if(ParentVertexNormal.x == -2.0f)
+            return;
+        
+        vec3 AverageNeighborPos = GetAverageNeighborPos(ivec3(gl_GlobalInvocationID.xyz), GetFromBufferB);
+        if(AverageNeighborPos.x == -1.0f)
+            return;
+        vec3 AverageDirection = AverageNeighborPos - (ParentVertexPos.xyz);
+
+        float Projection = dot(AverageDirection, ParentVertexNormal);
+
+        SmoothFactor = min(0.1, max(SmoothFactor, abs(Projection) * 2.0));
+        
+        ParentVertexPos.xyz += ParentVertexNormal * Projection * SmoothFactor;
+        SetCellVertex(ivec3(gl_GlobalInvocationID.xyz), ParentVertexPos, TransferToBufferB);
     }
-
-    if(p_count < 2) return Centroid;
-
-    vec3 p_center = p_sum / p_count;
-    n_divergence = clamp(n_divergence / p_count, 0.0f, 1.0f);
-
-    float total_weight = 0.0f;
-
-    for(int e = 0; e < 12; e++) {
-        if((EdgeMask & (1u << e)) == 0u) continue;
-        vec3 n = IntersectionNormals[e];
-        vec3 p = IntersectionPoints[e];
-
-        float dist_center = length(p - p_center);
-        float weight = exp(-dist_center * dist_center / 0.1); // sort of like GRB
-        weight *= (1.0 + n_divergence);
-        
-        ATA[0][0] += n.x * n.x * weight;
-        ATA[0][1] += n.x * n.y * weight;
-        ATA[0][2] += n.x * n.z * weight;
-
-        ATA[1][0] += n.y * n.x * weight;
-        ATA[1][1] += n.y * n.y * weight;
-        ATA[1][2] += n.y * n.z * weight;
-
-        ATA[2][0] += n.z * n.x * weight;
-        ATA[2][1] += n.z * n.y * weight;
-        ATA[2][2] += n.z * n.z * weight;
-        
-        ATb += n * dot(n, p) * weight;
-        
-        p_spread += dist_center;
-        total_weight += weight;
-    }
-
-    if(total_weight < 1e-6)
-        return Centroid;
-
-    p_spread = clamp(p_spread / p_count, 0.0, 1.0);
-
-    // system check to make sure the normals aren't poisoned. the damn vertices be flying to meet artemis 2
-    float Lambda = 0.001;
-    float det = determinant(ATA);
-    float trace = ATA[0][0] + ATA[1][1] + ATA[2][2];
-    
-    float strength = pow(trace, 3);
-    float stability = abs(det) / (strength + 1e-6);
-
-    if(stability < 0.01)
-        Lambda = Lambda + (1e-4 - stability) * 2.0f;
-    
-    float t = stability * (1.0 - n_divergence) * (1.0 - p_spread);
-    t = clamp(t, 0.0, 1.0);
-
-    vec3 Bias = Centroid;
-    ATA[0][0] += Lambda;
-    ATA[1][1] += Lambda;
-    ATA[2][2] += Lambda;
-    ATb += Bias * Lambda;  // bias toward centroid to make it less erratic. too much and you get surface nets. a very expensive one at that
-
-    float det_regularized = determinant(ATA);
-    if(abs(det_regularized) > 1e-4) {
-        vec3 result;
-        result.x = determinant(mat3(ATb, ATA[1], ATA[2])) / det_regularized;
-        result.y = determinant(mat3(ATA[0], ATb, ATA[2])) / det_regularized;
-        result.z = determinant(mat3(ATA[0], ATA[1], ATb)) / det_regularized;
-
-        result = mix(Centroid, result, t);
-
-        if(length(result - Centroid) > 2)
-            return Centroid;
-
-        return result;
-    }
-    return Centroid;
 }
 
 void main() 
@@ -629,17 +639,17 @@ void main()
             
             const uint MAX_ITERATIONS = PassNum;
 
-            if(GridSize > 32)
-                Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
+            //if(GridSize > 32)
+                //Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
             
             //uint DEBUG_color_packed = 0; DEBUG_color_packed |= ((DEBUG_intersect_centroid.x << 16u) | (DEBUG_intersect_centroid.y << 8u) | DEBUG_intersect_centroid.z);
 
             vec4 Normal = vec4(Normals, 1.0);
             MAT_ID = VoxelData[Index].matID;
             
-            vec4 Vertex = vec4(Centroid * VoxelSize, MAT_ID);
+            vec4 Vertex = vec4(Centroid * VoxelSize, MAT_ID) + vec4(VertexOffsetLoD.xyz, 0);
             
-            uint VertexIndex = store_vertices_and_normals(Vertex, Normal, Index);
+            uint VertexIndex = store_vertices_and_normals(Vertex, Normal);
 
             Node_VertexIndex[Index] = int(VertexIndex);
             Node_EdgeMask[Index]    = EdgeMask;
@@ -649,49 +659,83 @@ void main()
     }
     int i_Index = int(FlattenCoordinates(ivec3(gl_GlobalInvocationID.xyz)));
     if(i_Index == -1) return;
-    uint Index = FlattenCoordinates(ivec3(gl_GlobalInvocationID.xyz));
+    uint Index = uint(i_Index * sign(i_Index));
     
+    // post processing
     if(PassOffset < 2147483647)
     {
-        if(PassOffset <= 3){
-        if(PassOffset == 3)
+        switch (PassOffset)
         {
-            vec4 Vertex = GetCellVertex(ivec3(gl_GlobalInvocationID.xyz), true);
-            if(Vertex.w == -1) return;
-            SetCellVertex(ivec3(gl_GlobalInvocationID.xyz), Vertex, true);
-            return;
+
+        default:
+            SmoothVertexPositions();
+        break;
+
+        case 4:
+            if(Index != 0)
+                return;
+            uint i = uint(ceil(((float(AtomicCounter / 2.0f) * float(ThreadAllocationPerTriangle)) / 512.0f)));
+            VertexCounter = 0;
+            
+            if(i <= 0 || isnan(i))
+                i = 1;
+
+            indirect_dispatch_params.x = 12; indirect_dispatch_params.y = 12; indirect_dispatch_params.z = 12;
+        break;
+
+        case 5:
+            atomicAdd(VertexCounter, indirect_dispatch_params.x);
+            Triangle OriginTriangle = TriangleBuffer[(Index > 0) ? Index / ThreadAllocationPerTriangle : 0];
+            uint LocalIndex = Index % ThreadAllocationPerTriangle;
+
+            vec3 Vertex = vec3(0,0,0);
+
+            vec4 P1 = VertexBuffer[OriginTriangle.VIndex[0]];
+            vec4 P2 = VertexBuffer[OriginTriangle.VIndex[1]];
+            vec4 P3 = VertexBuffer[OriginTriangle.VIndex[2]];
+
+            vec4 N1 = NormalBuffer[OriginTriangle.VIndex[0]];
+            vec4 N2 = NormalBuffer[OriginTriangle.VIndex[1]];
+            vec4 N3 = NormalBuffer[OriginTriangle.VIndex[2]];
+
+            if(LocalIndex % 3 == 0)
+            {
+                vec4 LocalVertexArray[] = vec4[](P1, P2, P3);
+
+                uint GlobalDistribution = ThreadAllocationPerTriangle / VertexAllocationForEdges;
+                uint OwnerEdge = LocalIndex / GlobalDistribution;
+                float LocalDistribution = OriginTriangle.EdgeBudget[OwnerEdge];
+
+                float Step = float(LocalIndex % uint(round(LocalDistribution)));
+            
+                vec3 StartingPoint = LocalVertexArray[OwnerEdge].xyz;
+                vec3 EndPoint = LocalVertexArray[(OwnerEdge == 2) ? OriginTriangle.VIndex[0] : OriginTriangle.VIndex[OwnerEdge + 1]].xyz;
+
+                float Length = distance(StartingPoint, EndPoint);
+                float Stride = Length / round(LocalDistribution);
+
+                //float t = (Step * VertexIntervalOnEdge) / Length;
+                float t = (Step * Stride + Stride) / Length;
+
+                Vertex = StartingPoint + t * (EndPoint - StartingPoint);
+            }
+            else
+            {
+                
+            }
+
+            //store_vertices_and_normals(vec4(Vertex, 1), vec4(1, 1, 1, 1));
+        break;
+
+        case 666:
+            //
+        break;
         }
-        
-        float SmoothFactor = 0.5;
 
-        bool GetFromBufferB = (PassOffset == 1) ? false : true;
-        bool TransferToBufferB = (GetFromBufferB) ? true : false;
-        
-        vec4 ParentVertexPos = GetCellVertex(ivec3(gl_GlobalInvocationID.xyz), GetFromBufferB);
-        if(ParentVertexPos.w == -1.0f)
-            return;
-        
-        vec3 ParentVertexNormal = GetCellNormal(ivec3(gl_GlobalInvocationID.xyz));
-        if(ParentVertexNormal.x == -2.0f)
-            return;
-        
-        vec3 AverageNeighborPos = GetAverageNeighborPos(ivec3(gl_GlobalInvocationID.xyz), GetFromBufferB);
-        if(AverageNeighborPos.x == -1.0f)
-            return;
-        vec3 AverageDirection = AverageNeighborPos - (ParentVertexPos.xyz);
-
-        float Projection = dot(AverageDirection, ParentVertexNormal);
-
-        SmoothFactor = min(0.1, max(SmoothFactor, abs(Projection) * 2.0));
-        
-        ParentVertexPos.xyz += ParentVertexNormal * Projection * SmoothFactor;
-        SetCellVertex(ivec3(gl_GlobalInvocationID.xyz), ParentVertexPos, TransferToBufferB);
         return;
-        }
     }
     
-    //if(Index > TotalNodes) return;
-
+    // traditional triangle emission 
     int MC_x = int(gl_GlobalInvocationID.x); // mc = minimum corner
     int MC_y = int(gl_GlobalInvocationID.y);
     int MC_z = int(gl_GlobalInvocationID.z);
@@ -724,10 +768,14 @@ void main()
         if(V2 > -1)
             V3 = GetCellIndex(MC_x - 0, MC_y + 0, MC_z - 1);
 
-        if((EdgeMask & (1u << (0 + 12))) != 0)
+        if((EdgeMask & (1u << (0 + 12))) != 0){
+            WindingOrder = 0;
             StoreIndices(V0, V1, V2, V3);
-        else
+        }
+        else{
+            WindingOrder = 1;
             StoreIndices(V0, V3, V2, V1);
+        }
     }
     V1 = -1, V2 = -1, V3 = -1;
     
@@ -741,10 +789,14 @@ void main()
         if(V2 > -1)
             V3 = GetCellIndex(MC_x - 1, MC_y + 0, MC_z + 0);
 
-        if((EdgeMask & (1u << (3 + 12))) != 0)
+        if((EdgeMask & (1u << (3 + 12))) != 0){
+            WindingOrder = 1;
             StoreIndices(V0, V3, V2, V1);
-        else
+        }
+        else{
+            WindingOrder = 0;
             StoreIndices(V0, V1, V2, V3);
+        }
     }
     V1 = -1, V2 = -1, V3 = -1;
     
@@ -758,9 +810,13 @@ void main()
         if(V2 > -1)
             V3 = GetCellIndex(MC_x - 0, MC_y - 1, MC_z - 0);
             
-        if((EdgeMask & (1u << (8 + 12))) != 0)
+        if((EdgeMask & (1u << (8 + 12))) != 0){
+            WindingOrder = 0;
             StoreIndices(V0, V1, V2, V3);
-        else
+        }
+        else{
+            WindingOrder = 1;
             StoreIndices(V0, V3, V2, V1);
+        }
     }
 }

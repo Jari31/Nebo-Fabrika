@@ -4,17 +4,17 @@ layout(push_constant) uniform PushConstants
     uint  PassNum;
     uint  PassOffset;
     uint  PassStage;
-    uint  FLAG;
+    uint  WriteToTexturesInFirstPass;
 
     uint  Dense_TotalNodes;
     uint  SEED;
     float VoxelSize;
     uint LOD_Index;
 
-    uint HASH_SIZE;
+    uint VertexIntervalOnEdge;
     uint GridSize;
     float IndexCoefficient;
-    uint pad3;
+    uint ThreadAllocationPerTriangle;
     
     ivec4 dCHUNK_SIZE;
     ivec4 dVOXELS_PER_CHUNK;
