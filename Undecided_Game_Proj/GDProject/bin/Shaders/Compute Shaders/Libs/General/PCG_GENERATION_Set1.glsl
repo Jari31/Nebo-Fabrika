@@ -5,6 +5,7 @@ struct VoxelDataArray
 {
     float matID;
     float density;
+    vec2 normals_packed_oct;
 };
 
 // --------------------------------------------------- buff

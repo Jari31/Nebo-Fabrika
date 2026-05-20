@@ -91,14 +91,12 @@ PCG_Environment::~PCG_Environment(){
     if(RenderingDevice_Local != nullptr)
         memdelete(RenderingDevice_Local);
 
-// --- Shaders ---
     SAFE_FREE_RID(RenderingDevice_Local, compiled_shaders.CompiledShader);
     SAFE_FREE_RID(RenderingDevice_Local, compiled_shaders.CompiledShader_DualContour_Dense);
-    // --- Pipelines ---
+
     SAFE_FREE_RID(RenderingDevice_Local, pipelines.density);
     SAFE_FREE_RID(RenderingDevice_Local, pipelines.dual_contour_dense);
 
-    // --- Storage ---
     SAFE_FREE_RID(RenderingDevice_Local, storage.voxel_output);
     SAFE_FREE_RID(RenderingDevice_Local, storage.uniform_buffer);
     SAFE_FREE_RID(RenderingDevice_Local, storage.uniform_set);
@@ -106,7 +104,6 @@ PCG_Environment::~PCG_Environment(){
     SAFE_FREE_RID(RenderingDevice_Local, storage.atomic_counter2);
     SAFE_FREE_RID(RenderingDevice_Local, storage.voxel_storage);
 
-    // --- Dual Contour Buffers ---
     SAFE_FREE_RID(RenderingDevice_Local, storage.dc_edge_mask_buffer);
     SAFE_FREE_RID(RenderingDevice_Local, storage.dc_normal_buffer);
     SAFE_FREE_RID(RenderingDevice_Local, storage.dc_UV_buffer);
@@ -122,7 +119,6 @@ PCG_Environment::~PCG_Environment(){
     SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_vertex_texture);
     SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_index_texture );
 
-    // --- Arrays ---
     for(int i = 0; i < 2; i++) {
         SAFE_FREE_RID(RenderingDevice_Local, storage.dc_dense_storage[i]);
     }
@@ -263,15 +259,15 @@ void PCG_Environment::DualContour_Generation_Pass(int64_t &ComputeList)
 
     uint32_t DispatchSize = ceil(G_GRID_SIZE / storage.WORKGROUP_SIZE_DUAL_CONTOUR); 
 
-    auto p_const_copy = [&]()
+    auto p_const_copy = [&](int64_t p_ComputeList)
     {
         memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-        RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+        RenderingDevice_Local->compute_list_set_push_constant(p_ComputeList, pushconst_buffer, pushconst_buffer.size());
     };
 
     auto pass = [&]()
     {
-        p_const_copy();
+        p_const_copy(ComputeList);
 
         RenderingDevice_Local->compute_list_dispatch(ComputeList, DispatchSize, DispatchSize, DispatchSize);
         RenderingDevice_Local->compute_list_add_barrier(ComputeList);
@@ -312,29 +308,34 @@ void PCG_Environment::DualContour_Generation_Pass(int64_t &ComputeList)
     if(!BasicPushConstant.WriteToTexturesInFirstPass) // dual contouring from implicit mesh
     {
         BasicPushConstant.PassOffset = 4; // looks at how many triangles there are and then indirectly dispatches a proportional amount of threads
-        p_const_copy();
+        p_const_copy(ComputeList);
         
         RenderingDevice_Local->compute_list_dispatch(ComputeList, 1, 1, 1);
         RenderingDevice_Local->compute_list_add_barrier(ComputeList);
-        /*
-        BasicPushConstant.PassOffset = 666;
-        p_const_copy();
-        RenderingDevice_Local->compute_list_dispatch(ComputeList, 1, 1, 1);
-        RenderingDevice_Local->compute_list_add_barrier(ComputeList);
-        */
+
         BasicPushConstant.PassOffset = 5;
         BasicPushConstant.WriteToTexturesInFirstPass = 1;
-        p_const_copy();
 
-        memcpy(pushconst_buffer.ptrw(), &BasicPushConstant, sizeof(PushConstant));
-        RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
+        p_const_copy(ComputeList);
 
-        //RenderingDevice_Local->compute_list_dispatch_indirect(ComputeList, storage.dc_indirect_dispatch_list_buffer, 0);
-        RenderingDevice_Local->compute_list_dispatch(ComputeList, 1, 1, 1);
-        RenderingDevice_Local->compute_list_add_barrier(ComputeList);
+        RenderingDevice_Local->compute_list_end();
+        
+
+        RenderingDevice_Local->buffer_copy(storage.dc_indirect_dispatch_list_buffer_b, storage.dc_indirect_dispatch_list_buffer, 0, 0, sizeof(DC_Indirect_Dispatch_Buffer));
+
+        int64_t ComputeList2 = RenderingDevice_Local->compute_list_begin();
+        RenderingDevice_Local->compute_list_bind_compute_pipeline(ComputeList2, pipelines.dual_contour_dense);
+        RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList2, storage.dc_dense_storage[0], 0);
+        RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList2, storage.dc_dense_storage[1], 1);
+
+        p_const_copy(ComputeList2);
+        
+        RenderingDevice_Local->compute_list_dispatch_indirect(ComputeList2, storage.dc_indirect_dispatch_list_buffer, 0);
+        //RenderingDevice_Local->compute_list_dispatch(ComputeList, 1, 1, 1);
+        RenderingDevice_Local->compute_list_add_barrier(ComputeList2);
 
         BasicPushConstant.WriteToTexturesInFirstPass = 0;
-        p_const_copy();
+        p_const_copy(ComputeList2);
     }
 }
 
@@ -409,6 +410,9 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
         int64_t size = static_cast<int64_t>(ceil(sizeof(BufferType) * count * multiplier));
         byteArray.resize(size);
 
+        uint8_t* dest = byteArray.ptrw();
+        memcpy(dest, &buffer_struct, sizeof(DC_Indirect_Dispatch_Buffer));
+
         return RenderingDevice_Local->storage_buffer_create(byteArray.size(), byteArray);
     };
 
@@ -473,6 +477,20 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     memcpy(dest, &DIDBuffer, sizeof(DC_Indirect_Dispatch_Buffer));
 
     storage.dc_indirect_dispatch_list_buffer = RenderingDevice_Local->storage_buffer_create(ByteArray.size(), ByteArray, RenderingDevice::STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT);
+    storage.dc_indirect_dispatch_list_buffer_b = RenderingDevice_Local->storage_buffer_create(ByteArray.size(), ByteArray, RenderingDevice::STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT);
+    }
+
+    {
+    DC_Params PBuffer;
+
+    PackedByteArray ByteArray;
+    int64_t Size = sizeof(DC_Params);
+    ByteArray.resize(Size);
+
+    uint8_t* dest = ByteArray.ptrw();
+    memcpy(dest, &PBuffer, sizeof(DC_Params));
+
+    storage.dc_uniform_parameter_buffer = RenderingDevice_Local->uniform_buffer_create(ByteArray.size(), ByteArray);
     }
     }
 
@@ -520,7 +538,8 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     Ref<RDUniform> DC_NormalBuffer_UniformRef     = RefWrapper(8, storage.dc_normal_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
     Ref<RDUniform> DC_IndexBuffer_UniformRef     = RefWrapper(9, storage.dc_triangle_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
 
-    Ref<RDUniform> DC_Indirect_Dispatch_Buffer_Uniform=RefWrapper(10, storage.dc_indirect_dispatch_list_buffer, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_Indirect_Dispatch_Buffer_Uniform=RefWrapper(10, storage.dc_indirect_dispatch_list_buffer_b, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_Parameter_Buffer_UniformRef = RefWrapper(11, storage.dc_uniform_parameter_buffer, RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
 
     TypedArray<Ref<RDUniform>> Voxel_Storage;
     Voxel_Storage.push_back(VoxelStorageBuffer_UniformRef);
@@ -539,6 +558,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     GeometryArray.push_back(DC_NormalBuffer_UniformRef);
     GeometryArray.push_back(DC_IndexBuffer_UniformRef);
     GeometryArray.push_back(DC_Indirect_Dispatch_Buffer_Uniform);
+    GeometryArray.push_back(DC_Parameter_Buffer_UniformRef);
     
     #ifndef PRODUCTION_BUILD
     if(G_DEBUG)
@@ -615,7 +635,7 @@ void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC
         BasicPushConstant.VertexOffsetLoD.y = VERTEX_LOCATION_OFFSET[1];
         BasicPushConstant.VertexOffsetLoD.z = VERTEX_LOCATION_OFFSET[2];
 
-        BasicPushConstant.WriteToTexturesInFirstPass = 0;
+        BasicPushConstant.WriteToTexturesInFirstPass = 1;
         
         RenderingDevice_Local->buffer_clear(storage.atomic_counter, 0, sizeof(AtomicBuffer));
         RenderingDevice_Local->texture_clear(storage.dc_vertex_texture, Color(0,0,0,0), 0, 1, 0, 1);

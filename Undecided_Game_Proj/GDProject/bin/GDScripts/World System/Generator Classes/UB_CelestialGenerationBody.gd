@@ -26,12 +26,12 @@ class_name UB_CelestialGenerationBody
 @export var VertexPullShaderLocation: String
 
 ## The (max) vertex count of the terrain. 
-@export var MeshVertexCount: int = 1294914
+@export var MeshVertexCount: int = 2294914
 
 ## The (max) verex count for the implicit triangles. 
 ## (Don't worry about what that means. Just know: 
 ## reference mesh lower than terrain mesh.)
-@export var RefMeshVertexCount: int = 8000
+@export var RefMeshVertexCount: int = 30000
 
 ## Dictates how many GPU threads to launchs to emit triangles through index buffers. 
 ## If too low, there will be holes in the mesh. 

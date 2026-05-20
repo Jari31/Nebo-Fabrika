@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://drfsya6otowhk"
+path="res://.godot/imported/OctahedralMapping.glsl-ae4e6e2252b35a84b816ac06f1517897.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/MathLibs/OctahedralMapping.glsl"
+dest_files=["res://.godot/imported/OctahedralMapping.glsl-ae4e6e2252b35a84b816ac06f1517897.res"]
+
+[params]
+

@@ -68,9 +68,11 @@ namespace godot {
                 Vector4 PLANET_BOUNDS;
             };
 
+            
             struct voxelData {
                 float matID;
                 float density;
+                Vector2 normals_packed_oct;
             };
             struct returnedVoxel
             {
@@ -99,12 +101,12 @@ namespace godot {
                 uint32_t HashSize = 0;
                 uint32_t GridSize = 256;
                 float IndexCoefficient = 3.8;
-                uint32_t ThreadAllocationPerTriangle = 64;
+                uint32_t ThreadAllocationPerTriangle = 1;
 
                 Vector4i CHUNK_SIZE = Vector4i(4, 4, 4, 256);
-
                 Vector4i VOXELS_PER_CHUNK = Vector4i(64, 64, 64, 64);
                 Vector4i VertexOffsetLoD = Vector4i(0, 0, 0, 0);
+                
             };
             struct AtomicBuffer
             {
@@ -160,7 +162,15 @@ namespace godot {
                 uint32_t x;
                 uint32_t y;
                 uint32_t z;
-                uint32_t w;
+                uint32_t TriangleCount;
+            };
+
+            struct DC_Params
+            {
+                uint32_t VerticesPerThread = 16;
+                uint32_t VertexAllocationForEdges = 4;
+                uint32_t TrianglesProcessedPerThread = 1;
+                float VertexEdgeSnapThreshold = 0.9;
             };
 
             struct PCGPipelines 
@@ -195,6 +205,9 @@ namespace godot {
                 RID dc_index_texture       = RID();
 
                 RID dc_indirect_dispatch_list_buffer = RID();
+                RID dc_indirect_dispatch_list_buffer_b = RID();
+
+                RID dc_uniform_parameter_buffer = RID();
 
                 RID rendering_server_vertex_texture = RID();
                 RID rendering_server_index_texture  = RID();
@@ -240,8 +253,6 @@ namespace godot {
             PCG_Environment();
             ~PCG_Environment();
             
-            // reminder to 6-month-older self: abstract the params into a struct. thank you. -- 5 month older self: I did (mostly), no problem
-            // 5 months older guy lied. this is still not fully abstracted. someone abstract it please - I'm too lazy to do it 
             void passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC_CPU_TO_GPU,
                                     const PackedInt32Array VOXELS_PER_CHUNK, 
                                     const PackedInt32Array CHUNK_SIZE,

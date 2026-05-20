@@ -34,7 +34,7 @@ func _ready():
 	else:
 		PlanetManager.LoadComputeShaders(SaveShadersTo)
 		
-	Active_Visual_Thread = PlanetManager.InitPlanet(32, true, true, AlbedoMaps, NormalMaps)
+	Active_Visual_Thread = PlanetManager.InitPlanet(64, true, true, AlbedoMaps, NormalMaps)
 	#Passive_Visual_Thread = PlanetManager.InitPlanet(32, true, true, AlbedoMaps, NormalMaps)
 	add_child(Active_Visual_Thread)
 	#add_child(Passive_Visual_Thread)

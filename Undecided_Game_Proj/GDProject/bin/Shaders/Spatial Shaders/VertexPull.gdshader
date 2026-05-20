@@ -87,7 +87,7 @@ void vertex()
 {
 	float ScaleOffset = 0.1;
 	float so = 0.000001f;
-	POINT_SIZE = 10.0f;
+	//POINT_SIZE = 10.0f;
 	ivec2 IndiceIndex = ivec2(VERTEX_ID % GridSizeIndex, VERTEX_ID/GridSizeIndex); 
 	float tf = texelFetch(IndexTexture, IndiceIndex, 0).r;
 	if(!isnan(tf)){

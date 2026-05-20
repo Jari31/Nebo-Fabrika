@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b411jt73ux6j"
+path="res://.godot/imported/CompressFloat.glsl-a0933d004a27d7f42f6ae68095ebb6d3.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Libs/MathLibs/CompressFloat.glsl"
+dest_files=["res://.godot/imported/CompressFloat.glsl-a0933d004a27d7f42f6ae68095ebb6d3.res"]
+
+[params]
+

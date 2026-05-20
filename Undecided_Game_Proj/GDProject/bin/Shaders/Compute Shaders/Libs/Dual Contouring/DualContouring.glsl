@@ -4,7 +4,6 @@
 
 /*
     COPYRIGHT (c) 2026 Jari
-    Licensed under the MIT license. Refer to the license file provided within the README for details.
 */
 
 #ifndef WORKGROUP_SIZE_X
@@ -45,10 +44,11 @@ uint StorageOffset = 0;
 
 uint WindingOrder = 0;
 
-uint VertexAllocationForEdges = 4;
-
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/DualContouring_Math.glsl"
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/MortonCurve.glsl"
+
+#include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/OctahedralMapping.glsl"
+#include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/CompressFloat.glsl"
 
 int FlattenCoordinates(ivec3 Coordinates)
 {
@@ -169,7 +169,16 @@ uvec3 CalculateTriEdgeBudget(vec4 P0, vec4 P1, vec4 P2, uint MaxEdgeThreadBudget
     return uvec3(tri.EdgeBudget[0], tri.EdgeBudget[1], tri.EdgeBudget[2]);
 }
 
-void StoreIndices(int V0, int V1, int V2, int V3)
+void StoreIndices_Tri(uint V0, uint V1, uint V2)
+{
+    uint AtomicIndex = atomicAdd(AtomicCounter2, 3);
+
+    store_index(AtomicIndex + 0u, V0);
+    store_index(AtomicIndex + 1u, V1);
+    store_index(AtomicIndex + 2u, V2);
+}
+
+void StoreIndices(uint V0, uint V1, uint V2, uint V3)
 {
     if(V0 < 0 || V1 < 0 || V2 < 0 || V3 < 0){
         //atomicAdd(AtomicCounter, 6);
@@ -191,7 +200,10 @@ void StoreIndices(int V0, int V1, int V2, int V3)
 
     uint AtomicIndex = atomicAdd(AtomicCounter, 2);
 
-    uint MaxEdgeThreadBudget = ThreadAllocationPerTriangle / VertexAllocationForEdges;
+    uint MaxEdgeThreadBudget = uint(round(float(ThreadAllocationPerTriangle) / float(VertexAllocationForEdges))); // so huge triangles don't get all the threads allocated to them
+    // VertexAllocationForEdges MUST be 4. 4 as in quads. if not, the index generation pass will get 2x complicated. e.g., 256 / 4 = 64
+    // 64 x 3 (3 edges) = 192 (interior/surface vertices) = perfect subdivision
+
     vec4 P0 = VertexBuffer[V0];
     vec4 P1 = VertexBuffer[V1];
     vec4 P2 = VertexBuffer[V2];
@@ -304,6 +316,19 @@ vec3 CalculateNormals(vec3 f_point)
         return Normal;
     }
     return vec3(0, 0, 0);
+}
+
+vec3 GetOctNormals(vec3 f_point)
+{
+    ivec3 point = ivec3(round(f_point));
+
+    vec2 packed_normals = VoxelData[FlattenCoordinates(point)].normals_packed_oct;
+
+    //vec2 unpacked_normals;
+    //unpacked_normals.x = decompress_float_normalized_uint16(packed_normals & 0xFFFF);
+    //unpacked_normals.y = decompress_float_normalized_uint16((packed_normals >> 16) & 0xFFFF);
+
+    return unpack_normal_oct(packed_normals);
 }
 
 float CalculateTrilinearNormals(vec3 point)
@@ -585,7 +610,7 @@ void main()
             {
                 float denom = d1 - d0;
                 float t = 0;
-                if(denom != 0.001)
+                if(denom > 0.001)
                 t = -d0 / denom;
 
                 vec3 n = vec3(0.0);
@@ -599,7 +624,7 @@ void main()
                 //vec3 CornerA_n = CalculateNormals(CornerA);
                 //vec3 CornerB_n = CalculateNormals(CornerB);
                 
-                n = CalculateNormals(p);
+                n = GetOctNormals(p);//CalculateNormals(p);
 
                 if(isnan(n.x) || isnan(n.y) || isnan(n.z) || isinf(n.x) || isinf(n.y) || isinf(n.z))
                     continue;
@@ -640,7 +665,7 @@ void main()
             const uint MAX_ITERATIONS = PassNum;
 
             //if(GridSize > 32)
-                //Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
+            Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
             
             //uint DEBUG_color_packed = 0; DEBUG_color_packed |= ((DEBUG_intersect_centroid.x << 16u) | (DEBUG_intersect_centroid.y << 8u) | DEBUG_intersect_centroid.z);
 
@@ -658,8 +683,8 @@ void main()
         return;
     }
     int i_Index = int(FlattenCoordinates(ivec3(gl_GlobalInvocationID.xyz)));
-    if(i_Index == -1) return;
-    uint Index = uint(i_Index * sign(i_Index));
+    //if(i_Index == -1) return;
+    uint Index = uint(i_Index);
     
     // post processing
     if(PassOffset < 2147483647)
@@ -674,59 +699,136 @@ void main()
         case 4:
             if(Index != 0)
                 return;
-            uint i = uint(ceil(((float(AtomicCounter / 2.0f) * float(ThreadAllocationPerTriangle)) / 512.0f)));
+
+            indirect_dispatch_params.TriangleCount = AtomicCounter;
+
+            float ThreadsPerTriangle = ceil(float(AtomicCounter) * float(ThreadAllocationPerTriangle));
+            ThreadsPerTriangle /= TrianglesProcessedPerThread;
+            uint i = uint(ceil((ThreadsPerTriangle / 512.0f)));
             VertexCounter = 0;
             
             if(i <= 0 || isnan(i))
                 i = 1;
 
-            indirect_dispatch_params.x = 12; indirect_dispatch_params.y = 12; indirect_dispatch_params.z = 12;
+            indirect_dispatch_params.x = i; indirect_dispatch_params.y = i; indirect_dispatch_params.z = i;
         break;
-
+        
         case 5:
-            atomicAdd(VertexCounter, indirect_dispatch_params.x);
+            //atomicAdd(VertexCounter, indirect_dispatch_params.x);
+            Index = (TrianglesProcessedPerThread > 1 && Index > 0) ? Index + TrianglesProcessedPerThread : Index;
+            uint PrevIndex = Index + TrianglesProcessedPerThread;
+            for(Index = Index; Index < PrevIndex; Index++){
+            if(Index >= indirect_dispatch_params.TriangleCount) return;
+
             Triangle OriginTriangle = TriangleBuffer[(Index > 0) ? Index / ThreadAllocationPerTriangle : 0];
-            uint LocalIndex = Index % ThreadAllocationPerTriangle;
+            uint StartingLocalIndex = Index % ThreadAllocationPerTriangle;
+            uint LocalIndex = (StartingLocalIndex != 0) ? StartingLocalIndex + VerticesPerThread : 0;
 
-            vec3 Vertex = vec3(0,0,0);
+            vec4 P0 = VertexBuffer[OriginTriangle.VIndex[0]];
+            vec4 P1 = VertexBuffer[OriginTriangle.VIndex[1]];
+            vec4 P2 = VertexBuffer[OriginTriangle.VIndex[2]];
 
-            vec4 P1 = VertexBuffer[OriginTriangle.VIndex[0]];
-            vec4 P2 = VertexBuffer[OriginTriangle.VIndex[1]];
-            vec4 P3 = VertexBuffer[OriginTriangle.VIndex[2]];
+            vec4 N0 = NormalBuffer[OriginTriangle.VIndex[0]];
+            vec4 N1 = NormalBuffer[OriginTriangle.VIndex[1]];
+            vec4 N2 = NormalBuffer[OriginTriangle.VIndex[2]];
 
-            vec4 N1 = NormalBuffer[OriginTriangle.VIndex[0]];
-            vec4 N2 = NormalBuffer[OriginTriangle.VIndex[1]];
-            vec4 N3 = NormalBuffer[OriginTriangle.VIndex[2]];
+            //vec3 EdgeSmooth_01 = P0 + (project_on_plane(P1 - P0, N0) / 3.0);
+            //vec3 EdgeSmooth_10 = P1 - (project_on_plane(P1 - P0, N1) / 3.0);
 
-            if(LocalIndex % 3 == 0)
+           // vec3 EdgeSmooth_02 = P1 +  
+
+            int TotalVertices = int(VerticesPerThread);
+            TotalVertices = (isnan(TotalVertices) || TotalVertices <= 0) ? 3 : TotalVertices;
+            float Segments = ceil((float(sqrt(1 + 8 * TotalVertices) - 3) / 2.0));
+
+            uint VertexIndices[1024];
+
+            for(uint row = 0; row <= uint(Segments); row++)
             {
-                vec4 LocalVertexArray[] = vec4[](P1, P2, P3);
+                for(uint column = 0; column <= row; column++)
+                {
+                LocalIndex++;
+                //uint row = uint((sqrt(1.0 + 8.0 * float(LocalIndex)) - 1.0) * 0.5);
+                //uint column = uint(LocalIndex - (row * (row + 1))/2);
 
-                uint GlobalDistribution = ThreadAllocationPerTriangle / VertexAllocationForEdges;
-                uint OwnerEdge = LocalIndex / GlobalDistribution;
-                float LocalDistribution = OriginTriangle.EdgeBudget[OwnerEdge];
+                float progress = (row > 0) ? float(column) / float(row) : 0.0;
 
-                float Step = float(LocalIndex % uint(round(LocalDistribution)));
-            
-                vec3 StartingPoint = LocalVertexArray[OwnerEdge].xyz;
-                vec3 EndPoint = LocalVertexArray[(OwnerEdge == 2) ? OriginTriangle.VIndex[0] : OriginTriangle.VIndex[OwnerEdge + 1]].xyz;
-
-                float Length = distance(StartingPoint, EndPoint);
-                float Stride = Length / round(LocalDistribution);
-
-                //float t = (Step * VertexIntervalOnEdge) / Length;
-                float t = (Step * Stride + Stride) / Length;
-
-                Vertex = StartingPoint + t * (EndPoint - StartingPoint);
-            }
-            else
-            {
+                vec3 Vertex = vec3(0,0,0);
                 
+                float _v = float(row) / Segments;
+                float _w = _v * progress;
+                
+                float u = 1.0 - _v;
+                float v = _v - _w;
+                float w = _w;/*
+                
+                if(max(max(u, v), w) >= 0.8)
+                {
+                    // exterior vertices 
+                    vec4 LocalVertexArray[] = vec4[](P0, P1, P2);
+                    
+                    uint OwnerEdge = 0;
+                    if(LocalIndex > OriginTriangle.EdgeBudget[0]){
+                        if(LocalIndex > OriginTriangle.EdgeBudget[1])
+                            OwnerEdge = 2;
+                        else
+                            OwnerEdge = 1;
+                    }
+
+                    float LocalDistribution = OriginTriangle.EdgeBudget[OwnerEdge];
+
+                    float Step = float(LocalIndex % uint(round(LocalDistribution)));
+                
+                    vec3 StartingPoint = LocalVertexArray[OwnerEdge].xyz;
+                    vec3 EndPoint = LocalVertexArray[(OwnerEdge == 2) ? OriginTriangle.VIndex[0] : OriginTriangle.VIndex[OwnerEdge + 1]].xyz;
+
+                    float Length = distance(StartingPoint, EndPoint);
+
+                    float t = Step / Length;
+
+                    Vertex = StartingPoint + t * (EndPoint - StartingPoint);
+                }*/
+                //else
+                {
+                    Vertex = P0.xyz * u + P1.xyz * v + P2.xyz * w;
+                    // interior
+                }
+                VertexIndices[LocalIndex] = store_vertices_and_normals(vec4(Vertex, 1), vec4(1, 1, 1, 1));
+                }
             }
+            
+            uint counter = 0;
+            for(uint row = 0; row < uint(Segments); row++)
+            {
+                uint CurrentRowStart = (row * (row + 1)) / 2;
+                uint NextRowStart = ((row + 1) * (row + 2)) / 2;
+                
+                for(uint column = 0; column <= row; column++)
+                {
+                    uint TopLeft_Grid = CurrentRowStart + column;
+                    uint TopRight_Grid = TopLeft_Grid + 1;
+                    uint BottomLeft_Grid = NextRowStart + column;
+                    uint BottomRight_Grid = BottomLeft_Grid + 1;
 
-            //store_vertices_and_normals(vec4(Vertex, 1), vec4(1, 1, 1, 1));
+                    uint TopLeft = VertexIndices[TopLeft_Grid];
+                    uint TopRight = VertexIndices[TopRight_Grid];
+                    uint BottomLeft = VertexIndices[BottomLeft_Grid];
+                    uint BottomRight = VertexIndices[BottomRight_Grid];
+
+                    if(counter >= LocalIndex || isnan(TopRight) || isnan(BottomRight) || isnan(TopLeft) || isnan(BottomLeft)) return;
+
+                    //if(column < row)
+                       StoreIndices(TopLeft, TopRight, BottomRight, BottomLeft);
+                    //else
+                        //StoreIndices_Tri(TopLeft, BottomRight, BottomLeft);
+
+                    counter++;
+                }
+            };
+
+            }
         break;
-
+        
         case 666:
             //
         break;
@@ -735,7 +837,7 @@ void main()
         return;
     }
     
-    // traditional triangle emission 
+    // triangle emission 
     int MC_x = int(gl_GlobalInvocationID.x); // mc = minimum corner
     int MC_y = int(gl_GlobalInvocationID.y);
     int MC_z = int(gl_GlobalInvocationID.z);

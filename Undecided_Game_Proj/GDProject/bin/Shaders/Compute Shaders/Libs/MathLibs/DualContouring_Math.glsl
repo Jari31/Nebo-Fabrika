@@ -4,9 +4,7 @@
     COPYRIGHT (c) 2026 Jari
     Licensed under the MIT license. Refer to the license file provided within the README for details.
 */
-
-
-
+/*
 float UnpackDensity(uint PackedData, uint Index)
 {
     uint byte = (PackedData >> (Index * 8)) & 0xFF;
@@ -49,7 +47,7 @@ vec3 TrilinearGradient(vec3 Point, vec3 CellMin, float CellSize, float[8] Corner
 
     return vec3(gx, gy, gz) / CellSize;
 }
-/*
+
 // Binary search
 int FindNodeByMortonCode(uint MortonCode, uint TotalNodes)
 {
@@ -74,7 +72,7 @@ int FindNodeByMortonCode(uint MortonCode, uint TotalNodes)
     return -1;
 }
 */
-void store_index(uint flat_idx, int vertex_val) {
+void store_index(uint flat_idx, uint vertex_val) {
     int x = int(flat_idx % dVOXELS_PER_CHUNK.w);
     int y = int(flat_idx / dVOXELS_PER_CHUNK.w);
     imageStore(IndexTexture, ivec2(x, y), vec4(float(vertex_val), 0, 0, 0));
@@ -96,5 +94,10 @@ uint store_vertices_and_normals(vec4 Centroid, vec4 Normals) {
     NormalBuffer[VertexIndex] = Normals;
     }
     return VertexIndex;
+}
+
+vec3 project_on_plane(vec3 v, vec3 normal)
+{
+    return v - dot(v, normal) * normal;
 }
 #endif

@@ -47,6 +47,13 @@ layout(std430, set = 1, binding = 10) buffer indirectBuffer
     uint x;
     uint y;
     uint z;
-    uint w;
+    uint TriangleCount;
 } indirect_dispatch_params;
 
+layout(std140, set = 1, binding = 11) uniform uniformParameterBuffer
+{
+    uint VerticesPerThread;
+    uint VertexAllocationForEdges;
+    uint TrianglesProcessedPerThread;
+    float VertexEdgeSnapThreshold;
+};

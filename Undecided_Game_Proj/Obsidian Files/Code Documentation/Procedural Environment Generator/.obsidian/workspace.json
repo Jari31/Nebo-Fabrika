@@ -49,12 +49,12 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "Notes/Unorganized and unfinished notes/S-Layers.md",
+                    "file": "Notes/Unorganized and unfinished notes/Terrain gen extra notes.md",
                     "mode": "source",
                     "source": false
                   },
                   "icon": "lucide-file",
-                  "title": "S-Layers"
+                  "title": "Terrain gen extra notes"
                 }
               },
               {
@@ -285,8 +285,9 @@
       "juggl:Juggl global graph": false
     }
   },
-  "active": "8e4d0b2dab76a9bf",
+  "active": "336fa5a1160336df",
   "lastOpenFiles": [
+    "Notes/Unorganized and unfinished notes/Terrain gen extra notes.md",
     "Notes/Unorganized and unfinished notes/Async, caching for the active dense chunk and more.md",
     "Notes/Active and Inactive chunks.md",
     "2026-05-11.md",
@@ -316,7 +317,6 @@
     "Unfinished/Spawn System.md",
     "Finished/Physics System (Godot Native).md",
     "Calculate Zone.md",
-    "Unfinished/Client View (Probe Origin).md",
     "Untitled.base",
     "Untitled.canvas",
     "Unfinished",
