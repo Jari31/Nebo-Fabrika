@@ -2,10 +2,6 @@
 
 #version 450
 
-/*
-    COPYRIGHT (c) 2026 Jari
-*/
-
 #ifndef WORKGROUP_SIZE_X
 #define WORKGROUP_SIZE_X 8
 #endif
@@ -62,9 +58,9 @@ int FlattenCoordinates(ivec3 Coordinates)
     return flat_coords; 
 }
 
-float GetCornerDensities(vec3 f_point)
+float GetCornerDensities(vec3 PointFloat)
 {
-    ivec3 point = ivec3(round(f_point));
+    ivec3 point = ivec3(round(PointFloat));
 
     int flat_coords = FlattenCoordinates(point);
     if(flat_coords == -1 && GENERATE_BOUNDARIES) return 0;
@@ -244,9 +240,9 @@ void StoreIndices(uint V0, uint V1, uint V2, uint V3)
     TriangleBuffer[AtomicIndex + 1u] = tri;
 }
 
-vec3 CalculateSobelNormals(vec3 f_point)
+vec3 CalculateSobelNormals(vec3 PointFloat)
 {
-    ivec3 point = ivec3(round(f_point));
+    ivec3 point = ivec3(round(PointFloat));
     vec3 Normals = vec3(0);
 
     for(int x = -1; x <= 1; x++){
@@ -289,9 +285,9 @@ float CalculateCentralDifference(float center_density, float f_point_axis, float
     return 0.0f;
 }
 
-vec3 CalculateNormals(vec3 f_point)
+vec3 CalculateNormals(vec3 PointFloat)
 {
-    ivec3 point = ivec3(round(f_point));
+    ivec3 point = ivec3(round(PointFloat));
     vec3 Normal = vec3(0.0, 0.0, 0.0);
     
     float center_density = GetCornerDensities(point);
@@ -299,17 +295,17 @@ vec3 CalculateNormals(vec3 f_point)
     int di0 = FlattenCoordinates(point + ivec3(1, 0, 0));
     int di1 = FlattenCoordinates(point + ivec3(-1, 0, 0)); // di = density index
 
-    Normal.x = CalculateCentralDifference(center_density, f_point.x, point.x, di0, di1);
+    Normal.x = CalculateCentralDifference(center_density, PointFloat.x, point.x, di0, di1);
 
     di0 = FlattenCoordinates(point + ivec3(0, 1, 0));
     di1 = FlattenCoordinates(point + ivec3(0, -1, 0));
 
-    Normal.y = CalculateCentralDifference(center_density, f_point.y, point.y, di0, di1);
+    Normal.y = CalculateCentralDifference(center_density, PointFloat.y, point.y, di0, di1);
 
     di0 = FlattenCoordinates(point + ivec3(0, 0, 1));
     di1 = FlattenCoordinates(point + ivec3(0, 0, -1));
 
-    Normal.z = CalculateCentralDifference(center_density, f_point.z, point.z, di0, di1);
+    Normal.z = CalculateCentralDifference(center_density, PointFloat.z, point.z, di0, di1);
 
     float Length = length(Normal); 
     if(Length > 0.001f){
@@ -318,9 +314,9 @@ vec3 CalculateNormals(vec3 f_point)
     return vec3(0, 0, 0);
 }
 
-vec3 GetOctNormals(vec3 f_point)
+vec3 GetOctNormals(vec3 PointFloat)
 {
-    ivec3 point = ivec3(round(f_point));
+    ivec3 point = ivec3(round(PointFloat));
 
     vec2 packed_normals = VoxelData[FlattenCoordinates(point)].normals_packed_oct;
 

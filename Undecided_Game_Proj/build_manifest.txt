@@ -1,2 +1,6 @@
+"PCG_Environment" : DEBUG
+"ShaderComp" : DEBUG
+'PCG_Environment' : DEBUG
+'ShaderComp' : DEBUG
 PCG_Environment : DEBUG
 ShaderComp : DEBUG

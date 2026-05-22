@@ -225,7 +225,7 @@ namespace godot {
                 RID CompiledShader                   = RID();
                 RID CompiledShader_DualContour_Dense = RID();
 
-                Ref<Shader> CompiledShader_VertexPull= RID();
+                Ref<Shader> CompiledShader_VertexPull= nullptr;
             };
 
             CompiledShaders compiled_shaders;

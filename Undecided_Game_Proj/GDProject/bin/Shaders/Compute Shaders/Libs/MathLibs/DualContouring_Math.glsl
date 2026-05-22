@@ -1,10 +1,6 @@
 #ifndef DC_MATH
 #define DC_MATH
 /*
-    COPYRIGHT (c) 2026 Jari
-    Licensed under the MIT license. Refer to the license file provided within the README for details.
-*/
-/*
 float UnpackDensity(uint PackedData, uint Index)
 {
     uint byte = (PackedData >> (Index * 8)) & 0xFF;

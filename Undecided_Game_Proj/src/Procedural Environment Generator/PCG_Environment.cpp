@@ -1,7 +1,3 @@
-/*
-    COPYRIGHT (c) 2026 Jari
-*/
-
 //! compile with: scons --target=PCG_Environment --targetFolder='Procedural Environment Generator' --productionBuild=0
 //todo: Implement documentation system
 #include "PCG_Environment.h"
@@ -531,7 +527,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     Ref<RDUniform> VP_UVTexture_UniformRef       = RefWrapper(2, storage.dc_uv_texture,             RenderingDevice::UNIFORM_TYPE_IMAGE         );
     Ref<RDUniform> VP_IndexTexture_UniformRef    = RefWrapper(3, storage.dc_index_texture,          RenderingDevice::UNIFORM_TYPE_IMAGE         );
 
-    Ref<RDUniform> DC_VertexIndexBuffer_UniformRef= RefWrapper(4, storage.dc_vertex_index_buffer,    RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_VertexIndexBuffer_UniformRef= RefWrapper(4, storage.dc_vertex_index_buffer,    RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER); // DC just means dual contouring
     Ref<RDUniform> DC_EdgeMaskBuffer_UniformRef  = RefWrapper(5, storage.dc_edge_mask_buffer,       RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
     Ref<RDUniform> DC_VertexOffsetBuffer_UniformRef = RefWrapper(6, storage.dc_vertex_offset_buffer, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
     Ref<RDUniform> DC_VertexBuffer_UniformRef    = RefWrapper(7, storage.dc_vertex_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);

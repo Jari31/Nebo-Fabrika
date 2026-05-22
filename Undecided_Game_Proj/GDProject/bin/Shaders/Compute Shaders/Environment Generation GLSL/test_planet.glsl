@@ -13,10 +13,6 @@
 
 #extension GL_GOOGLE_include_directive : require
 
-/*
-    COPYRIGHT (c) 2026 Jari
-*/
-
 layout(local_size_x = WORKGROUP_SIZE_X, local_size_y = WORKGROUP_SIZE_Y, local_size_z = WORKGROUP_SIZE_Z) in;
 
 #include "res://bin/Shaders/Compute Shaders/Libs/General/PCG_GENERATION_Set1.glsl"
@@ -114,6 +110,7 @@ float calculate_central_difference(float d1, float d2)
     return (d1 - d2) * 0.5;
 }
 
+#define CASE 0
 void Stage_GenerateLeaves(){
     vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz * VoxelSize;
 

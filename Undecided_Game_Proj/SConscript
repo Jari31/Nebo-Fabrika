@@ -43,5 +43,5 @@ else:
     )
 
 env.Alias(env['GDEXTENSION_BUILD_DIR'], lib)
-
-LogBuild()
+if env['PLATFORM'] == 'Windows':
+    LogBuild()
