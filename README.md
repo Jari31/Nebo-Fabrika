@@ -2,7 +2,7 @@
 A community project led by Jari.  Developed on Godot 4.5+.
 
 # Supported Platforms (as of now)
-Windows x64.
+Windows x64 and Linux x64. 
 
 # Documentation
 The obsidian .mds within the [Obsidian folder](Undecided_Game_Proj/Obsidian%20Files) explain every algorithm currently implemented and show diagrams to visualize the flow. Not every algorithm is explained thoroughly, but we (me - Jari, currently) are working on it.
