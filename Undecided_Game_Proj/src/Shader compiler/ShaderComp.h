@@ -16,6 +16,8 @@
 #include <godot_cpp/classes/hashing_context.hpp>
 
 #include <godot_cpp/variant/rid.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/callable.hpp>
 
 #include <godot_cpp/templates/hash_set.hpp>
 
@@ -33,6 +35,7 @@ namespace godot
         HashSet<String> IncludedFiles;
         bool G_DEBUG = 0;
         Ref<RegEx> RegEx_Local;
+        
 
         public:
         ShaderCompiler();
@@ -42,5 +45,7 @@ namespace godot
                                     RenderingDevice *RenderingDevice_Local, const int SHADER_STAGE,
                                     const Vector3i WORKGROUP_SIZE, const bool DEBUG);
         String PreProcessShader(String &Source);
+
+        String ShaderCompiler::PreprocessUberShader(String UberShader, String CompositionShader, String Arguments, String VariableName);
     };
 }

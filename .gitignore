@@ -15,3 +15,5 @@ desktop.ini
 *.xml
 /Undecided_Game_Proj/RustSetup/target/debug
 Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Generator/.obsidian/community-plugins.json
+/Assets/
+/Undecided_Game_Proj/GDProject/bin/Assets

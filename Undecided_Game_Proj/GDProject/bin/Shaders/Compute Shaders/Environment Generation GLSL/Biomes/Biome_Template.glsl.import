@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://ytvqhwtpilum"
+path="res://.godot/imported/Biome_Template.glsl-a2b010074835fef6245bcd5143d48d44.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/Biomes/Biome_Template.glsl"
+dest_files=["res://.godot/imported/Biome_Template.glsl-a2b010074835fef6245bcd5143d48d44.res"]
+
+[params]
+

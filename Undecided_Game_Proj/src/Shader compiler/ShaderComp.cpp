@@ -5,8 +5,11 @@ using namespace godot;
 
 void ShaderCompiler::_bind_methods()
 {
-        ClassDB::bind_method(D_METHOD("LoadOrCompileShader", "path_to_compute_shader", "compile_to", "do_compilation", "rendering_device_local", "shader_stage", "workgroup_size", "debug"), 
-                                &ShaderCompiler::LoadOrCompileShader);
+    ClassDB::bind_method(D_METHOD("LoadOrCompileShader", "path_to_compute_shader", "compile_to", "do_compilation", "rendering_device_local", "shader_stage", "workgroup_size", "debug"), 
+                            &ShaderCompiler::LoadOrCompileShader);
+    //PreprocessUberShader(String &UberShader, String &CompositionShader, String &Arguments, String &VariableName);
+    ClassDB::bind_method(D_METHOD("PreprocessUberShader", "UberShader", "CompositionShader", "Arguments", "VariableName"),
+                            &ShaderCompiler::PreprocessUberShader);
 }
 
 ShaderCompiler::ShaderCompiler()
@@ -178,4 +181,34 @@ String ShaderCompiler::PreProcessShader(String &Source)
     }
 
     return TempSource;
+}
+
+String ShaderCompiler::PreprocessUberShader(String Path_To_UberShader, String Path_To_CompositionShader, String Arguments, String VariableName)
+{
+    if(Arguments == "") Arguments = "Coordinates, Seed";
+    if(VariableName == "") VariableName = "FinalDensity";
+    String CompositionShader = FileAccess::open(Path_To_CompositionShader, FileAccess::READ)->get_as_text();
+
+    Ref<RegEx> RegEx_TemplateComp;
+    RegEx_TemplateComp.instantiate();
+    RegEx_TemplateComp->compile("(\\w+)\\s*\\(\\s*\\)\\s*;");
+
+    String Includes = "";
+
+    TypedArray<RegExMatch> Matches = RegEx_Local->search_all(CompositionShader);
+    for(int i = 0; i < Matches.size(); i++){
+        Ref<RegExMatch> Match = Matches[i];
+        Includes += Match->get_string() + "\n";
+    }
+
+    CompositionShader = RegEx_Local->sub(CompositionShader, "", true);
+
+    String ReplaceWith = VariableName + " = $1(" + Arguments + "); break;";
+    String ReplacedText = RegEx_TemplateComp->sub(CompositionShader, ReplaceWith, true);
+
+    String UberShader = FileAccess::open(Path_To_UberShader, FileAccess::READ)->get_as_text();
+    
+    ReplacedText = UberShader.replace("#define _CASE_IMPORT_ 0", ReplacedText);
+
+    return ReplacedText = ReplacedText.replace("#define _SHADER_IMPORT_ 0", Includes);
 }

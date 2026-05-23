@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://r0fn8lb6jhcf"
+path="res://.godot/imported/UberShaderTemplate.glsl-8ef1f0e7fcb8cef4a8a1da303c9e21ea.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/UberShaderTemplate.glsl"
+dest_files=["res://.godot/imported/UberShaderTemplate.glsl-8ef1f0e7fcb8cef4a8a1da303c9e21ea.res"]
+
+[params]
+

@@ -111,6 +111,11 @@ float calculate_central_difference(float d1, float d2)
 }
 
 #define CASE 0
+float TestNoiseSampler(vec3 Coordinates, float Seed)
+{
+    return simplex3D(Coordinates, Seed);
+}
+
 void Stage_GenerateLeaves(){
     vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz * VoxelSize;
 

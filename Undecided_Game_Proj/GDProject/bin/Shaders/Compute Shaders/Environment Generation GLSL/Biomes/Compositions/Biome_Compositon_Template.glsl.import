@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cpndo7jmj7c46"
+path="res://.godot/imported/Biome_Compositon_Template.glsl-56aa4fec9357db2350f6f6265e2144d1.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/Biomes/Compositions/Biome_Compositon_Template.glsl"
+dest_files=["res://.godot/imported/Biome_Compositon_Template.glsl-56aa4fec9357db2350f6f6265e2144d1.res"]
+
+[params]
+

@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://drilcucl8fnx7"
+path="res://.godot/imported/Biome_Plains.glsl-13f54f6c65c191c77e8544eaafddfb6d.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/Biomes/Biome_Plains.glsl"
+dest_files=["res://.godot/imported/Biome_Plains.glsl-13f54f6c65c191c77e8544eaafddfb6d.res"]
+
+[params]
+

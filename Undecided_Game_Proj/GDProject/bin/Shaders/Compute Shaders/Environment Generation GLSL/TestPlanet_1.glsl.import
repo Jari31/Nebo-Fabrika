@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cvw5lipc502ff"
+path="res://.godot/imported/TestPlanet_1.glsl-e3be7718a805e75560854993211c48a2.res"
+
+[deps]
+
+source_file="res://bin/Shaders/Compute Shaders/Environment Generation GLSL/TestPlanet_1.glsl"
+dest_files=["res://.godot/imported/TestPlanet_1.glsl-e3be7718a805e75560854993211c48a2.res"]
+
+[params]
+

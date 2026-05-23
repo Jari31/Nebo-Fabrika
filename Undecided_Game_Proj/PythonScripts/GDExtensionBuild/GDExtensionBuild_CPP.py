@@ -107,8 +107,6 @@ def Compile_SCons(Case, File, Target):
         case COMPILE_FOR.LINUX_64.value:
             linux_sub_process_comp(WinToWSLPath(SourceFolder))
 
-
-
 MetaData = ReadFile('../../src/meta')
 
 print(MetaData)
@@ -139,7 +137,5 @@ def main():
 Session: WSLSession
 if __name__ == "__main__":
     Session = WSLSession(Distro='Ubuntu')
-
-    #print("Working directory: ", Session.Execute("pwd"))
     main()
     Session.Shutdown()

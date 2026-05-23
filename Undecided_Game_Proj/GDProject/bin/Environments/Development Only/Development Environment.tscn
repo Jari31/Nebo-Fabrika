@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://c2pm1fraw3gho"]
 
-[ext_resource type="PackedScene" uid="uid://bx6xbotrj7tvq" path="res://bin/Models/5_8_box.fbx" id="2_f3knc"]
+[ext_resource type="PackedScene" uid="uid://bx6xbotrj7tvq" path="res://bin/Assets/Models/5_8_box.fbx" id="2_f3knc"]
 [ext_resource type="Script" uid="uid://si7o6comy0cw" path="res://bin/Environments/Development Only/beginnermv.gd" id="3_8uepj"]
-[ext_resource type="Script" uid="uid://dgqatu4s4u2wy" path="res://bin/Environments/Development Only/VisualGenerationManager.gd" id="4_4g2gj"]
+[ext_resource type="Script" uid="uid://cgobkpq7fappr" path="res://bin/Environments/Development Only/test_script_geo.gd" id="4_4g2gj"]
 [ext_resource type="Script" uid="uid://dgndu203ukwij" path="res://bin/Environments/Development Only/camera_basic.gd" id="4_8uepj"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_s08hj"]
