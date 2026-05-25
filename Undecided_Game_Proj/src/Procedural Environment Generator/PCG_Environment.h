@@ -72,7 +72,6 @@ namespace godot {
             struct voxelData {
                 float matID;
                 float density;
-                Vector2 normals_packed_oct;
             };
             struct returnedVoxel
             {
@@ -170,7 +169,7 @@ namespace godot {
                 uint32_t VerticesPerThread = 16;
                 uint32_t VertexAllocationForEdges = 4;
                 uint32_t TrianglesProcessedPerThread = 1;
-                float VertexEdgeSnapThreshold = 0.9;
+                float TRUTH_GRID_SIZE = 256;
             };
 
             struct PCGPipelines 

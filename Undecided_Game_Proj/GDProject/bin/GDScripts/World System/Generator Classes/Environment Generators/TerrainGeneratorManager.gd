@@ -1,5 +1,5 @@
 extends RefCounted
-class_name Base_PlanetManager
+class_name TerrainGeneratorManager
 ## The building block of actual planets. This class handles multi-threaded generation
 ## and deals with planet generation logic. This is a base that abstracts away the more
 ## atomic units.
@@ -20,8 +20,8 @@ var BaseIndexCoefficient: float = WorldManager.BaseTerrainThreadCoefficient
 
 func InitPlanet(VoxelsPerChunk: int, InitMesh: bool, 
 				InitTextures: bool = false, AlbedoMaps = [], 
-				NormalMaps = []) -> Base_TerrainGenerator:
-	var Planet = Base_TerrainGenerator.new()
+				NormalMaps = []) -> TerrainGenerator:
+	var Planet = TerrainGenerator.new()
 	Planet.AutoClearRIDs = false
 	Planet.LoadedShaders = LoadedShaders
 	Planet.UberShaderName = UberShaderName
@@ -80,7 +80,7 @@ func LoadComputeShaders(SaveShadersTo: String):
 	#AlbedoMaps = p_AlbedoMaps
 	#NormalMaps = p_NormalMaps
 	
-func GenerateTerrain(Planet: Base_TerrainGenerator):
+func GenerateTerrain(Planet: TerrainGenerator):
 	Planet.GenerateTerrain(Vector3(0, 0, 0))
 	return true
 

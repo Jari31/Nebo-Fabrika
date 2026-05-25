@@ -1,5 +1,5 @@
-extends UB_CelestialGenerationBody
-class_name Base_TerrainGenerator
+extends TerrainMeshGenerator
+class_name TerrainGenerator
 ## An extension of its parent class, Base_TerrainGenerator serves as the base for planet driven systems.
 ## It assumes more things, making it less flexible.
 ##
@@ -18,8 +18,8 @@ static func _load_image_array(Paths: Array) -> Array:
 	var ImageArray = []
 	
 	for Path in Paths:
-		var texture = ResourceLoader.load(Path)
-		texture = texture.get_image()
+		var texture# = ResourceLoader.load(Path)
+		texture = Path.get_image()
 		if(texture.get_format() != 5):
 			texture.convert(Image.FORMAT_RGBA8)
 		if(texture):

@@ -1,5 +1,5 @@
 extends PCG_Environment
-class_name UB_CelestialGenerationBody
+class_name TerrainMeshGenerator
 ## Class that handles the generation of noise-based bodies. (e.g., asteroids, planets, etc.)
 ##
 ## It's more in-depth than its base parent, allowing for mesher initialization.
@@ -116,7 +116,7 @@ func _init_mesher_textures():
 	rendering_server_normal_texture = RenderingServer.texture_rd_create(NormalTexture)
 	rendering_server_index_texture = RenderingServer.texture_rd_create(IndexTexture)
 
-func ResetChunkSize():
+func ReInitialize():
 	initCompute(Seed, MeshVertexCount, true,
 				CHUNK_SIZE, VOXELS_PER_CHUNK, MeshInstance.get_instance(), IndexCoefficient, 
 				WorldManager.VisualThreadLoDVertexCount, RefMeshVertexCount)

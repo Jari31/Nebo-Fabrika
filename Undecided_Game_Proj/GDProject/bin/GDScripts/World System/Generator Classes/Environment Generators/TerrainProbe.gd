@@ -1,5 +1,5 @@
 extends Node
-class_name Base_TerrainProbe
+class_name TerrainProbe
 
 var Camera: Camera3D
 var RayDensity: int = 8

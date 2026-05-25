@@ -33,8 +33,6 @@ const float SDF_ApproxDistance = 2.0;
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/OctahedralMapping.glsl"
 #include "res://bin/Shaders/Compute Shaders/Libs/MathLibs/CompressFloat.glsl"
 
-float TRUTH_GRID_SIZE = 64 * 4;
-
 vec2 pickMatID(float noiseLayer1, float noiseLayer2, float matID_layer1, float matID_layer2){
     if(noiseLayer1 >= noiseLayer2){
         vec2 combined_Values = vec2(noiseLayer2, matID_layer2);
@@ -110,12 +108,6 @@ float calculate_central_difference(float d1, float d2)
     return (d1 - d2) * 0.5;
 }
 
-#define CASE 0
-float TestNoiseSampler(vec3 Coordinates, float Seed)
-{
-    return simplex3D(Coordinates, Seed);
-}
-
 void Stage_GenerateLeaves(){
     vec3 VoxelLocalCoordinates = gl_GlobalInvocationID.xyz * VoxelSize;
 
@@ -142,11 +134,5 @@ void Stage_GenerateLeaves(){
 }
 
 void main() {
-    switch(PassOffset){
-        case 0:
-            Stage_GenerateLeaves();
-            break;
-        case 1:
-            break;
-    }
+    Stage_GenerateLeaves();
 }

@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://c36ltrtper4el"]
+
+[ext_resource type="Script" uid="uid://b644av4dmw55k" path="res://bin/GDScripts/Entity System/Player/Player.gd" id="1_m5jr6"]
+
+[node name="TestContainer" type="Node3D" unique_id=128370996]
+
+[node name="Player" type="Node3D" parent="." unique_id=1937985616]
+script = ExtResource("1_m5jr6")
+
+[node name="Camera3D" type="Camera3D" parent="Player" unique_id=1856091429]
+transform = Transform3D(0.9705233, -0.19957331, 0.13511114, 0, 0.5606101, 0.8280799, -0.2410073, -0.8036708, 0.5440852, 2.0807724, 3.098176, 2.3211622)
+current = true
+fov = 90.0
+
+[node name="VisualGeometryGenerator" type="Node3D" parent="Player" unique_id=754058134]
+transform = Transform3D(1.0000002, -7.450581e-09, -7.450581e-09, -1.4901161e-08, 1.0000002, 0, 7.450581e-09, 0, 1.0000004, -4.7683716e-07, -9.536743e-07, -7.1525574e-07)

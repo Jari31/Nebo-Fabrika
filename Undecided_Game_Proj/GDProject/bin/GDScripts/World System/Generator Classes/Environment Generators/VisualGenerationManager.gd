@@ -13,18 +13,21 @@ var VertexPullShaderLocation = "res://bin/Shaders/Spatial Shaders/VertexPull.gds
 
 var SaveShadersTo = "res://bin/Environments/Development Only/comp_shaders.dat"
 
-var AlbedoMaps = ["res://bin/Environments/Development Only/Textures/rock_face_03_diff_1k.jpg", "res://bin/Environments/Development Only/Textures/rock_face_03_diff_1k.jpg"]
-var NormalMaps = ["res://bin/Environments/Development Only/Textures/rock_face_03_nor_gl_1k.png", "res://bin/Environments/Development Only/Textures/rock_face_03_nor_gl_1k.png"]
+@export var AlbedoMaps: Array[Texture2D]# = ["res://bin/Environments/Development Only/Textures/rock_face_03_diff_1k.jpg", "res://bin/Environments/Development Only/Textures/rock_face_03_diff_1k.jpg"]
+@export var NormalMaps: Array[Texture2D]# = ["res://bin/Environments/Development Only/Textures/rock_face_03_nor_gl_1k.png", "res://bin/Environments/Development Only/Textures/rock_face_03_nor_gl_1k.png"]
 
-var Active_Visual_Thread: Base_TerrainGenerator
-var Passive_Visual_Thread: Base_TerrainGenerator
+var Active_Visual_Thread: TerrainGenerator
+var Passive_Visual_Thread: TerrainGenerator
 
-@onready var PlanetManager = Base_PlanetManager.new()
+@onready var PlanetManager = TerrainGeneratorManager.new()
 
 var Camera: Camera3D
-var TerrainProbe: Base_TerrainProbe
+var TerrainProbe: TerrainProbe
 	
 func _ready():
+	if(DisplayServer.get_name() == "headless"):
+		return
+	
 	Camera = self.get_parent().get_child(0)
 	if(CompileShaders):
 		PlanetManager.CompileAndSaveShader(UberShaderLocation, CompileUShaderTo,

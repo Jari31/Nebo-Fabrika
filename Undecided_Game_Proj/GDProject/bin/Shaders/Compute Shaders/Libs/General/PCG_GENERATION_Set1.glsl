@@ -5,7 +5,6 @@ struct VoxelDataArray
 {
     float matID;
     float density;
-    vec2 normals_packed_oct;
 };
 
 // --------------------------------------------------- buff
@@ -20,4 +19,12 @@ layout(std430, set = 0, binding = 1) buffer atomicCounter
     uint AtomicCounter2;
 
     uint VertexCounter;
+};
+
+layout(std140, set = 0, binding = 2) uniform uniformParameterBuffer
+{
+    uint VerticesPerThread;
+    uint VertexAllocationForEdges;
+    uint TrianglesProcessedPerThread;
+    float TRUTH_GRID_SIZE;
 };

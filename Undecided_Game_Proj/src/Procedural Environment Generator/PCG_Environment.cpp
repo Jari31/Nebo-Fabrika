@@ -300,39 +300,6 @@ void PCG_Environment::DualContour_Generation_Pass(int64_t &ComputeList)
     if(G_DEBUG)
         UtilityFunctions::print("DC Finished.", DispatchSize);
     #endif
-
-    if(!BasicPushConstant.WriteToTexturesInFirstPass) // dual contouring from implicit mesh
-    {
-        BasicPushConstant.PassOffset = 4; // looks at how many triangles there are and then indirectly dispatches a proportional amount of threads
-        p_const_copy(ComputeList);
-        
-        RenderingDevice_Local->compute_list_dispatch(ComputeList, 1, 1, 1);
-        RenderingDevice_Local->compute_list_add_barrier(ComputeList);
-
-        BasicPushConstant.PassOffset = 5;
-        BasicPushConstant.WriteToTexturesInFirstPass = 1;
-
-        p_const_copy(ComputeList);
-
-        RenderingDevice_Local->compute_list_end();
-        
-
-        RenderingDevice_Local->buffer_copy(storage.dc_indirect_dispatch_list_buffer_b, storage.dc_indirect_dispatch_list_buffer, 0, 0, sizeof(DC_Indirect_Dispatch_Buffer));
-
-        int64_t ComputeList2 = RenderingDevice_Local->compute_list_begin();
-        RenderingDevice_Local->compute_list_bind_compute_pipeline(ComputeList2, pipelines.dual_contour_dense);
-        RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList2, storage.dc_dense_storage[0], 0);
-        RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList2, storage.dc_dense_storage[1], 1);
-
-        p_const_copy(ComputeList2);
-        
-        RenderingDevice_Local->compute_list_dispatch_indirect(ComputeList2, storage.dc_indirect_dispatch_list_buffer, 0);
-        //RenderingDevice_Local->compute_list_dispatch(ComputeList, 1, 1, 1);
-        RenderingDevice_Local->compute_list_add_barrier(ComputeList2);
-
-        BasicPushConstant.WriteToTexturesInFirstPass = 0;
-        p_const_copy(ComputeList2);
-    }
 }
 
 // i love writing boilerplate i love writing boilerplate i love writing boilerplate i love writing boilerplate i love writing boilerplate
@@ -444,39 +411,6 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     }
 
     {
-    DC_VertexBuffer VBuffer;
-    storage.dc_vertex_buffer = create_storage_buffer(VBuffer, RefMeshVertexCount);
-    }
-
-    {
-    DC_NormalBuffer NBuffer;
-    storage.dc_normal_buffer = create_storage_buffer(NBuffer, RefMeshVertexCount);
-    }
-
-    {
-    Triangle TBuffer;
-    storage.dc_triangle_buffer = create_storage_buffer(TBuffer, RefMeshVertexCount, INDEX_COEFFICIENT);
-    }
-
-    {
-    DC_Indirect_Dispatch_Buffer DIDBuffer;
-
-    DIDBuffer.x = 1;
-    DIDBuffer.y = 1;
-    DIDBuffer.z = 1;
-        
-    PackedByteArray ByteArray;
-    int64_t Size = sizeof(DC_Indirect_Dispatch_Buffer);
-    ByteArray.resize(Size);
-
-    uint8_t* dest = ByteArray.ptrw();
-    memcpy(dest, &DIDBuffer, sizeof(DC_Indirect_Dispatch_Buffer));
-
-    storage.dc_indirect_dispatch_list_buffer = RenderingDevice_Local->storage_buffer_create(ByteArray.size(), ByteArray, RenderingDevice::STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT);
-    storage.dc_indirect_dispatch_list_buffer_b = RenderingDevice_Local->storage_buffer_create(ByteArray.size(), ByteArray, RenderingDevice::STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT);
-    }
-
-    {
     DC_Params PBuffer;
 
     PackedByteArray ByteArray;
@@ -521,6 +455,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
 
     Ref<RDUniform> VoxelStorageBuffer_UniformRef = RefWrapper(0, storage.voxel_output,              RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
     Ref<RDUniform> AtomicCounter_UniformRef      = RefWrapper(1, storage.atomic_counter,            RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+    Ref<RDUniform> DC_Parameter_Buffer_UniformRef = RefWrapper(2, storage.dc_uniform_parameter_buffer, RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
 
     Ref<RDUniform> VP_VertexTexture_UniformRef   = RefWrapper(0, storage.dc_vertex_texture,         RenderingDevice::UNIFORM_TYPE_IMAGE         );
     Ref<RDUniform> VP_NormalTexture_UniformRef   = RefWrapper(1, storage.dc_normal_texture,         RenderingDevice::UNIFORM_TYPE_IMAGE         );
@@ -530,16 +465,11 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     Ref<RDUniform> DC_VertexIndexBuffer_UniformRef= RefWrapper(4, storage.dc_vertex_index_buffer,    RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER); // DC just means dual contouring
     Ref<RDUniform> DC_EdgeMaskBuffer_UniformRef  = RefWrapper(5, storage.dc_edge_mask_buffer,       RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
     Ref<RDUniform> DC_VertexOffsetBuffer_UniformRef = RefWrapper(6, storage.dc_vertex_offset_buffer, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_VertexBuffer_UniformRef    = RefWrapper(7, storage.dc_vertex_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_NormalBuffer_UniformRef     = RefWrapper(8, storage.dc_normal_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_IndexBuffer_UniformRef     = RefWrapper(9, storage.dc_triangle_buffer,             RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-
-    Ref<RDUniform> DC_Indirect_Dispatch_Buffer_Uniform=RefWrapper(10, storage.dc_indirect_dispatch_list_buffer_b, RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-    Ref<RDUniform> DC_Parameter_Buffer_UniformRef = RefWrapper(11, storage.dc_uniform_parameter_buffer, RenderingDevice::UNIFORM_TYPE_UNIFORM_BUFFER);
 
     TypedArray<Ref<RDUniform>> Voxel_Storage;
     Voxel_Storage.push_back(VoxelStorageBuffer_UniformRef);
     Voxel_Storage.push_back(AtomicCounter_UniformRef);
+    Voxel_Storage.push_back(DC_Parameter_Buffer_UniformRef);
 
     TypedArray<Ref<RDUniform>> GeometryArray;
     GeometryArray.push_back(VP_VertexTexture_UniformRef);
@@ -550,11 +480,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     GeometryArray.push_back(DC_VertexIndexBuffer_UniformRef);
     GeometryArray.push_back(DC_EdgeMaskBuffer_UniformRef);
     GeometryArray.push_back(DC_VertexOffsetBuffer_UniformRef);
-    GeometryArray.push_back(DC_VertexBuffer_UniformRef);
-    GeometryArray.push_back(DC_NormalBuffer_UniformRef);
-    GeometryArray.push_back(DC_IndexBuffer_UniformRef);
-    GeometryArray.push_back(DC_Indirect_Dispatch_Buffer_Uniform);
-    GeometryArray.push_back(DC_Parameter_Buffer_UniformRef);
+    
     
     #ifndef PRODUCTION_BUILD
     if(G_DEBUG)
@@ -616,7 +542,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     with an assignment function. this is only for generating local bodies. limited to, for now, planets.
 */
 
-// There's no point in doing a centralized passParams_to_PCG anymore; the system is way too complex. Break it down in GDScript for easier to understand logic.
+
 
 void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC_CPU_TO_GPU,
                                         const PackedInt32Array VOXELS_PER_CHUNK, 

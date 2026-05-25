@@ -152,19 +152,6 @@ vec3 GetAverageNeighborPos(ivec3 base_pos, bool get_from_buffer_b)
     return (vert_sum_count > 0) ? neighbor_pos_sum / vert_sum_count : (GetCellVertex(base_pos, get_from_buffer_b).xyz);
 }
 
-uvec3 CalculateTriEdgeBudget(vec4 P0, vec4 P1, vec4 P2, uint MaxEdgeThreadBudget)
-{
-    Triangle tri;
-    
-    tri.EdgeBudget[0] = clamp(distance(P0, P1) / VertexIntervalOnEdge, 1, MaxEdgeThreadBudget);
-    
-    tri.EdgeBudget[1] = clamp(distance(P1, P2) / VertexIntervalOnEdge, 1, MaxEdgeThreadBudget);
-
-    tri.EdgeBudget[2] = clamp(distance(P2, P0) / VertexIntervalOnEdge, 1, MaxEdgeThreadBudget);
-
-    return uvec3(tri.EdgeBudget[0], tri.EdgeBudget[1], tri.EdgeBudget[2]);
-}
-
 void StoreIndices_Tri(uint V0, uint V1, uint V2)
 {
     uint AtomicIndex = atomicAdd(AtomicCounter2, 3);
@@ -181,7 +168,6 @@ void StoreIndices(uint V0, uint V1, uint V2, uint V3)
         return;
     }
     
-    if(WriteToTexturesInFirstPass != 0){
     uint AtomicIndex = atomicAdd(AtomicCounter2, 6);
 
     store_index(AtomicIndex + 0u, V0);
@@ -192,52 +178,6 @@ void StoreIndices(uint V0, uint V1, uint V2, uint V3)
     store_index(AtomicIndex + 4u, V2);
     store_index(AtomicIndex + 5u, V3);
     return;
-    }
-
-    uint AtomicIndex = atomicAdd(AtomicCounter, 2);
-
-    uint MaxEdgeThreadBudget = uint(round(float(ThreadAllocationPerTriangle) / float(VertexAllocationForEdges))); // so huge triangles don't get all the threads allocated to them
-    // VertexAllocationForEdges MUST be 4. 4 as in quads. if not, the index generation pass will get 2x complicated. e.g., 256 / 4 = 64
-    // 64 x 3 (3 edges) = 192 (interior/surface vertices) = perfect subdivision
-
-    vec4 P0 = VertexBuffer[V0];
-    vec4 P1 = VertexBuffer[V1];
-    vec4 P2 = VertexBuffer[V2];
-    vec4 P3 = VertexBuffer[V3];
-
-    Triangle tri;
-    tri.VIndex[0] = V0;
-    tri.VIndex[1] = V1;
-    tri.VIndex[2] = V2;
-
-    uvec3 TempTri = CalculateTriEdgeBudget(P0, P1, P2, MaxEdgeThreadBudget);
-
-    tri.EdgeBudget[0] = TempTri.x;
-    tri.EdgeBudget[1] = TempTri.y;
-    tri.EdgeBudget[2] = TempTri.z;
-
-    vec3 U = P1.xyz - P0.xyz;
-    vec3 V = P2.xyz - P0.xyz;
-
-    tri.OriginNormal = vec4(cross(U, V), 0);
-
-    TriangleBuffer[AtomicIndex] = tri;
-
-    tri.VIndex[1] = V2;
-    tri.VIndex[2] = V3; 
-
-    TempTri = CalculateTriEdgeBudget(P0, P2, P3, MaxEdgeThreadBudget);
-
-    tri.EdgeBudget[0] = TempTri.x; // p2, p0
-    tri.EdgeBudget[1] = TempTri.y;
-    tri.EdgeBudget[2] = TempTri.z;
-
-    U = P0.xyz - P2.xyz;
-    V = P3.xyz - P2.xyz;
-
-    tri.OriginNormal = vec4(cross(U, V), 0);
-
-    TriangleBuffer[AtomicIndex + 1u] = tri;
 }
 
 vec3 CalculateSobelNormals(vec3 PointFloat)
@@ -312,19 +252,6 @@ vec3 CalculateNormals(vec3 PointFloat)
         return Normal;
     }
     return vec3(0, 0, 0);
-}
-
-vec3 GetOctNormals(vec3 PointFloat)
-{
-    ivec3 point = ivec3(round(PointFloat));
-
-    vec2 packed_normals = VoxelData[FlattenCoordinates(point)].normals_packed_oct;
-
-    //vec2 unpacked_normals;
-    //unpacked_normals.x = decompress_float_normalized_uint16(packed_normals & 0xFFFF);
-    //unpacked_normals.y = decompress_float_normalized_uint16((packed_normals >> 16) & 0xFFFF);
-
-    return unpack_normal_oct(packed_normals);
 }
 
 float CalculateTrilinearNormals(vec3 point)
@@ -620,7 +547,7 @@ void main()
                 //vec3 CornerA_n = CalculateNormals(CornerA);
                 //vec3 CornerB_n = CalculateNormals(CornerB);
                 
-                n = GetOctNormals(p);//CalculateNormals(p);
+                n = CalculateNormals(p);
 
                 if(isnan(n.x) || isnan(n.y) || isnan(n.z) || isinf(n.x) || isinf(n.y) || isinf(n.z))
                     continue;
@@ -653,7 +580,7 @@ void main()
             else
             Centroid = (NodeMin + NodeMax) / 2;
 
-            Normals /= IntersectionCount;
+            //Normals /= IntersectionCount;
             if(isnan(Normals.x) || isnan(Normals.y) || isnan(Normals.z))
                 return;
             Normals = normalize(Normals);
@@ -661,7 +588,7 @@ void main()
             const uint MAX_ITERATIONS = PassNum;
 
             //if(GridSize > 32)
-            Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
+            //Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
             
             //uint DEBUG_color_packed = 0; DEBUG_color_packed |= ((DEBUG_intersect_centroid.x << 16u) | (DEBUG_intersect_centroid.y << 8u) | DEBUG_intersect_centroid.z);
 
@@ -685,150 +612,7 @@ void main()
     // post processing
     if(PassOffset < 2147483647)
     {
-        switch (PassOffset)
-        {
-
-        default:
-            SmoothVertexPositions();
-        break;
-
-        case 4:
-            if(Index != 0)
-                return;
-
-            indirect_dispatch_params.TriangleCount = AtomicCounter;
-
-            float ThreadsPerTriangle = ceil(float(AtomicCounter) * float(ThreadAllocationPerTriangle));
-            ThreadsPerTriangle /= TrianglesProcessedPerThread;
-            uint i = uint(ceil((ThreadsPerTriangle / 512.0f)));
-            VertexCounter = 0;
-            
-            if(i <= 0 || isnan(i))
-                i = 1;
-
-            indirect_dispatch_params.x = i; indirect_dispatch_params.y = i; indirect_dispatch_params.z = i;
-        break;
-        
-        case 5:
-            //atomicAdd(VertexCounter, indirect_dispatch_params.x);
-            Index = (TrianglesProcessedPerThread > 1 && Index > 0) ? Index + TrianglesProcessedPerThread : Index;
-            uint PrevIndex = Index + TrianglesProcessedPerThread;
-            for(Index = Index; Index < PrevIndex; Index++){
-            if(Index >= indirect_dispatch_params.TriangleCount) return;
-
-            Triangle OriginTriangle = TriangleBuffer[(Index > 0) ? Index / ThreadAllocationPerTriangle : 0];
-            uint StartingLocalIndex = Index % ThreadAllocationPerTriangle;
-            uint LocalIndex = (StartingLocalIndex != 0) ? StartingLocalIndex + VerticesPerThread : 0;
-
-            vec4 P0 = VertexBuffer[OriginTriangle.VIndex[0]];
-            vec4 P1 = VertexBuffer[OriginTriangle.VIndex[1]];
-            vec4 P2 = VertexBuffer[OriginTriangle.VIndex[2]];
-
-            vec4 N0 = NormalBuffer[OriginTriangle.VIndex[0]];
-            vec4 N1 = NormalBuffer[OriginTriangle.VIndex[1]];
-            vec4 N2 = NormalBuffer[OriginTriangle.VIndex[2]];
-
-            //vec3 EdgeSmooth_01 = P0 + (project_on_plane(P1 - P0, N0) / 3.0);
-            //vec3 EdgeSmooth_10 = P1 - (project_on_plane(P1 - P0, N1) / 3.0);
-
-           // vec3 EdgeSmooth_02 = P1 +  
-
-            int TotalVertices = int(VerticesPerThread);
-            TotalVertices = (isnan(TotalVertices) || TotalVertices <= 0) ? 3 : TotalVertices;
-            float Segments = ceil((float(sqrt(1 + 8 * TotalVertices) - 3) / 2.0));
-
-            uint VertexIndices[1024];
-
-            for(uint row = 0; row <= uint(Segments); row++)
-            {
-                for(uint column = 0; column <= row; column++)
-                {
-                LocalIndex++;
-                //uint row = uint((sqrt(1.0 + 8.0 * float(LocalIndex)) - 1.0) * 0.5);
-                //uint column = uint(LocalIndex - (row * (row + 1))/2);
-
-                float progress = (row > 0) ? float(column) / float(row) : 0.0;
-
-                vec3 Vertex = vec3(0,0,0);
-                
-                float _v = float(row) / Segments;
-                float _w = _v * progress;
-                
-                float u = 1.0 - _v;
-                float v = _v - _w;
-                float w = _w;/*
-                
-                if(max(max(u, v), w) >= 0.8)
-                {
-                    // exterior vertices 
-                    vec4 LocalVertexArray[] = vec4[](P0, P1, P2);
-                    
-                    uint OwnerEdge = 0;
-                    if(LocalIndex > OriginTriangle.EdgeBudget[0]){
-                        if(LocalIndex > OriginTriangle.EdgeBudget[1])
-                            OwnerEdge = 2;
-                        else
-                            OwnerEdge = 1;
-                    }
-
-                    float LocalDistribution = OriginTriangle.EdgeBudget[OwnerEdge];
-
-                    float Step = float(LocalIndex % uint(round(LocalDistribution)));
-                
-                    vec3 StartingPoint = LocalVertexArray[OwnerEdge].xyz;
-                    vec3 EndPoint = LocalVertexArray[(OwnerEdge == 2) ? OriginTriangle.VIndex[0] : OriginTriangle.VIndex[OwnerEdge + 1]].xyz;
-
-                    float Length = distance(StartingPoint, EndPoint);
-
-                    float t = Step / Length;
-
-                    Vertex = StartingPoint + t * (EndPoint - StartingPoint);
-                }*/
-                //else
-                {
-                    Vertex = P0.xyz * u + P1.xyz * v + P2.xyz * w;
-                    // interior
-                }
-                VertexIndices[LocalIndex] = store_vertices_and_normals(vec4(Vertex, 1), vec4(1, 1, 1, 1));
-                }
-            }
-            
-            uint counter = 0;
-            for(uint row = 0; row < uint(Segments); row++)
-            {
-                uint CurrentRowStart = (row * (row + 1)) / 2;
-                uint NextRowStart = ((row + 1) * (row + 2)) / 2;
-                
-                for(uint column = 0; column <= row; column++)
-                {
-                    uint TopLeft_Grid = CurrentRowStart + column;
-                    uint TopRight_Grid = TopLeft_Grid + 1;
-                    uint BottomLeft_Grid = NextRowStart + column;
-                    uint BottomRight_Grid = BottomLeft_Grid + 1;
-
-                    uint TopLeft = VertexIndices[TopLeft_Grid];
-                    uint TopRight = VertexIndices[TopRight_Grid];
-                    uint BottomLeft = VertexIndices[BottomLeft_Grid];
-                    uint BottomRight = VertexIndices[BottomRight_Grid];
-
-                    if(counter >= LocalIndex || isnan(TopRight) || isnan(BottomRight) || isnan(TopLeft) || isnan(BottomLeft)) return;
-
-                    //if(column < row)
-                       StoreIndices(TopLeft, TopRight, BottomRight, BottomLeft);
-                    //else
-                        //StoreIndices_Tri(TopLeft, BottomRight, BottomLeft);
-
-                    counter++;
-                }
-            };
-
-            }
-        break;
-        
-        case 666:
-            //
-        break;
-        }
+        SmoothVertexPositions();
 
         return;
     }

@@ -77,18 +77,12 @@ void store_index(uint flat_idx, uint vertex_val) {
 uint store_vertices_and_normals(vec4 Centroid, vec4 Normals) {
     uint VertexIndex = atomicAdd(VertexCounter, 1) + StorageOffset;
 
-    if(WriteToTexturesInFirstPass > 0){
     int VertexIndex_x = int(VertexIndex % dCHUNK_SIZE.w);
     int VertexIndex_y = int(VertexIndex / dCHUNK_SIZE.w);
 
     imageStore(VertexTexture, ivec2(VertexIndex_x, VertexIndex_y), Centroid);
     imageStore(NormalTexture, ivec2(VertexIndex_x, VertexIndex_y), Normals);
-    }
-    else
-    {
-    VertexBuffer[VertexIndex] = Centroid;
-    NormalBuffer[VertexIndex] = Normals;
-    }
+
     return VertexIndex;
 }
 
