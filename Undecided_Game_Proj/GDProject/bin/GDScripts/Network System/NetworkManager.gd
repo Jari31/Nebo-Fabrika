@@ -1,4 +1,5 @@
 extends Node3D
+class_name NetworkManager
 
 var Port = 29013
 var Address = "127.0.0.1" 
@@ -9,6 +10,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		print("Server launched in headless mode, attempting startup sequence...")
 		_init_server()
+		return
 		
 func _init_server() -> void:
 	var peer = ENetMultiplayerPeer.new()
@@ -23,9 +25,9 @@ func _init_server() -> void:
 	
 	print("Server bootup process successful. Port: ", Port)
 
-func StartClient() -> void:
+func StartClient(p_Address: String, p_Port: int) -> void:
 	var peer = ENetMultiplayerPeer.new()
-	var err = peer.create_client(Address, Port)
+	var err = peer.create_client(p_Address, p_Port)
 	if err != OK:
 		print("Failed to connect to server with error code: ", err)
 		return
@@ -34,7 +36,7 @@ func StartClient() -> void:
 	print("Connecting to server...")
 
 func _on_player_connected(ID: int) -> void:
-	print("Player connected, ID: ", ID)
+	print("Player connected. ID: ", ID)
 	
 	var player = scene.instantiate()
 	player.name = str(ID)
@@ -42,7 +44,7 @@ func _on_player_connected(ID: int) -> void:
 	add_child(player)
 
 func _on_player_disconnected(ID: int) -> void:
-	print("Player disconnected, ID: ", ID)
+	print("Player disconnected. ID: ", ID)
 	
 	var player = get_node_or_null(str(ID))
 	if player:

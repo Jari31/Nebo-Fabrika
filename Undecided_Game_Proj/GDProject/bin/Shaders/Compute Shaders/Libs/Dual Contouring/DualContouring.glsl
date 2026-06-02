@@ -549,8 +549,8 @@ void main()
                 
                 n = CalculateNormals(p);
 
-                if(isnan(n.x) || isnan(n.y) || isnan(n.z) || isinf(n.x) || isinf(n.y) || isinf(n.z))
-                    continue;
+                //if(isnan(n.x) || isnan(n.y) || isnan(n.z) || isinf(n.x) || isinf(n.y) || isinf(n.z))
+                //    continue;
 
                 Normals += n;
 
@@ -585,8 +585,6 @@ void main()
                 return;
             Normals = normalize(Normals);
             
-            const uint MAX_ITERATIONS = PassNum;
-
             //if(GridSize > 32)
             //Centroid = SolveCholeskyQEF(IntersectionNormals, IntersectionPoints, Centroid, EdgeMask, Normals);
             
@@ -623,15 +621,6 @@ void main()
     int MC_z = int(gl_GlobalInvocationID.z);
     ivec3 MC_xyz = ivec3(MC_x, MC_y, MC_z);
 
-    int f = -1;
-
-    const ivec3 EdgeOffsets[3][4] =
-    {
-        {ivec3(0, 0, 0), ivec3(0, f, 0), ivec3(0, 0, f), ivec3(0, f, f)}, // X
-        {ivec3(0, 0, 0), ivec3(f, 0, 0), ivec3(0, 0, f), ivec3(f, 0, f)}, // Y
-        {ivec3(0, 0, 0), ivec3(f, 0, 0), ivec3(0, f, 0), ivec3(f, f, 0)} // Z
-    };
-
     // {} x -> y -> z
     uint EdgeMask = uint(Node_EdgeMask[Index]);
     if(EdgeMask == 0) return;
@@ -650,14 +639,10 @@ void main()
         if(V2 > -1)
             V3 = GetCellIndex(MC_x - 0, MC_y + 0, MC_z - 1);
 
-        if((EdgeMask & (1u << (0 + 12))) != 0){
-            WindingOrder = 0;
+        if((EdgeMask & (1u << (0 + 12))) != 0)
             StoreIndices(V0, V1, V2, V3);
-        }
-        else{
-            WindingOrder = 1;
+        else
             StoreIndices(V0, V3, V2, V1);
-        }
     }
     V1 = -1, V2 = -1, V3 = -1;
     
@@ -671,14 +656,10 @@ void main()
         if(V2 > -1)
             V3 = GetCellIndex(MC_x - 1, MC_y + 0, MC_z + 0);
 
-        if((EdgeMask & (1u << (3 + 12))) != 0){
-            WindingOrder = 1;
+        if((EdgeMask & (1u << (3 + 12))) != 0)
             StoreIndices(V0, V3, V2, V1);
-        }
-        else{
-            WindingOrder = 0;
+        else
             StoreIndices(V0, V1, V2, V3);
-        }
     }
     V1 = -1, V2 = -1, V3 = -1;
     
@@ -692,13 +673,9 @@ void main()
         if(V2 > -1)
             V3 = GetCellIndex(MC_x - 0, MC_y - 1, MC_z - 0);
             
-        if((EdgeMask & (1u << (8 + 12))) != 0){
-            WindingOrder = 0;
+        if((EdgeMask & (1u << (8 + 12))) != 0)
             StoreIndices(V0, V1, V2, V3);
-        }
-        else{
-            WindingOrder = 1;
+        else
             StoreIndices(V0, V3, V2, V1);
-        }
     }
 }

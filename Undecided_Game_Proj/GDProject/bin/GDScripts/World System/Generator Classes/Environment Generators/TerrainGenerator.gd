@@ -1,6 +1,6 @@
 extends TerrainMeshGenerator
 class_name TerrainGenerator
-## An extension of its parent class, Base_TerrainGenerator serves as the base for planet driven systems.
+## An extension of its parent class, TerrainGenerator serves as the base for planet driven systems.
 ## It assumes more things, making it less flexible.
 ##
 ## DO NOT use this to define planets with this. 

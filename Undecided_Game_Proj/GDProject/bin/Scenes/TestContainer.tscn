@@ -1,16 +1,56 @@
 [gd_scene format=3 uid="uid://c36ltrtper4el"]
 
-[ext_resource type="Script" uid="uid://b644av4dmw55k" path="res://bin/GDScripts/Entity System/Player/Player.gd" id="1_m5jr6"]
+[ext_resource type="PackedScene" uid="uid://cg86cfj6hr1xt" path="res://bin/GDScripts/Entity System/Player/player.tscn" id="1_dmbqv"]
+[ext_resource type="Shader" uid="uid://qaf4feq1qy24" path="res://bin/Scenes/TestFormulaVisualizer.gdshader" id="2_dmbqv"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_m5jr6"]
+sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+ground_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+
+[sub_resource type="Sky" id="Sky_dmbqv"]
+sky_material = SubResource("ProceduralSkyMaterial_m5jr6")
+
+[sub_resource type="Environment" id="Environment_65t85"]
+background_mode = 2
+sky = SubResource("Sky_dmbqv")
+tonemap_mode = 2
+sdfgi_enabled = true
+glow_enabled = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_dmbqv"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_m5jr6"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_65t85"]
+shader = ExtResource("2_dmbqv")
 
 [node name="TestContainer" type="Node3D" unique_id=128370996]
 
-[node name="Player" type="Node3D" parent="." unique_id=1937985616]
-script = ExtResource("1_m5jr6")
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=226915626]
+environment = SubResource("Environment_65t85")
 
-[node name="Camera3D" type="Camera3D" parent="Player" unique_id=1856091429]
-transform = Transform3D(0.9705233, -0.19957331, 0.13511114, 0, 0.5606101, 0.8280799, -0.2410073, -0.8036708, 0.5440852, 2.0807724, 3.098176, 2.3211622)
-current = true
-fov = 90.0
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1668658604]
+transform = Transform3D(1, 0, 0, 0, 0.96956086, 0.24485052, 0, -0.24485052, 0.96956086, 0, 0, 0)
 
-[node name="VisualGeometryGenerator" type="Node3D" parent="Player" unique_id=754058134]
-transform = Transform3D(1.0000002, -7.450581e-09, -7.450581e-09, -1.4901161e-08, 1.0000002, 0, 7.450581e-09, 0, 1.0000004, -4.7683716e-07, -9.536743e-07, -7.1525574e-07)
+[node name="Player" parent="." unique_id=999471135 instance=ExtResource("1_dmbqv")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9697524, 0)
+
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=2071954917]
+transform = Transform3D(4.185869, 0, 0, 0, 1, 0, 0, 0, 6.540655, 0, -0.6264614, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D" unique_id=377543502]
+transform = Transform3D(16.626225, 0, 0, 0, 1, 0, 0, 0, 11.998936, 0, 0, 0)
+mesh = SubResource("BoxMesh_dmbqv")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="StaticBody3D" unique_id=802677880]
+transform = Transform3D(16.626225, 0, 0, 0, 1, 0, 0, 0, 11.998936, 0, 0, 0)
+shape = SubResource("BoxShape3D_m5jr6")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=108575906]
+visible = false
+material = SubResource("ShaderMaterial_65t85")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2

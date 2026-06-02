@@ -40,16 +40,33 @@ Verbose naming is a must.
 ### A few legends:
 UB $-$ Universal Base. Classes (or functions) that act as basses for other objects to inherit.
 # Compilation
-This project is only suited for cross compilation across Windows and Linux. Currently, [this script](Undecided_Game_Proj/PythonScripts/GDExtensionBuild//GDExtensionBuild_CPP.py) allows for cross compilation with Ubuntu.
+This project is only suited for cross compilation across Windows and Linux. Currently, [this script](Undecided_Game_Proj/PythonScripts/GDExtensionBuild//GDExtensionBuild_CPP.py) allows for cross compilation with Ubuntu. Outside of that, this project supports Zig as a build system.
 
-To setup Ubuntu, you must install WSL on your Windows machine. Then install Ubuntu, and then run: 
+First, you need to compile [godot-cpp](Undecided_Game_Proj/godot-cpp/) to link C++ against it.  Open the folder in your terminal, and run:
+```bash
+scons platform=x target=template_debug arch=x86_64 CC="zig cc" CXX="zig c++" AR="zig ar" RANLIB="zig ranlib"
+```
+
+*Replace x with the platform you're compiling for. Such as, ```bash platform=windows```
+
+### Scons build system with python
+To setup Ubuntu, you must install WSL on your Windows machine. Afterwards, install Ubuntu, and then run: 
 ```bash
 sudo apt update && sudo apt install -y build-essential scons git ccache
 ```
 
 Then you can proceed by using the Python script.
 
-*Linux is not mentioned as I do not have a Linux VM currently to test on.
+For building specific modules, you can setup your build function call as:
+```bash
+scons --target=PCG_Environment --targetFolder='Procedural Environment Generator' --productionBuild=0
+```
+
+### Zig build system for C++
+Or, for a maintained build script for the C++ backend, download Zig. Afterwards, navigate to [src](Undecided_Game_Proj/src/) and use:
+```bash 
+zig build
+``` 
 
 # About Open Source
 This project is *semi-open source*[^1]. As in, the music and 3D assets are not open, but the code (aside from some exceptions) is.

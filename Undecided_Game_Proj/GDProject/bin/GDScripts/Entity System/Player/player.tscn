@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://cg86cfj6hr1xt"]
+
+[ext_resource type="Script" uid="uid://b644av4dmw55k" path="res://bin/GDScripts/Entity System/Player/Player3D.gd" id="1_alfjv"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_m5jr6"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_m5jr6"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_te4sc"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_alfjv"]
+properties/0/path = NodePath(".:GlobalPosition")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:PlayerRotation")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+
+[node name="Player" type="CharacterBody3D" unique_id=999471135]
+script = ExtResource("1_alfjv")
+
+[node name="PlayerMesh_Collider" type="CollisionShape3D" parent="." unique_id=211435772]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.035580695, 0)
+shape = SubResource("CapsuleShape3D_m5jr6")
+debug_color = Color(0.092937104, 0.59036887, 0.73761684, 0.41960785)
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1497807050]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.035580695, 0)
+
+[node name="PlayerMesh_Visual" type="MeshInstance3D" parent="Visuals" unique_id=1301879042]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.023586035, 0)
+mesh = SubResource("CapsuleMesh_m5jr6")
+skeleton = NodePath("")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Visuals/PlayerMesh_Visual" unique_id=1552404274]
+transform = Transform3D(0.20038861, 0, 0, 0, 0.1740526, 0, 0, 0, 1, 0.26395464, 0.5998678, -0.60881877)
+mesh = SubResource("BoxMesh_te4sc")
+
+[node name="PlayerCamera" type="Camera3D" parent="." unique_id=1465634868]
+transform = Transform3D(1, 0, 0, 0, 0.9464635, 0.32281092, 0, -0.32281092, 0.9464635, 0, 0.6351871, 2.1666236)
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="." unique_id=178503420]
+replication_config = SubResource("SceneReplicationConfig_alfjv")

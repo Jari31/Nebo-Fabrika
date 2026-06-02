@@ -115,7 +115,7 @@ PCG_Environment::~PCG_Environment(){
     SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_vertex_texture);
     SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_index_texture );
 
-    for(int i = 0; i < 2; i++) {
+    for(int i = 0; i < sizeof(storage.dc_dense_storage); i++) {
         SAFE_FREE_RID(RenderingDevice_Local, storage.dc_dense_storage[i]);
     }
 

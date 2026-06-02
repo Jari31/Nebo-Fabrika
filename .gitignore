@@ -17,3 +17,5 @@ desktop.ini
 Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Generator/.obsidian/community-plugins.json
 /Assets/
 /Undecided_Game_Proj/GDProject/bin/Assets
+/Undecided_Game_Proj/src/.zig-cache
+*.tmp
