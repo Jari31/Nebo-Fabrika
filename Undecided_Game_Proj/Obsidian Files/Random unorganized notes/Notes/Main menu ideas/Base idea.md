@@ -1,0 +1,1 @@
+Basically, a vertical, left stacked 3D menu panel that has a bunch of buttons. Next to it, there's a physical slider that moves to whichever button you press. It displays a hologram that's still in 3D, but it's more traditional in the UI sense.

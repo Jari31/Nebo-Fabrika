@@ -46,6 +46,6 @@ namespace godot
                                     const Vector3i WORKGROUP_SIZE, const bool DEBUG);
         String PreProcessShader(String &Source);
 
-        String ShaderCompiler::PreprocessUberShader(String UberShader, String CompositionShader, String Arguments, String VariableName);
+        String PreprocessUberShader(String UberShader, String CompositionShader, String Arguments, String VariableName);
     };
 }

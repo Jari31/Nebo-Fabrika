@@ -25,6 +25,25 @@ class COMPILE_FOR(Enum):
 
         return cls['INVALID']
 
+class BuildOptimizationLevels(Enum):
+    Debug = 0
+    ReleaseFast = 1
+    ReleaseSafe = 2
+    ReleaseSmall = 3
+
+    @classmethod
+    def QueryInput(cls, Input):
+        Input = Input.upper()
+        if cls in cls.__members__:
+            return cls[Input]
+
+        if Input.isdigit():
+            Input = int(Input)
+            if Input in [i.value for i in cls]:
+                return cls(Input)
+
+        return cls['INVALID']
+
 class WSLSession:
     def __init__(self, Distro):
         self.distro = Distro
@@ -107,19 +126,42 @@ def Compile_SCons(Case, File, Target):
         case COMPILE_FOR.LINUX_64.value:
             linux_sub_process_comp(WinToWSLPath(SourceFolder))
 
-MetaData = ReadFile('../../src/meta')
+def Compile_Zig(Case, File, Target):
+    BaseCommand = f'zig build -DLibraryName=\"{Target}\" -DCompileFromDirectory=\"{File}\"'
+    TemplateCommandWindows = BaseCommand + '-Dtarget=x86_64-windows'
+    TemplateCommandLinux = BaseCommand + '-Dtarget=aarch64-linux'
+
+src = '../../src'
+
+MetaData = ReadFile(src + '/meta')
 
 print(MetaData)
 
-Platform = input("Target platform to compile for (type !help for help): ")
-ProductionBuild = input("Production (non-debug) build? (y/n): ")
-ProductionBuild = True if ProductionBuild.lower() == "y" else False
+BuildOptimization = -1
+BuildSystem = input("Build system to use (0 for Zig, 1 for SCons): ")
+
+if BuildSystem == 0:
+    BuildOptimization = input("Build optimization for Zig build system (type !help for help): ")
+
+Platform = 0
+ProductionBuild = 0
+
+if BuildSystem != "!help":
+    Platform = input("Target platform to compile for (type !help for help): ")
+    ProductionBuild = input("Production (non-debug) build? (y/n): ")
+    ProductionBuild = True if ProductionBuild.lower() == "y" else False
+else:
+    Platform = BuildOptimization
+
 
 def main():
     match Platform:
         case "!help":
             print("Platform enums:")
             for i in COMPILE_FOR:
+                print(f"{i.name}: {i.value}")
+            print("Zig build system enums:")
+            for i in BuildOptimizationLevels:
                 print(f"{i.name}: {i.value}")
         case _:
             CompileForPlatform = COMPILE_FOR.QueryInput(Platform).value
@@ -132,10 +174,15 @@ def main():
             for line in MetaData.splitlines():
                 if line.isspace() or ":" not in line: continue
                 file, target = line.split(":", 1)
-                Compile_SCons(CompileForPlatform, file, target)
+                if BuildSystem == 1:
+                    Compile_SCons(CompileForPlatform, file, target)
+                else:
+                    Compile_Zig(CompileForPlatform, file, target)
 
 Session: WSLSession
-if __name__ == "__main__":
+if BuildSystem == 1:
     Session = WSLSession(Distro='Ubuntu')
     main()
     Session.Shutdown()
+else:
+    main()

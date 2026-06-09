@@ -1,4 +1,7 @@
 //! compile with: scons --target=ShaderComp --targetFolder='Shader compiler' --productionBuild=0
+//! or, if using zig (lin, win):
+//! zig build -DLibraryName="ShaderComp" -DCompileFromDirectory='Shader compiler' --Dtarget=x86_64-linux
+//! zig build -DLibraryName="ShaderComp" -DCompileFromDirectory='Shader compiler' --Dtarget=x86_64-windows
 
 #include "ShaderComp.h"
 using namespace godot;

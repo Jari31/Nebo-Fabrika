@@ -19,3 +19,10 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 /Undecided_Game_Proj/GDProject/bin/Assets
 /Undecided_Game_Proj/src/.zig-cache
 *.tmp
+/Undecided_Game_Proj/Obsidian Files/Random unorganized notes/Notes/.obsidian
+*.obj
+*.obj
+*.pdb
+*.exe
+/Undecided_Game_Proj/zig godot-cpp build scripts/.zig-cache
+*.obj

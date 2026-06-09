@@ -1,4 +1,7 @@
 //! compile with: scons --target=PCG_Environment --targetFolder='Procedural Environment Generator' --productionBuild=0
+//! or, if using zig (lin, win):
+//! zig build -DLibraryName="PCG_Environment" -DCompileFromDirectory='Procedural Environment Generator' -Dtarget=x86_64-linux
+//! zig build -DLibraryName="PCG_Environment" -DCompileFromDirectory='Procedural Environment Generator' -Dtarget=x86_64-windows
 //todo: Implement documentation system
 #include "PCG_Environment.h"
 
@@ -8,7 +11,7 @@ using namespace godot;
 
 #define CHECK_RENDERING_DEVICE()\
     {\
-        if(RenderingDevice_Local == nullptr)\
+        if(!RenderingDevice_Local)\
         {\
             ERR_PRINT("THE RENDERING DEVICE HAS NOT BEEN INITIALIZED. INITIALIZE IT FIRST USING SetSettings(true...). GOD SPEED.");\
             return;\
@@ -22,7 +25,7 @@ using namespace godot;
 
 #define COMPUTE_LIST_CHECK()\
     {\
-        if(G_DEBUG && ComputeList != NULL)\
+        if(G_DEBUG && ComputeList)\
             UtilityFunctions::print("Compute list initialized. ", ComputeList);\
         else if(G_DEBUG){\
             ERR_PRINT(UtilityFunctions::str("'COMPUTE LIST HAS NOT BEEN INITIALIZED. MAY GOD HAVE MERCY. I'M BAILING'", \
@@ -30,7 +33,10 @@ using namespace godot;
             return;\
         }\
     }
-
+#else
+#define CHECK_RENDERING_DEVICE()
+#define ERR_PRINT_LINE() 
+#define COMPUTE_LIST_CHECK()
 #endif
 
 #define SAFE_FREE_RID(device, rid) \
@@ -115,7 +121,7 @@ PCG_Environment::~PCG_Environment(){
     SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_vertex_texture);
     SAFE_FREE_RID(RenderingServer_Local, storage.rendering_server_index_texture );
 
-    for(int i = 0; i < sizeof(storage.dc_dense_storage); i++) {
+    for(uint32_t i = 0; i < sizeof(storage.dc_dense_storage); i++) {
         SAFE_FREE_RID(RenderingDevice_Local, storage.dc_dense_storage[i]);
     }
 
@@ -351,7 +357,6 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
         if(G_DEBUG)
         UtilityFunctions::print("Voxel grid's total nodes per axis: ", BasicPushConstant.Dense_TotalNodes);
     #endif
-    returnedVoxel VoxelBuffer;
     PackedByteArray VoxelBufferArray;
     int64_t OutputSize = sizeof(voxelData) * (CHUNK_SIZE[0] + BufferPadding) * (CHUNK_SIZE[1] + BufferPadding) * (CHUNK_SIZE[2] + BufferPadding) 
                          * (VOXELS_PER_CHUNK[0] + BufferPadding) * (VOXELS_PER_CHUNK[1] + BufferPadding) * (VOXELS_PER_CHUNK[2] + BufferPadding);
@@ -387,7 +392,6 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     {
 
     {
-    DC_VertexIndexBuffer VIndexBuffer;
     PackedByteArray VIndexBufferArray;
     int64_t BufferSize = int64_t(sizeof(DC_VertexIndexBuffer) * std::pow((G_GRID_SIZE), 3));
     VIndexBufferArray.resize(BufferSize);
