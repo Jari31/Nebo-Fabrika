@@ -26,3 +26,5 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 *.exe
 /Undecided_Game_Proj/zig godot-cpp build scripts/.zig-cache
 *.obj
+*.pdb
+*.obj

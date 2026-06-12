@@ -1,7 +1,7 @@
 //! compile with: scons --target=PCG_Environment --targetFolder='Procedural Environment Generator' --productionBuild=0
 //! or, if using zig (lin, win):
 //! zig build -DLibraryName="PCG_Environment" -DCompileFromDirectory='Procedural Environment Generator' -Dtarget=x86_64-linux
-//! zig build -DLibraryName="PCG_Environment" -DCompileFromDirectory='Procedural Environment Generator' -Dtarget=x86_64-windows
+//! zig build -DLibraryName="PCG_Environment" -DCompileFromDirectory='Procedural Environment Generator' -Dtarget=x86_64-window
 //todo: Implement documentation system
 #include "PCG_Environment.h"
 

@@ -1,10 +1,25 @@
-// consult README for setup guide on compiling godot-cpp (scons doesn't work since it uses MSVC instead of Zig's own LLVM compiler). the cloned repo should cover the project structure
+// This script assumes that the project structure is as the same one in the repo
+// Why Zig and not SCons or CMake? Zig is faster. Both at caching and compilation.
+// And also because SCons needs WSL + a second compiler + VM for MSVC bindings
+// Zig compiles Zig, C and C++, for basically all platforms (WASI is important for NF's modding API)
+
 const std = @import("std");
 
-var FileExtension: []const u8 = ".cpp";
+var FileExtension: []const u8 = ".cpp"; // mostly redundant because changing this WILL break everything
+var BuildFolderPath = "../GDProject/bin/build/";
 
 fn _print_unsupported_build(Tag: anytype) void {
     std.debug.print("Unsupported build platform target: {}\n", .{Tag});
+}
+
+fn _add_macros_and_includes(Module: *std.Build.Module, p_Build: *std.Build) void {
+    Module.addIncludePath(p_Build.path("../godot-cpp/include"));
+    Module.addIncludePath(p_Build.path("../godot-cpp/gen/include"));
+    Module.addIncludePath(p_Build.path("../godot-cpp/gen/core/include"));
+    Module.addIncludePath(p_Build.path("../godot-cpp/gdextension"));
+    Module.addIncludePath(p_Build.path("../godot-cpp/gen/gdextension/include"));
+
+    Module.addCMacro("TYPED_METHOD_BIND", "1");
 }
 
 fn _read_meta_file_and_compile(
@@ -81,20 +96,23 @@ fn _compile(
     if (Optimize == std.builtin.OptimizeMode.Debug and !DebugBuild)
         optimization_level = std.builtin.OptimizeMode.ReleaseFast;
 
-    p_Build.install_path = p_Build.path("../GDProject/bin/build/").getPath(p_Build);
+    p_Build.install_path = p_Build.path(BuildFolderPath).getPath(p_Build);
+
+    const is_windows = if (Target.result.os.tag == .windows) true else false;
 
     const base_module = p_Build.createModule(.{
         .root_source_file = p_Build.path("Zig/ZigRegistry.zig"),
         .target = Target,
         .optimize = optimization_level,
         .link_libc = true,
-        .link_libcpp = true,
+        .link_libcpp = !is_windows,
     });
 
-    const godot_cpp_lib = switch (DebugBuild) {
+    const godot_cpp_lib = switch (DebugBuild) { // Can compile to Android, and such, too, but that's out of this project's scope currently
         true => switch (os_tag) {
-            .windows => p_Build.path("../godot-cpp/zig-out/bin/godot-cpp.windows.debug.x86_64.lib"),
-            .linux => p_Build.path("../godot-cpp/zig-out/bin/libgodot-cpp.linux.debug.x86_64.a"),
+            .windows => p_Build.path("../godot-cpp/bin/libgodot-cpp.windows.template_debug.x86_64.lib"),
+            .linux => p_Build.path("../godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a"),
+            .macos => p_Build.path("../godot-cpp/bin/libgodot-cpp.macos.template_debug.x86_64.a"),
 
             else => {
                 _print_unsupported_build(os_tag);
@@ -102,8 +120,9 @@ fn _compile(
             },
         },
         false => switch (os_tag) {
-            .windows => p_Build.path("../godot-cpp/zig-out/bin/godot-cpp.windows.release.x86_64.lib"),
-            .linux => p_Build.path("../godot-cpp/zig-out/bin/libgodot-cpp.linux.release.x86_64.a"),
+            .windows => p_Build.path("../godot-cpp/bin/libgodot-cpp.windows.template_release.x86_64.lib"),
+            .linux => p_Build.path("../godot-cpp/bin/libgodot-cpp.linux.template_release.x86_64.a"),
+            .macos => p_Build.path("../godot-cpp/bin/libgodot-cpp.macos.template_release.x86_64.a"),
 
             else => {
                 _print_unsupported_build(os_tag);
@@ -111,8 +130,6 @@ fn _compile(
             },
         },
     };
-
-    base_module.addObjectFile(godot_cpp_lib);
 
     const file_path = std.fmt.allocPrint(
         Allocator,
@@ -130,25 +147,43 @@ fn _compile(
     defer flag_list.deinit(Allocator);
 
     //transliterated from godot-cpp py scripts
-    base_module.addCMacro("GDEXTENSION", "1");
-    base_module.addCMacro("TYPED_METHOD_BIND", "1");
+    //base_module.addCMacro("GDEXTENSION", "1");
 
     if (!DebugBuild) {
         base_module.addCMacro("PRODUCTION_BUILD", "");
-        base_module.addCMacro("NDEBUG", "1");
-    } else {
-        base_module.addCMacro("DEBUG_ENABLED", "1");
-        base_module.addCMacro("HOT_RELOAD_ENABLED", "1");
-    }
+        //base_module.addCMacro("NDEBUG", "1");
+    } //else {
+    //     base_module.addCMacro("DEBUG_ENABLED", "1");
+    //     base_module.addCMacro("HOT_RELOAD_ENABLED", "1");
+    // }
 
+    // if you need platform specific flags. I found most of these to be unneeded, but this can be a good LuT if you're just looking
     switch (os_tag) {
         .windows => {
-            flag_list.append(Allocator, "-DNOMINMAX") catch @panic("OOM");
+            //base_module.addCMacro("WINDOWS_ENABLED", "1");
+            //base_module.addCMacro("NOMINMAX", "1");
+
+            if (Target.result.abi == .msvc) {
+                //base_module.addCMacro("_HAS_EXCEPTIONS", "0");
+                flag_list.appendSlice(Allocator, &.{
+                    //"-fms-runtime-lib=dll",
+                    //    "-fno-rtti",
+                }) catch @panic("OOM");
+
+                //base_module.linkSystemLibrary("msvcrt", .{});
+                //base_module.linkSystemLibrary("vcruntime", .{});
+
+                //flag_list.append(Allocator, "-fms-runtime-lib=static") catch @panic("OOM");
+
+                //flag_list.appendSlice(Allocator, &.{
+                //    "-fms-runtime-lib=static",
+                //    "-Xclang",
+                //    "--dependent-lib=libcmt",
+                //}) catch @panic("OOM");
+            }
         },
         .linux => {
-            flag_list.append(Allocator, "-fPIC") catch @panic("OOM");
-
-            if (DebugBuild) flag_list.append(Allocator, "-fno-gnu-unique") catch @panic("OOM");
+            //flag_list.append(Allocator, "-fPIC") catch @panic("OOM");
         },
         else => {},
     }
@@ -158,48 +193,159 @@ fn _compile(
         "-std=c++17",
         cpp_optimization_level,
         "-Wall",
-        "-Werror",
+        //"-Werror",
         "-Wextra",
         "-Wno-gnu-anonymous-struct",
         "-Wno-unused-parameter",
         "-Wno-unused-variable",
         "-DTYPED_METHOD_BIND",
+
+        // these three drop binary sizes from 128mbs to 270kbs
+        "-fno-sanitize=undefined",
+        "-fno-sanitize-trap=all",
         "-fno-exceptions",
+        "-fvisibility=hidden", // godot-cpp uses this, and it drops binary sizes by 2 kbs
+        "-fno-asynchronous-unwind-tables", // godot-cpp doesn't use this, but it does drop binary sizes by 3kbs (average from multiple files)
     }) catch @panic("OOM");
 
-    base_module.addCSourceFiles(.{
-        .files = &.{
+    if (os_tag != .windows) {
+        _add_macros_and_includes(base_module, p_Build);
+
+        base_module.addCSourceFiles(.{
+            .files = &.{
+                file_path,
+                registration_path,
+            },
+            .flags = flag_list.items,
+        });
+
+        base_module.addObjectFile(godot_cpp_lib);
+
+        const library = p_Build.addLibrary(.{
+            .name = Name,
+            .linkage = .dynamic,
+            .root_module = base_module,
+        });
+
+        //if (os_tag == .linux) {
+        //    library.root_module.addRPath(.{ .cwd_relative = "." });
+        //}
+
+        const artifacts = p_Build.addInstallArtifact(
+            library,
+            .{ .dest_dir = .{ .override = .{ .custom = Name } } },
+        );
+
+        p_Build.getInstallStep().dependOn(&artifacts.step);
+    } else {
+        // If you don't use MSVC's linker.exe, it segfault Godot because Godot expects MSVC ABIs and not LLVM
+        // You could avoid this and use the steps above if you compiled Godot with MinGW instead of MSVC (MSVC genuinely is so ass)
+        // I recommend doing that if you are on Linux and don't want to setup a VM or a WINE environment
+        // Also, you need to run this in a 'x64 Native Tools Command Prompt for VS 2022'
+        // Mostly because Zig currently doesn't have an LTS WindowsSDK API and I didn't want any external dependencies (Aside from MSVC,-
+        //  -but again, you can just compile Godot with MinGW or Zig)
+        const files_to_compile = &[_][]const u8{
             file_path,
             registration_path,
-        },
-        .flags = flag_list.items,
-    });
+        };
 
-    base_module.addIncludePath(p_Build.path("../godot-cpp/include"));
-    base_module.addIncludePath(p_Build.path("../godot-cpp/include"));
-    base_module.addIncludePath(p_Build.path("../godot-cpp/gen/include"));
-    base_module.addIncludePath(p_Build.path("../godot-cpp/gen/core/include"));
-    base_module.addIncludePath(p_Build.path("../godot-cpp/gdextension"));
-    base_module.addIncludePath(p_Build.path("../godot-cpp/gen/gdextension/include"));
+        const folder_path = std.fmt.allocPrint(
+            Allocator,
+            "{s}{s}",
+            .{ BuildFolderPath, Name },
+        ) catch @panic("OOM");
 
-    const library = p_Build.addLibrary(.{
-        .name = Name,
-        .linkage = .dynamic,
-        .root_module = base_module,
-    });
+        const io = p_Build.graph.io;
 
-    const artifacts = p_Build.addInstallArtifact(
-        library,
-        .{ .dest_dir = .{ .override = .{ .custom = Name } } },
-    );
+        std.Io.Dir.createDirPath(std.Io.Dir.cwd(), io, folder_path) catch |err| {
+            std.debug.print("Failed to create directory {s}: {}\n", .{ folder_path, err });
+            @panic("Directory creation failed");
+        };
 
-    p_Build.getInstallStep().dependOn(&artifacts.step);
+        std.debug.print("Creating a subfolder at: {s}", .{folder_path});
+
+        // const output_comp_object = compilation_object.getEmittedBin();
+
+        const output_location = std.fmt.allocPrint(
+            Allocator,
+            "/OUT:{s}{s}/{s}.dll",
+            .{ BuildFolderPath, Name, Name },
+        ) catch @panic("OOM");
+        std.debug.print("Linker outputting to: {s}", .{output_location});
+
+        const linker_step = p_Build.addSystemCommand(&.{"link.exe"});
+
+        linker_step.addArgs(&.{
+            "/DLL",
+            output_location,
+            "/NOLOGO",
+            "/NODEFAULTLIB:libcmt.lib",
+        });
+
+        inline for (files_to_compile, 0..) |source_file, i| {
+            const step_name = std.fmt.allocPrint(Allocator, "{s}_{d}", .{ Name, i }) catch @panic("OOM");
+            std.debug.print("Linking for step: {s}\n", .{step_name});
+
+            const file_module = p_Build.createModule(.{
+                .root_source_file = p_Build.path("Zig/ZigRegistry.zig"),
+                .target = Target,
+                .optimize = optimization_level,
+                .link_libc = true,
+                .link_libcpp = false, // is_windows is always true here
+            });
+
+            _add_macros_and_includes(file_module, p_Build);
+
+            const compilation_object = p_Build.addObject(.{
+                .name = step_name,
+                .root_module = file_module,
+            });
+
+            compilation_object.root_module.addCSourceFile(.{
+                .file = p_Build.path(source_file),
+                .flags = flag_list.items,
+            });
+
+            linker_step.addFileArg(compilation_object.getEmittedBin());
+        }
+
+        linker_step.addFileArg(godot_cpp_lib);
+
+        linker_step.addArgs(&.{
+            "kernel32.lib",
+            "user32.lib",
+            "msvcrt.lib",
+            "vcruntime.lib",
+            "ucrt.lib",
+        });
+
+        // if (p_Build.graph.environ_map.get("LIB")) |lib_env| {
+        //     var it = std.mem.splitScalar(u8, lib_env, ';');
+        //     while (it.next()) |path| {
+        //         if (path.len == 0) continue;
+        //
+        //         const lib_path_flag = std.fmt.allocPrint(Allocator, "/LIBPATH:{s}", .{path}) catch @panic("OOM");
+        //         linker_step.addArg(lib_path_flag);
+        //     }
+        // } else {
+        //     std.debug.print(
+        //         "\n\x1b[31m[BUILD ERROR] MSVC Linker paths not found.\x1b[0m" ++
+        //             "\\Please run 'zig build' from inside the 'x64 Native Tools Command Prompt for VS 2022'" ++
+        //             "\\so that the required Windows SDK paths can be passed to link.exe." ++ "\n\n",
+        //         .{},
+        //     );
+        // }
+
+        p_Build.getInstallStep().dependOn(&linker_step.step);
+    }
 }
 
 pub fn build(p_Build: *std.Build) void {
     const allocator = p_Build.allocator;
 
-    const target = p_Build.standardTargetOptions(.{});
+    const _target = p_Build.standardTargetOptions(.{});
+    var target = _target;
+
     const optimize = p_Build.standardOptimizeOption(.{});
 
     const name: []const u8 = p_Build.option(
@@ -223,6 +369,21 @@ pub fn build(p_Build: *std.Build) void {
         "DebugBuild",
         "True or false to dictate whether this build should be treated as debug or not. Default is true.",
     ) orelse true;
+
+    const windows_use_another_abi = p_Build.option(
+        bool,
+        "WindowsUseAnotherABI",
+        "Whether to use another ABI for Windows than MSVC. e.g., GNU for Linux (-Dtarget=x86_64-windows-gnu). Default is false.",
+    ) orelse false;
+
+    if (_target.result.os.tag == .windows and !windows_use_another_abi) {
+        std.debug.print("Target platform is windows, switching ABI to .msvc...\n", .{});
+        target = p_Build.resolveTargetQuery(.{
+            .cpu_arch = .x86_64,
+            .os_tag = .windows,
+            .abi = .msvc,
+        });
+    }
 
     const compile_from_directory = std.fmt.allocPrint(allocator, "{s}/", .{input_compile_directory}) catch
         {

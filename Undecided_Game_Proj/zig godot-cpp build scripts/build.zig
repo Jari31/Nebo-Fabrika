@@ -1,4 +1,5 @@
 // AI generated boilerplate. I would rewrite the SConstruct in Zig myself, but I don't have the time currently
+// Though, it does contain some modification. Because AI is very confidently wrong most of the time.
 
 const std = @import("std");
 
@@ -37,7 +38,6 @@ pub fn build(b: *std.Build) void {
             const DebugBuild: bool = if (opt.mode == .Debug) true else false;
 
             const optimization_level = if (DebugBuild) "-O2" else "-O3";
-            const debug_flag = if (DebugBuild) "-g" else "";
             const godot_mod = b.createModule(.{
                 .target = target,
                 .optimize = opt.mode,
@@ -76,19 +76,20 @@ pub fn build(b: *std.Build) void {
                     .windows => {
                         godot_mod.addCMacro("WINDOWS_ENABLED", "1");
                         godot_mod.addCMacro("NOMINMAX", "1");
+                        godot_mod.addCMacro("V_ALIGNED", "1");
                         if (plat.abi == .msvc) {
                             godot_mod.addCMacro("_HAS_EXCEPTIONS", "0");
-                            flag_list.append(b.allocator, "-fms-runtime-lib=static");    
+                            flag_list.append(b.allocator, "-fms-runtime-lib=static") catch @panic("OOM");
                         }
                     },
                     .linux => {
                         godot_mod.addCMacro("LINUX_ENABLED", "1");
                         godot_mod.addCMacro("UNIX_ENABLED", "1");
                         flag_list.append(b.allocator, "-fPIC") catch @panic("OOM");
-                        if (DebugBuild) {
-                            // prevents the OS from pinning old hot-reload files in memory
-                            flag_list.append(b.allocator, "-fno-gnu-unique") catch @panic("OOM");
-                        }
+                        //if (DebugBuild) {
+                        // prevents the OS from pinning old hot-reload files in memory
+                        //flag_list.append(b.allocator, "-fno-gnu-unique") catch @panic("OOM");
+                        //}
                     },
                     .ios => {
                         godot_mod.addCMacro("IOS_ENABLED", "1");
@@ -112,27 +113,19 @@ pub fn build(b: *std.Build) void {
 
             flag_list.appendSlice(b.allocator, &.{
                 "-std=c++17",
-                optimization_level,
                 "-fno-exceptions",
-                "-DTYPED_METHOD_BIND",
-                debug_flag,
             }) catch @panic("OOM");
+
+            flag_list.append(b.allocator, optimization_level) catch @panic("OOM");
+            if (DebugBuild) flag_list.append(b.allocator, "-g") catch @panic("OOM");
 
             const cpp_flags = flag_list.items;
 
             godot_mod.addIncludePath(b.path("include"));
             godot_mod.addIncludePath(b.path("gen/include"));
+            godot_mod.addIncludePath(b.path("gen/core/include"));
+            godot_mod.addIncludePath(b.path("gen/gdextension/include"));
             godot_mod.addIncludePath(b.path("gdextension"));
-
-            if (plat.os == .windows) {}
-
-            if (!DebugBuild) {
-                godot_mod.addCMacro("PRODUCTION_BUILD", "");
-                godot_mod.addCMacro("NDEBUG", "1");
-            } else {
-                godot_mod.addCMacro("DEBUG_ENABLED", "1");
-                godot_mod.addCMacro("HOT_RELOAD_ENABLED", "1");
-            }
 
             // Capture by value, then create a local 'var' to allow state mutations
             if (b.build_root.handle.openDir(io, "src", .{ .iterate = true })) |*src_dir| {
@@ -186,7 +179,6 @@ pub fn build(b: *std.Build) void {
             });
 
             if (plat.os == .linux) godot_lib.root_module.addRPath(.{ .cwd_relative = "." });
-            godot_lib.crt
 
             const install_step = b.addInstallArtifact(godot_lib, .{
                 .dest_dir = .{ .override = .{ .custom = "bin" } },
