@@ -29,7 +29,7 @@ using namespace godot;
             UtilityFunctions::print("Compute list initialized. ", ComputeList);\
         else if(G_DEBUG){\
             ERR_PRINT(UtilityFunctions::str("'COMPUTE LIST HAS NOT BEEN INITIALIZED. MAY GOD HAVE MERCY. I'M BAILING'", \
-                        "-CPU,", __DATE__, ". Oh yeah, the error is at: ", __LINE__, "|", __FILE__));\
+                        "-CPU, 6/15/2026. Oh yeah, the error is at: ", __LINE__, "|", __FILE__));\
             return;\
         }\
     }

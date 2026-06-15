@@ -28,3 +28,4 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 *.obj
 *.pdb
 *.obj
+/Undecided_Game_Proj/RustSetup/target/flycheck0

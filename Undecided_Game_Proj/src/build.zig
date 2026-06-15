@@ -1,12 +1,21 @@
 // This script assumes that the project structure is as the same one in the repo
-// Why Zig and not SCons or CMake? Zig is faster. Both at caching and compilation.
+// Why Zig and not SCons or CMake? Zig is faster. Both at caching and compilation. Hot reloads take seconds.
 // And also because SCons needs WSL + a second compiler + VM for MSVC bindings
 // Zig compiles Zig, C and C++, for basically all platforms (WASI is important for NF's modding API)
+
+// Mac is broken, and I don't intend on supporting it either. As it has 1% - 1.5% of the gamerbase.
+// It also has a different GPU arch, which will definitely brick some of the compute shaders.
+// Apple products are just too annoying to work with.
+
+// (*there is a Mac branch, but I have not tested it much due to me lacking a Mac)
+
+// Standard command to build everything: zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-linux
 
 const std = @import("std");
 
 var FileExtension: []const u8 = ".cpp"; // mostly redundant because changing this WILL break everything
 var BuildFolderPath = "../GDProject/bin/build/";
+var SkipDebugFlag: bool = false;
 
 fn _print_unsupported_build(Tag: anytype) void {
     std.debug.print("Unsupported build platform target: {}\n", .{Tag});
@@ -19,7 +28,7 @@ fn _add_macros_and_includes(Module: *std.Build.Module, p_Build: *std.Build) void
     Module.addIncludePath(p_Build.path("../godot-cpp/gdextension"));
     Module.addIncludePath(p_Build.path("../godot-cpp/gen/gdextension/include"));
 
-    Module.addCMacro("TYPED_METHOD_BIND", "1");
+    Module.addCMacro("TYPED_METHOD_BIND", "1"); // technically pointless because the flag-list already contains this as a flag, but eh
 }
 
 fn _read_meta_file_and_compile(
@@ -29,6 +38,15 @@ fn _read_meta_file_and_compile(
     Target: std.Build.ResolvedTarget,
     Optimize: std.builtin.OptimizeMode,
 ) void {
+    // Follows this format:
+    // # This is a comment.
+    // # List your file paths as path/to/something:file_something
+    // # Also: ../external lib/something:entry_point
+
+    // Procedural Environment Generator:PCG_Environment
+    // Shader compiler:ShaderComp
+    // ThreadPhysics/ECS Pool:ECS_Particles
+
     const io = p_Build.graph.io;
 
     const max_file_size = 100 * 1024 * 1024;
@@ -47,9 +65,16 @@ fn _read_meta_file_and_compile(
     var lines = std.mem.splitSequence(u8, read_buffer, "\n");
     std.debug.print("Loaded meta file onto memory. Proceeding to read and compile...\n", .{});
     while (lines.next()) |line| {
-        const clean_line = std.mem.trim(u8, line, "\r");
+        var clean_line = std.mem.trim(u8, line, "\r");
 
         if (clean_line.len == 0) continue;
+
+        { // comments
+            const stripped_line = std.mem.trim(u8, clean_line, " \t\r\n");
+
+            if (std.mem.startsWith(u8, stripped_line, &[_]u8{'#'})) continue;
+            if (std.mem.indexOfScalar(u8, stripped_line, '#')) |index| clean_line = line[0..index];
+        }
 
         std.debug.print("Found line: {s}\n", .{clean_line});
 
@@ -57,10 +82,11 @@ fn _read_meta_file_and_compile(
 
         if (parts.next()) |key| {
             if (parts.next()) |value| {
-                const raw_folder = std.mem.trim(u8, key, " \t");
+                const raw_folder = std.mem.trim(u8, key, " \t"); // needs to strip again because of "something : something" type syntax
                 const folder = std.fmt.allocPrint(Allocator, "{s}/", .{raw_folder}) catch |err|
                     // moves it to the heap since otherwise it gets corrupted into:
                     // error: unable to update file from '.zig-cache\o\004797be9ffb1d8f419dced72c944d2c\libShaderComp.so' to 'F:\Openworld_Game\Undecided_Game_Proj\GDProject\bin\build\¬¬¬¬¬¬¬¬¬¬\libShaderComp.so': BadPathName
+                    // something to do with the build graph
                     {
                         std.debug.print("Failed to format 'folder' for compilation whilst trying to read meta file with error: {}", .{err});
                         return;
@@ -91,10 +117,7 @@ fn _compile(
 ) void {
     const os_tag = Target.result.os.tag;
 
-    var optimization_level = Optimize;
-
-    if (Optimize == std.builtin.OptimizeMode.Debug and !DebugBuild)
-        optimization_level = std.builtin.OptimizeMode.ReleaseFast;
+    const optimization_level = if (!DebugBuild and !SkipDebugFlag) std.builtin.OptimizeMode.ReleaseFast else Optimize; // default for Optimize is Debug
 
     p_Build.install_path = p_Build.path(BuildFolderPath).getPath(p_Build);
 
@@ -183,7 +206,28 @@ fn _compile(
             }
         },
         .linux => {
-            //flag_list.append(Allocator, "-fPIC") catch @panic("OOM");
+            //std.debug.print("Appending Linux flags...\n", .{});
+            flag_list.appendSlice(Allocator, &.{
+                "-fPIC", // Linux needs this for .so, as otherwise the memory gets corrupted, fast
+                "-Wl,-s",
+
+                // gets rid of dead code
+                "-Wl,--gc-sections",
+                "-ffunction-sections",
+                "-fdata-sections",
+            }) catch @panic("OOM");
+        },
+
+        .macos => {
+            flag_list.appendSlice(Allocator, &.{
+                // without these flags, MacOS has temper tantrums over what it expects long to mean vs what godot templates makes it out to be
+                // i.e., long is 64bit on MacOS; long is 32bit on Linux and Windows
+                "-D__STDC_INT64__",
+                "-mlong-double-64",
+                //"-fno-emulated-tls",
+                "-D_GODOT_CPP_AVOID_THREAD_LOCAL",
+                "-pthread",
+            }) catch @panic("OOM");
         },
         else => {},
     }
@@ -208,7 +252,7 @@ fn _compile(
         "-fno-asynchronous-unwind-tables", // godot-cpp doesn't use this, but it does drop binary sizes by 3kbs (average from multiple files)
     }) catch @panic("OOM");
 
-    if (os_tag != .windows) {
+    if (!is_windows) {
         _add_macros_and_includes(base_module, p_Build);
 
         base_module.addCSourceFiles(.{
@@ -227,6 +271,10 @@ fn _compile(
             .root_module = base_module,
         });
 
+        // these two drop binary sizes from 10mbs to 1.25mbs
+        library.root_module.strip = true;
+        library.link_gc_sections = true;
+
         //if (os_tag == .linux) {
         //    library.root_module.addRPath(.{ .cwd_relative = "." });
         //}
@@ -238,7 +286,7 @@ fn _compile(
 
         p_Build.getInstallStep().dependOn(&artifacts.step);
     } else {
-        // If you don't use MSVC's linker.exe, it segfault Godot because Godot expects MSVC ABIs and not LLVM
+        // If you don't use MSVC's linker.exe, it segfaults Godot because Godot expects MSVC ABIs and not LLVM
         // You could avoid this and use the steps above if you compiled Godot with MinGW instead of MSVC (MSVC genuinely is so ass)
         // I recommend doing that if you are on Linux and don't want to setup a VM or a WINE environment
         // Also, you need to run this in a 'x64 Native Tools Command Prompt for VS 2022'
@@ -263,8 +311,6 @@ fn _compile(
         };
 
         std.debug.print("Creating a subfolder at: {s}", .{folder_path});
-
-        // const output_comp_object = compilation_object.getEmittedBin();
 
         const output_location = std.fmt.allocPrint(
             Allocator,
@@ -376,14 +422,31 @@ pub fn build(p_Build: *std.Build) void {
         "Whether to use another ABI for Windows than MSVC. e.g., GNU for Linux (-Dtarget=x86_64-windows-gnu). Default is false.",
     ) orelse false;
 
-    if (_target.result.os.tag == .windows and !windows_use_another_abi) {
-        std.debug.print("Target platform is windows, switching ABI to .msvc...\n", .{});
-        target = p_Build.resolveTargetQuery(.{
-            .cpu_arch = .x86_64,
-            .os_tag = .windows,
-            .abi = .msvc,
-        });
+    switch (_target.result.os.tag) {
+        .windows => {
+            if (!windows_use_another_abi) {
+                std.debug.print("Target platform is windows, switching ABI to .msvc...\n", .{});
+                target = p_Build.resolveTargetQuery(.{
+                    .cpu_arch = .x86_64,
+                    .os_tag = .windows,
+                    .abi = .msvc,
+                });
+            }
+        },
+        .macos => {
+            target.result.os.version_range = .{ .semver = .{
+                .min = .{ .major = 13, .minor = 0, .patch = 0 },
+                .max = .{ .major = 13, .minor = 0, .patch = 0 },
+            } };
+        },
+        else => {},
     }
+
+    SkipDebugFlag = p_Build.option(
+        bool,
+        "SkipDebugFlag",
+        "Whether to use a custom defined OptimizeMode flag or not. Does not affect C++ building (Godot binaries use -O2 for debug, -O3 for release). Default is false.",
+    ) orelse false;
 
     const compile_from_directory = std.fmt.allocPrint(allocator, "{s}/", .{input_compile_directory}) catch
         {
@@ -398,7 +461,9 @@ pub fn build(p_Build: *std.Build) void {
     //    .{ directory_base, name },
     //) catch return;
 
-    if (!std.mem.eql(u8, "ALL", compile_from_directory) and !std.mem.eql(u8, "ALL", name) and compile_from_directory.len > 0 and name.len > 0) {
+    const compile_everything = std.mem.eql(u8, "ALL", compile_from_directory) or std.mem.eql(u8, "ALL", name);
+    const compile_specifics = name.len > 0 and compile_from_directory.len > 0;
+    if (!compile_everything and compile_specifics) {
         _compile(
             name,
             p_Build,
@@ -408,7 +473,7 @@ pub fn build(p_Build: *std.Build) void {
             allocator,
             debug_build,
         );
-    } else if (std.mem.eql(u8, "ALL", compile_from_directory) or std.mem.eql(u8, "ALL", name)) {
+    } else if (compile_everything) {
         _read_meta_file_and_compile(p_Build, allocator, debug_build, target, optimize);
     }
 }

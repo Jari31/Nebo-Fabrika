@@ -1,2 +1,6 @@
-Procedural Environment Generator:PCG_Environment
+# This is a comment.
+# List your file paths as path/to/something:file_something
+# Also: ../external lib/something:entry_point
+
+Procedural Environment Generator:PCG_Environment # you can also comment in front of meta lines!
 Shader compiler:ShaderComp
