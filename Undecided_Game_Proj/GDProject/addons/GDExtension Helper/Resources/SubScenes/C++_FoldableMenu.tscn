@@ -1,0 +1,62 @@
+[gd_scene format=3 uid="uid://62nireejj08s"]
+
+[ext_resource type="Theme" uid="uid://bmuwx5vdx7kob" path="res://addons/GDExtension Helper/Resources/GDExtensionHelperTheme.tres" id="1_angye"]
+[ext_resource type="Script" uid="uid://cx8gr6h50dksp" path="res://addons/GDExtension Helper/Resources/SubScenes/foldable_menu_handler.gd" id="2_0nufk"]
+[ext_resource type="Shader" uid="uid://dieh4ydp4ifce" path="res://addons/GDExtension Helper/Resources/Shaders/collapsed_panel_glass_shader.gdshader" id="2_41aw4"]
+[ext_resource type="Theme" uid="uid://du0dkqw8a3p3d" path="res://addons/GDExtension Helper/Resources/SubTheme_MenuButton.tres" id="3_0nufk"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_xk2vw"]
+shader = ExtResource("2_41aw4")
+shader_parameter/BlurAmount = 2.5
+shader_parameter/GlassTint = Color(0.25030932, 0.35419908, 0.43917835, 0.24100001)
+shader_parameter/EdgeColor = Color(0.6839172, 0.778799, 0.8413316, 0.4)
+shader_parameter/EdgeMasks_1 = Color(0, 0.025840001, 1, 0.98)
+shader_parameter/EdgeMasks_2 = Color(0, 0.025840001, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xk2vw"]
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+
+[node name="FoldableContainer" type="FoldableContainer" unique_id=1016405772 node_paths=PackedStringArray("ChildPanel", "ChildVBox")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_transform_enabled = true
+offset_transform_visual_only = false
+theme = ExtResource("1_angye")
+title_alignment = 1
+title_position = 1
+script = ExtResource("2_0nufk")
+ChildPanel = NodePath("Panel")
+ChildVBox = NodePath("Panel/MarginContainer/VBoxContainer")
+
+[node name="Panel" type="Panel" parent="." unique_id=586417692]
+material = SubResource("ShaderMaterial_xk2vw")
+layout_mode = 2
+offset_transform_enabled = true
+theme = ExtResource("1_angye")
+theme_override_styles/panel = SubResource("StyleBoxFlat_xk2vw")
+
+[node name="MarginContainer" type="MarginContainer" parent="Panel" unique_id=1430255348]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_angye")
+theme_override_constants/margin_left = 128
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 128
+theme_override_constants/margin_bottom = 16
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel/MarginContainer" unique_id=892184445]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="Button" parent="Panel/MarginContainer/VBoxContainer" unique_id=585970359]
+layout_mode = 2
+theme = ExtResource("3_0nufk")
+text = "Generation Panel"

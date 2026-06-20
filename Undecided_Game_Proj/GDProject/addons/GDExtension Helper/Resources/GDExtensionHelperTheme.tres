@@ -1,0 +1,64 @@
+[gd_resource type="Theme" format=3 uid="uid://bmuwx5vdx7kob"]
+
+[ext_resource type="FontFile" uid="uid://bb6cb7qndwqc1" path="res://bin/Assets/Fonts/Inter-VariableFont_opsz,wght.ttf" id="1_l5xfl"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xrivr"]
+bg_color = Color(0.21515739, 0.26548097, 0.2846123, 0.21176471)
+draw_center = false
+border_color = Color(0.27953926, 0.3124442, 0.3706736, 1)
+border_blend = true
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fdajf"]
+bg_color = Color(0.16116023, 0.24476337, 0.24569052, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qu43l"]
+bg_color = Color(0.30540928, 0.46713674, 0.6697342, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vxnl7"]
+bg_color = Color(0.15805358, 0.17920032, 0.20207426, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_l5xfl"]
+bg_color = Color(0.30359998, 0.36876667, 0.46, 0.3372549)
+border_width_left = 8
+border_width_right = 8
+border_color = Color(0.21960784, 0.21960784, 0.21960784, 1)
+border_blend = true
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2fetp"]
+bg_color = Color(0.1332, 0.14958, 0.18, 0.7607843)
+border_width_bottom = 4
+border_color = Color(0.43287003, 0.42865938, 0.5808668, 1)
+border_blend = true
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vhsol"]
+bg_color = Color(0.13, 0.13, 0.13, 0)
+border_width_left = 8
+border_width_right = 8
+border_color = Color(0.21950099, 0.21950105, 0.21950084, 1)
+border_blend = true
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_krmrw"]
+bg_color = Color(0.12293304, 0.14729708, 0.17199507, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[resource]
+FoldableContainer/styles/panel = SubResource("StyleBoxFlat_xrivr")
+HSplitContainer/constants/separation = 1
+HSplitContainer/styles/split_bar_background = SubResource("StyleBoxFlat_fdajf")
+HSplitContainer/styles/split_bar_selected = SubResource("StyleBoxFlat_qu43l")
+MarginContainer/constants/margin_bottom = 8
+MarginContainer/constants/margin_left = 8
+MarginContainer/constants/margin_right = 8
+MarginContainer/constants/margin_top = 8
+Panel/styles/panel = SubResource("StyleBoxFlat_vxnl7")
+TabContainer/fonts/font = ExtResource("1_l5xfl")
+TabContainer/styles/tab_hovered = SubResource("StyleBoxFlat_l5xfl")
+TabContainer/styles/tab_selected = SubResource("StyleBoxFlat_2fetp")
+TabContainer/styles/tab_unselected = SubResource("StyleBoxFlat_vhsol")
+TextEdit/fonts/font = ExtResource("1_l5xfl")
+TextEdit/styles/normal = SubResource("StyleBoxFlat_krmrw")

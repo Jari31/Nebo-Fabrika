@@ -1,0 +1,94 @@
+[gd_scene format=3 uid="uid://ceqx4soxqjrfc"]
+
+[ext_resource type="Script" uid="uid://driq107mplnbu" path="res://addons/GDExtension Helper/GDScript/gd_extension_helper.gd" id="1_cu4fr"]
+[ext_resource type="Theme" uid="uid://bmuwx5vdx7kob" path="res://addons/GDExtension Helper/Resources/GDExtensionHelperTheme.tres" id="2_7qout"]
+[ext_resource type="Texture2D" uid="uid://bjdw4m77lgy3l" path="res://addons/GDExtension Helper/Resources/C++Logo.png" id="3_ce8w0"]
+[ext_resource type="StyleBox" uid="uid://bsttyo83w8ii0" path="res://addons/GDExtension Helper/Resources/ButtonHolderPanel.tres" id="4_jrvnv"]
+[ext_resource type="PackedScene" uid="uid://62nireejj08s" path="res://addons/GDExtension Helper/Resources/SubScenes/C++_FoldableMenu.tscn" id="5_hu2ry"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hp7qw"]
+bg_color = Color(0.09411765, 0.12941177, 0.13725491, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_df8rf"]
+bg_color = Color(0.094532944, 0.12935954, 0.13806379, 1)
+
+[node name="C++GDExtensionHelper" type="PanelContainer" unique_id=1852600496]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_cu4fr")
+
+[node name="Root" type="PanelContainer" parent="." unique_id=1168165683]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hp7qw")
+
+[node name="MarginContainer" type="MarginContainer" parent="Root" unique_id=51563363]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Root/MarginContainer" unique_id=498802728]
+visible = false
+layout_mode = 2
+
+[node name="HSplitContainer" type="HSplitContainer" parent="Root/MarginContainer" unique_id=1826286829]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+split_offsets = PackedInt32Array(628)
+drag_area_offset = 8
+split_offset = 628
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/MarginContainer/HSplitContainer" unique_id=1745390443]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+
+[node name="TextEdit" type="TextEdit" parent="Root/MarginContainer/HSplitContainer/MarginContainer" unique_id=1669998408]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+placeholder_text = "Write your text here!"
+
+[node name="MarginContainer2" type="MarginContainer" parent="Root/MarginContainer/HSplitContainer" unique_id=927491468]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+
+[node name="TabContainer" type="TabContainer" parent="Root/MarginContainer/HSplitContainer/MarginContainer2" unique_id=882805376]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+theme_override_constants/icon_max_width = 24
+current_tab = 0
+tab_0/icon = ExtResource("3_ce8w0")
+
+[node name="C++ Helper" type="MarginContainer" parent="Root/MarginContainer/HSplitContainer/MarginContainer2/TabContainer" unique_id=244714704]
+layout_mode = 2
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
+metadata/_tab_index = 0
+
+[node name="Panel" type="Panel" parent="Root/MarginContainer/HSplitContainer/MarginContainer2/TabContainer/C++ Helper" unique_id=1311190575]
+layout_mode = 2
+theme = ExtResource("2_7qout")
+theme_override_styles/panel = ExtResource("4_jrvnv")
+
+[node name="FoldableContainer" parent="Root/MarginContainer/HSplitContainer/MarginContainer2/TabContainer/C++ Helper/Panel" unique_id=1016405772 instance=ExtResource("5_hu2ry")]
+layout_mode = 0
+anchors_preset = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="Root/MarginContainer/HSplitContainer/MarginContainer2/TabContainer" unique_id=1733807469]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="Panel" type="Panel" parent="." unique_id=1714086279]
+visible = false
+layout_mode = 2
+theme = ExtResource("2_7qout")
+theme_override_styles/panel = SubResource("StyleBoxFlat_df8rf")
