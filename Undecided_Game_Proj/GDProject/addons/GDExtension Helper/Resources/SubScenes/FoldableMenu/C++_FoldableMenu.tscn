@@ -1,0 +1,95 @@
+[gd_scene format=3 uid="uid://62nireejj08s"]
+
+[ext_resource type="Theme" uid="uid://bmuwx5vdx7kob" path="res://addons/GDExtension Helper/Resources/GDExtensionHelperTheme.tres" id="1_o41yv"]
+[ext_resource type="Script" uid="uid://cx8gr6h50dksp" path="res://addons/GDExtension Helper/Resources/SubScenes/FoldableMenu/foldable_menu_handler.gd" id="2_sk3ef"]
+[ext_resource type="Shader" uid="uid://dieh4ydp4ifce" path="res://addons/GDExtension Helper/Resources/Shaders/collapsed_panel_glass_shader.gdshader" id="3_vt3yd"]
+[ext_resource type="Theme" uid="uid://du0dkqw8a3p3d" path="res://addons/GDExtension Helper/Resources/SubTheme_MenuButton.tres" id="4_2kppt"]
+[ext_resource type="Texture2D" uid="uid://vb264le86ba4" path="res://addons/GDExtension Helper/Resources/2D Assets/ArrowheadRight.png" id="4_sk3ef"]
+[ext_resource type="Texture2D" uid="uid://phxxpib845or" path="res://addons/GDExtension Helper/Resources/2D Assets/ArrowheadUp.png" id="5_sy32m"]
+[ext_resource type="Theme" uid="uid://biygu4b0tltsl" path="res://addons/GDExtension Helper/Resources/FoldableMenu.theme" id="7_vt3yd"]
+[ext_resource type="FontFile" uid="uid://bb6cb7qndwqc1" path="res://bin/Assets/Fonts/Inter-VariableFont_opsz,wght.ttf" id="8_2kppt"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_xk2vw"]
+shader = ExtResource("3_vt3yd")
+shader_parameter/BlurAmount = 2.5
+shader_parameter/GlassTint = Color(0.025110887, 0.050954103, 0.074318595, 0.12156863)
+shader_parameter/EdgeColor = Color(0.6836089, 0.77909577, 0.8411834, 0.163)
+shader_parameter/EdgeMasks_1 = Color(0, 0.025840001, 1, 0.98)
+shader_parameter/EdgeMasks_2 = Color(0, 0.025840001, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xk2vw"]
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+
+[node name="FoldableContainer" type="VBoxContainer" unique_id=1086340017 node_paths=PackedStringArray("ChildPanel", "ChildButton")]
+clip_children = 1
+clip_contents = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+offset_transform_visual_only = false
+theme = ExtResource("1_o41yv")
+theme_override_constants/separation = 0
+script = ExtResource("2_sk3ef")
+ChildPanel = NodePath("Contents/GlassPanel")
+ChildButton = NodePath("Button")
+IconOpen = ExtResource("5_sy32m")
+IconClosed = ExtResource("4_sk3ef")
+
+[node name="Contents" type="Panel" parent="." unique_id=1573369761]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="GlassPanel" type="Panel" parent="Contents" unique_id=1244242819]
+material = SubResource("ShaderMaterial_xk2vw")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 3
+offset_transform_enabled = true
+offset_transform_visual_only = false
+theme = ExtResource("1_o41yv")
+theme_override_styles/panel = SubResource("StyleBoxFlat_xk2vw")
+
+[node name="MarginContainer" type="MarginContainer" parent="Contents/GlassPanel" unique_id=1205022735]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_o41yv")
+theme_override_constants/margin_left = 128
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 128
+theme_override_constants/margin_bottom = 16
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Contents/GlassPanel/MarginContainer" unique_id=533062817]
+layout_mode = 2
+alignment = 1
+
+[node name="Button" type="Button" parent="Contents/GlassPanel/MarginContainer/VBoxContainer" unique_id=1084707679]
+modulate = Color(0.90382373, 0.97859687, 0.9103257, 1)
+layout_mode = 2
+theme = ExtResource("4_2kppt")
+text = "Generate"
+
+[node name="Button" type="Button" parent="." unique_id=2012416995]
+layout_mode = 2
+theme = ExtResource("7_vt3yd")
+theme_override_colors/font_color = Color(0.56108564, 0.56108564, 0.56108564, 0.578)
+theme_override_colors/icon_normal_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(0.5931336, 0.59313357, 0.59313357, 1)
+theme_override_constants/icon_max_width = 16
+theme_override_fonts/font = ExtResource("8_2kppt")
+text = "(Press 'Space' to bring up)"
+icon = ExtResource("4_sk3ef")
+alignment = 0
+icon_alignment = 1

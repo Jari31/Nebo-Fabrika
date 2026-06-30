@@ -318,7 +318,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     pipelines.density            = RenderingDevice_Local->compute_pipeline_create(compiled_shaders.CompiledShader);
     pipelines.dual_contour_dense = RenderingDevice_Local->compute_pipeline_create(compiled_shaders.CompiledShader_DualContour_Dense);
 
-    int TRUTH_GRID_SIZE = 64 * 4;
+    int TRUTH_GRID_SIZE = 64 * 4; // 64 * 4 is just a slice of 64^3 * 4^3
 
     SetVector4i(BasicPushConstant.CHUNK_SIZE,       CHUNK_SIZE      );
     SetVector4i(BasicPushConstant.VOXELS_PER_CHUNK, VOXELS_PER_CHUNK);
@@ -331,7 +331,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     BasicPushConstant.IndexCoefficient = INDEX_COEFFICIENT;
 
     BasicPushConstant.GridSize = BasicPushConstant.CHUNK_SIZE.x * BasicPushConstant.VOXELS_PER_CHUNK.x;
-    G_GRID_SIZE = BasicPushConstant.GridSize;
+    G_GRID_SIZE = BasicPushConstant.GridSize; // G just means a global constant that could change
     BasicPushConstant.VoxelSize = TRUTH_GRID_SIZE / G_GRID_SIZE;
 
     #ifndef PRODUCTION_BUILD

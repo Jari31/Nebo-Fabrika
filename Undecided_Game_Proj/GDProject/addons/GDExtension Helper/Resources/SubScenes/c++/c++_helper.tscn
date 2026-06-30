@@ -1,0 +1,115 @@
+[gd_scene format=3 uid="uid://m1qp2ii5kclq"]
+
+[ext_resource type="Theme" uid="uid://bmuwx5vdx7kob" path="res://addons/GDExtension Helper/Resources/GDExtensionHelperTheme.tres" id="1_556ph"]
+[ext_resource type="Script" uid="uid://cqyyku7wwa24d" path="res://addons/GDExtension Helper/Resources/SubScenes/c++/c++_helper.gd" id="1_pnfit"]
+[ext_resource type="StyleBox" uid="uid://bsttyo83w8ii0" path="res://addons/GDExtension Helper/Resources/ButtonHolderPanel.tres" id="2_pnfit"]
+[ext_resource type="PackedScene" uid="uid://62nireejj08s" path="res://addons/GDExtension Helper/Resources/SubScenes/FoldableMenu/C++_FoldableMenu.tscn" id="3_a8dbb"]
+
+[node name="C++ Helper" type="MarginContainer" unique_id=124282557]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
+script = ExtResource("1_pnfit")
+ClassName = null
+IsEditorPlugin = null
+GenerateMetaFileBoilerplate = null
+metadata/_tab_index = 0
+
+[node name="Panel" type="Panel" parent="." unique_id=284071881]
+layout_mode = 2
+theme = ExtResource("1_556ph")
+theme_override_styles/panel = ExtResource("2_pnfit")
+
+[node name="FoldableContainer" parent="Panel" unique_id=1086340017 instance=ExtResource("3_a8dbb")]
+layout_mode = 1
+
+[node name="Contents" parent="Panel/FoldableContainer" index="0" unique_id=1573369761]
+offset_transform_position_ratio = Vector2(0, 1)
+offset_transform_visual_only = false
+
+[node name="GenerationPanel" type="ScrollContainer" parent="Panel/FoldableContainer/Contents" index="0" unique_id=1977729643]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 3
+
+[node name="GridContainer" type="GridContainer" parent="Panel/FoldableContainer/Contents/GenerationPanel" unique_id=1631041435]
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 2
+
+[node name="ClassName" type="LineEdit" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=564667585]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+placeholder_text = "Class Name..."
+alignment = 1
+
+[node name="GodotVersion" type="SpinBox" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=579200038]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+min_value = 4.6
+step = 0.1
+value = 4.6
+alignment = 1
+prefix = "Compatibility Minimum Godot Version:"
+
+[node name="SourceFileLocation" type="LineEdit" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=156954039]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+placeholder_text = "The relative path to the source folder. e.g., ../src/"
+alignment = 1
+
+[node name="EditorPlugin" type="CheckButton" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=1868236330]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme = ExtResource("1_556ph")
+text = "Editor Plugin"
+alignment = 1
+
+[node name="BuildFileLocation" type="LineEdit" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=1659841702]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+placeholder_text = "The relative path to the build folder. e.g., bin/build"
+alignment = 1
+
+[node name="Button" type="Button" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=7358530]
+layout_mode = 2
+
+[node name="MetaFileLocation" type="LineEdit" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=715038293]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+placeholder_text = "The relative path to the meta file. e.g., ../src/meta"
+alignment = 1
+
+[node name="GenerateMetaFileBoilerplate" type="CheckButton" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=236836879]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme = ExtResource("1_556ph")
+button_pressed = true
+text = "Generate Meta File Boilerplate"
+alignment = 1
+
+[node name="GlassPanel" parent="Panel/FoldableContainer/Contents" index="1" unique_id=1244242819]
+offset_transform_position_ratio = Vector2(0, 1)
+
+[editable path="Panel/FoldableContainer"]

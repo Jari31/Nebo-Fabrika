@@ -2,6 +2,26 @@
 
 [ext_resource type="FontFile" uid="uid://bb6cb7qndwqc1" path="res://bin/Assets/Fonts/Inter-VariableFont_opsz,wght.ttf" id="1_l5xfl"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_556ph"]
+bg_color = Color(0.15700772, 0.16610938, 0.18431503, 1)
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.11311708, 0.12879524, 0.13820091, 0.4745098)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_o47ak"]
+bg_color = Color(0.19590944, 0.20511961, 0.22814113, 1)
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.11311708, 0.12879524, 0.13820091, 0.4745098)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xrivr"]
 bg_color = Color(0.21515739, 0.26548097, 0.2846123, 0.21176471)
 draw_center = false
@@ -15,6 +35,17 @@ bg_color = Color(0.16116023, 0.24476337, 0.24569052, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qu43l"]
 bg_color = Color(0.30540928, 0.46713674, 0.6697342, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pnfit"]
+bg_color = Color(0.14606363, 0.15061125, 0.16879794, 1)
+border_width_right = 2
+border_width_bottom = 4
+border_color = Color(0.13351238, 0.14557505, 0.16025287, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0.13077402, 0.17243373, 0.19898444, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vxnl7"]
 bg_color = Color(0.15805358, 0.17920032, 0.20207426, 1)
@@ -47,10 +78,22 @@ corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
 [resource]
+Button/styles/focus = SubResource("StyleBoxFlat_556ph")
+Button/styles/hover = SubResource("StyleBoxFlat_o47ak")
+Button/styles/hover_pressed = SubResource("StyleBoxFlat_o47ak")
+Button/styles/normal = SubResource("StyleBoxFlat_556ph")
+Button/styles/pressed = SubResource("StyleBoxFlat_556ph")
+CheckButton/colors/font_color = Color(0.8750814, 0.8750814, 0.8750814, 0.536)
+CheckButton/font_sizes/font_size = 14
+CheckButton/fonts/font = ExtResource("1_l5xfl")
+CheckButton/styles/normal = SubResource("StyleBoxFlat_556ph")
 FoldableContainer/styles/panel = SubResource("StyleBoxFlat_xrivr")
 HSplitContainer/constants/separation = 1
 HSplitContainer/styles/split_bar_background = SubResource("StyleBoxFlat_fdajf")
 HSplitContainer/styles/split_bar_selected = SubResource("StyleBoxFlat_qu43l")
+LineEdit/colors/font_placeholder_color = Color(0.8750814, 0.8750814, 0.8750814, 0.39200002)
+LineEdit/fonts/font = ExtResource("1_l5xfl")
+LineEdit/styles/normal = SubResource("StyleBoxFlat_pnfit")
 MarginContainer/constants/margin_bottom = 8
 MarginContainer/constants/margin_left = 8
 MarginContainer/constants/margin_right = 8
