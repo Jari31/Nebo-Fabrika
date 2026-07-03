@@ -2,5 +2,8 @@
 # List your file paths as path/to/something:file_something
 # Also: ../external lib/something:entry_point
 
+<BUILD_FOLDER: "GDProject/bin/build"> # Build folder location
+
 Procedural Environment Generator:PCG_Environment # you can also comment in front of meta lines!
 Shader compiler:ShaderComp
+GahdZamn:GahdZamn

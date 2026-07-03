@@ -3,9 +3,8 @@
 // And also because SCons needs WSL + a second compiler + VM for MSVC bindings
 // Zig compiles Zig, C and C++, for basically all platforms (WASI is important for NF's modding API)
 
-// Mac is broken, and I don't intend on supporting it either. As it has 1% - 1.5% of the gamerbase.
+// Mac is broken, and I don't intend on supporting it either.
 // It also has a different GPU arch, which will definitely brick some of the compute shaders.
-// Apple products are just too annoying to work with.
 
 // (*there is a Mac branch, but I have not tested it much due to me lacking a Mac)
 
@@ -14,6 +13,7 @@
 const std = @import("std");
 
 var FileExtension: []const u8 = ".cpp"; // mostly redundant because changing this WILL break everything
+const RegistrationFilePrefix: []const u8 = "Register_";
 var BuildFolderPath = "../GDProject/bin/build/";
 var SkipDebugFlag: bool = false;
 
@@ -63,7 +63,7 @@ fn _read_meta_file_and_compile(
     defer Allocator.free(read_buffer);
 
     var lines = std.mem.splitSequence(u8, read_buffer, "\n");
-    std.debug.print("Loaded meta file onto memory. Proceeding to read and compile...\n", .{});
+    std.debug.print("\x1b[32mLoaded meta file onto memory. Proceeding to read and compile...\x1b[0m\n", .{});
     while (lines.next()) |line| {
         var clean_line = std.mem.trim(u8, line, "\r");
 
@@ -72,8 +72,18 @@ fn _read_meta_file_and_compile(
         { // comments
             const stripped_line = std.mem.trim(u8, clean_line, " \t\r\n");
 
-            if (std.mem.startsWith(u8, stripped_line, &[_]u8{'#'})) continue;
-            if (std.mem.indexOfScalar(u8, stripped_line, '#')) |index| clean_line = line[0..index];
+            const Lambda_CheckLine = struct {
+                pub inline fn CheckWhether_Character_Exists(CleanLine: *[]const u8, Line: []const u8, StrippedLine: []const u8, Character: []const u8) void {
+                    if (std.mem.startsWith(u8, StrippedLine, Character)) {
+                        CleanLine.* = "";
+                    } else if (std.mem.indexOfScalar(u8, StrippedLine, Character[0])) |index| CleanLine.* = Line[0..index];
+                }
+            };
+
+            Lambda_CheckLine.CheckWhether_Character_Exists(&clean_line, line, stripped_line, "#");
+            Lambda_CheckLine.CheckWhether_Character_Exists(&clean_line, line, stripped_line, "<");
+
+            if (clean_line.len <= 0) continue;
         }
 
         std.debug.print("Found line: {s}\n", .{clean_line});
@@ -98,7 +108,56 @@ fn _read_meta_file_and_compile(
                     return;
                 };
 
-                std.debug.print("Found folder: {s}\n Found file: {s}\n", .{ folder, file });
+                std.debug.print("Found folder: {s}\n Found file: {s}\nChecking whether they exist.\n", .{ folder, file });
+
+                const Lambda_CheckFileSystem = struct {
+                    /// Expects . (dot) syntax for extension
+                    pub fn FileWith_Extension_Exists(
+                        Build: *std.Build,
+                        IO: std.Io,
+                        Folder: []const u8,
+                        File: []const u8,
+                        Prefix: []const u8,
+                        Extension: []const u8,
+                    ) bool {
+                        const _file = Build.fmt("{s}{s}{s}", .{ Prefix, File, Extension });
+                        const file_path = Build.fmt("{s}{s}", .{ Folder, _file });
+
+                        std.debug.print("\x1b[33mChecking file: {s}\x1b[0m\n", .{file_path});
+
+                        Build.build_root.handle.access(IO, file_path, .{}) catch |err|
+                            switch (err) {
+                                error.FileNotFound => {
+                                    std.debug.print("\x1b[31mFailed to find {s}\x1b[0m\n", .{_file});
+                                    return false;
+                                },
+                                else => {
+                                    std.debug.print("\x1b[31mFailed to find file with error: {}\x1b[0m\nExiting to avoid further errors.\n", .{err});
+                                    return false;
+                                },
+                            };
+                        std.debug.print("\x1b[32mFile exists.\x1b[0m Continuing...\n", .{});
+                        return true;
+                    }
+                };
+
+                var file_exists = true;
+
+                const CheckFilePrefixesAndExtensions = [_]struct { Prefix: []const u8, Extension: []const u8 }{
+                    .{ .Prefix = "", .Extension = ".cpp" },
+                    .{ .Prefix = "", .Extension = ".h" },
+                    .{ .Prefix = RegistrationFilePrefix, .Extension = ".cpp" },
+                    .{ .Prefix = RegistrationFilePrefix, .Extension = ".h" },
+                };
+
+                for (CheckFilePrefixesAndExtensions) |Pair| {
+                    file_exists = Lambda_CheckFileSystem.FileWith_Extension_Exists(p_Build, io, folder, file, Pair.Prefix, Pair.Extension);
+                }
+
+                if (!file_exists) {
+                    std.debug.print("\x1b[31mRequired files for the compilation of \x1b[4;31m{s}\x1b[0m\x1b[31m not found.\x1b[0m Attempting to continue...\n", .{file});
+                    continue;
+                }
 
                 _compile(file, p_Build, folder, Target, Optimize, Allocator, DebugBuild);
             }
@@ -162,8 +221,8 @@ fn _compile(
     std.debug.print("File path: {s}\n", .{file_path});
     const registration_path = std.fmt.allocPrint(
         Allocator,
-        "{s}Register_{s}{s}",
-        .{ CompileFromDirectory, Name, FileExtension },
+        "{s}{s}{s}{s}",
+        .{ CompileFromDirectory, RegistrationFilePrefix, Name, FileExtension },
     ) catch return;
 
     var flag_list = std.ArrayList([]const u8).empty;
@@ -425,7 +484,7 @@ pub fn build(p_Build: *std.Build) void {
     switch (_target.result.os.tag) {
         .windows => {
             if (!windows_use_another_abi) {
-                std.debug.print("Target platform is windows, switching ABI to .msvc...\n", .{});
+                std.debug.print("\x1b[33mTarget platform is windows, switching ABI to .msvc...\x1b[0m\n", .{});
                 target = p_Build.resolveTargetQuery(.{
                     .cpu_arch = .x86_64,
                     .os_tag = .windows,

@@ -2,10 +2,12 @@
 
 import os
 import sys
+from SCons.Script import ARGUMENTS, Dir, Tool
 
 # Add godot-cpp folder to sys.path, so that we can import local modules.
-sys.path.append(Dir(".").srcnode().abspath)
-
+godot_cpp_root = Dir(".").srcnode().abspath
+sys.path.append(godot_cpp_root)
+sys.path.append(os.path.join(godot_cpp_root, "tools"))
 
 EnsureSConsVersion(4, 0)
 EnsurePythonVersion(3, 8)
@@ -16,6 +18,10 @@ except Exception:
     # Default tools with no platform defaults to gnu toolchain.
     # We apply platform specific toolchains via our custom tools.
     env = Environment(tools=["default"], PLATFORM="")
+
+if ARGUMENTS.get("platform") == "macos":
+    import tools.macos as godot_macos
+    godot_macos.exists = lambda environment: True
 
 env.PrependENVPath("PATH", os.getenv("PATH"))
 for var in ["APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"]:
@@ -41,7 +47,10 @@ cpp_tool.options(opts, env)
 opts.Update(env)
 Help(opts.GenerateHelpText(env))
 
-if(env["platform"] != "windows"): 
+is_windows = env["platform"] == "windows"
+
+if(not is_windows): 
+    print("Platform not windows; switching to LLVM...")
     env["use_llvm"] = True
 
 # Detect and print a warning listing unknown SCons variables to ease troubleshooting.
@@ -58,11 +67,42 @@ if scons_cache_path is not None:
 
 cpp_tool.generate(env)
 
-if(env["platform"] != "windows"):
+target_os = ARGUMENTS.get("target_os", env["platform"])
+target_os = "linux" if len(target_os) <= 0 else target_os
+
+if(not is_windows):
+    if "suffix" in env:
+        env["suffix"] = env["suffix"].replace(f".{env['platform']}.", f".{target_os}.")
+
+    old_platform_string = f".{env['platform']}.{env['target']}"
+    new_platform_string = f".{target_os}.{env['target']}"
+    
+    if "OBJSUFFIX" in env:
+        env["OBJSUFFIX"] = env["OBJSUFFIX"].replace(old_platform_string, new_platform_string)
+
     env["CC"] = "zig cc"
     env["CXX"] = "zig c++"
     env["LINK"] = "zig c++"
     #env["AR"] = "zig ar"
+
+    zig_target = ""
+    if target_os == "linux": 
+        zig_target = ["-target", "x86_64-linux"]
+    elif target_os == "macos": 
+        zig_target = ["-target", "x86_64-macos"]
+
+        if "CPPDEFINES" in env:
+            env["CPPDEFINES"] = [d for d in env["CPPDEFINES"] if d != "LINUX_ENABLED"]
+
+        env.Append(CPPDEFINES=["MACOS_ENABLED", "UNIX_ENABLED"])
+
+        TLS_model = "-fno-emulated-tls -pthread"
+        env.Append(CCFLAGS=TLS_model)
+        env.Append(LINKFLAGS=TLS_model)
+        
+    env.Append(CFLAGS=zig_target)
+    env.Append(CCFLAGS=zig_target)
+    env.Append(LINKFLAGS=zig_target)
 
     def AR_Command(target, source, env):
         import subprocess
@@ -101,14 +141,6 @@ if(env["platform"] != "windows"):
     #env["ARCOM"] = "${TEMPFILE('$AR $ARFLAGS $TARGET $SOURCES', '$ARCOMSTR')}"
     env["LINK"] = ["zig", "c++"]
     env["LINKCOM"] = "${TEMPFILE('$LINK $LINKFLAGS $_LINKFLAGS -o $TARGET $SOURCES $_LIBDIRFLAGS $_LIBFLAGS', '$LINKCOMSTR')}"
-
-
-    zig_target = ""
-    if env["platform"] == "linux": zig_target = ["-target", "x86_64-linux"]
-    elif env["platform"] == "macos": zig_target = ["-target", "x86_64-macos"]
-    env.Append(CFLAGS=zig_target)
-    env.Append(CCFLAGS=zig_target)
-    env.Append(LINKFLAGS=zig_target)
 
     if "CCFLAGS" in env:
         env["CCFLAGS"] = [f for f in env["CCFLAGS"] if not f.startswith("-march=")]

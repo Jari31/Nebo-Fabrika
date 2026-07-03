@@ -30,6 +30,13 @@ border_blend = true
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_13qdw"]
+bg_color = Color(0.13170114, 0.14300898, 0.15588099, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fdajf"]
 bg_color = Color(0.16116023, 0.24476337, 0.24569052, 1)
 
@@ -88,6 +95,7 @@ CheckButton/font_sizes/font_size = 14
 CheckButton/fonts/font = ExtResource("1_l5xfl")
 CheckButton/styles/normal = SubResource("StyleBoxFlat_556ph")
 FoldableContainer/styles/panel = SubResource("StyleBoxFlat_xrivr")
+FoldableContainer/styles/title_panel = SubResource("StyleBoxFlat_13qdw")
 HSplitContainer/constants/separation = 1
 HSplitContainer/styles/split_bar_background = SubResource("StyleBoxFlat_fdajf")
 HSplitContainer/styles/split_bar_selected = SubResource("StyleBoxFlat_qu43l")
