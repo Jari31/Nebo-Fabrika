@@ -1,0 +1,5 @@
+[tools]
+zig = "latest"
+"github:xmake-io/xmake" = "latest"
+"github:shader-slang/slang" = "latest"
+"github:ispc/ispc" = "latest"

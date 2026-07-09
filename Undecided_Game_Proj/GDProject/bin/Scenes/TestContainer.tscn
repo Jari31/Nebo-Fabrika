@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c36ltrtper4el"]
 
-[ext_resource type="PackedScene" uid="uid://cg86cfj6hr1xt" path="res://bin/GDScripts/Entity System/Player/player.tscn" id="1_dmbqv"]
+[ext_resource type="PackedScene" uid="uid://cg86cfj6hr1xt" path="res://bin/GDScripts/Legacy/Entity System/Player/player.tscn" id="1_dmbqv"]
 [ext_resource type="Shader" uid="uid://qaf4feq1qy24" path="res://bin/Scenes/TestFormulaVisualizer.gdshader" id="2_dmbqv"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_m5jr6"]

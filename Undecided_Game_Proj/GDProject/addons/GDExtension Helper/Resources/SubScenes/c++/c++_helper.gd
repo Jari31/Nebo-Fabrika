@@ -13,6 +13,8 @@ extends Control
 @export var Node_GenerateMetaFileBoilerplate: CheckButton
 @export var Node_ClassTypes: OptionButton
 
+@export var Node_DirectorySuffix: LineEdit
+
 @export var MetaFileLocation: String = "../src/meta"
 var GlobalMetaFileLocation: String
 
@@ -61,16 +63,22 @@ func _generate_boilerplate():
 			print("Pre-existing meta file definition. Culling insertion attempt.")
 		else:
 			file.seek_end()
-			file.store_line("\n" + Node_ClassName.text + ":" + Node_ClassName.text)
+			file.store_line("\n" + Node_DirectorySuffix.text + "/" + Node_ClassName.text + ":" + Node_ClassName.text)
 			file.close()
 	else:
 		print("Failed to find Meta file.")
 		return
 	#no static tool to replace this name with something better because fuck me i guess
-	var directory = GlobalMetaFileLocation + "/../" + ClassName + "/"
+	var directory = GlobalMetaFileLocation + "/../" + Node_DirectorySuffix.text + "/" + ClassName + "/"
+	
+
+	print(directory)
 	
 	if not DirAccess.dir_exists_absolute(directory):
-		DirAccess.make_dir_absolute(directory)
+		var result = DirAccess.make_dir_recursive_absolute(directory)
+		print(result)
+	else:
+		print("Directory exists.")
 	
 	var cpp_extensions_folder = ProjectPath + "bin/C++ Extensions" + "/" + ClassName + "/"
 	
@@ -111,6 +119,8 @@ func _generate_boilerplate():
 			
 		var File = FileAccess.open(Pattern, FileAccess.WRITE)
 	
+		print(File)
+	
 		if File:
 			match(FileType): # man I wish I could use macros because writing all this by hand makes me feel like a caveman
 				FileTypes.ClassH: File.store_string(class_h)
@@ -120,7 +130,7 @@ func _generate_boilerplate():
 				_: File.store_string(class_cpp) # my damn mistake to think this shit would compile to a jump table
 			File.close()
 		else:
-			print("Failed to create ", ClassName, " ", FileTypes.keys()[FileType])
+			print("Failed to create ", ClassName, " ", FileTypes.keys()[FileType], " ")
 	
 	lambda_create_and_write_to_file.call(directory + ClassName + ".cpp", FileTypes.ClassCpp)
 		
@@ -134,33 +144,34 @@ func _generate_boilerplate():
 	
 		
 func _display_last_used_parameters(MetaFileText: String):
-	var lines = MetaFileText.split("\n")
-	if lines.size() > 0:
+	var lines: PackedStringArray = MetaFileText.split("\n")
+	var lines_size = lines.size() - 1 # because the bumass compiler (or lack thereof) can't do proper inlining due to a lack of static analysis 
+	if lines_size > 0:
 		var last_line: String = lines[-1].strip_edges()
-		var found_meta_data: bool = false
 		
-		var index: int = 0
-		if last_line.begins_with("#"):
-			while not found_meta_data: # funky recursion
-				if index > lines.size(): 
-					print("Failed to find any proper descriptors in meta file.") 
-					return
+		if last_line.begins_with("#") or last_line == "":
+			for index in lines_size: # funky recursion
+				last_line = lines[lines_size - index - 1]
 				
-				last_line = lines[lines.size() - index]
-				
-				if not last_line.strip_edges().begins_with("#"):
-					found_meta_data = true
+				if not last_line.strip_edges().begins_with("#") and not last_line == "":
+					break
 		
 		if last_line.contains("#"):
 			last_line.erase(last_line.find("#"), last_line.length())
 			print("Erased comment, result: ", last_line)
 		
-		var name_of_class = last_line.split(":")
+		var name_of_class: PackedStringArray = last_line.split(":")
 		if not name_of_class.size() == 2:
 			print("The last valid line (non comment) in the meta file has an improper class name. name_of_class: ", name_of_class)
 			return
+		
+		var cleaned_directory_string: String = name_of_class[1]
+		
+		if not name_of_class[1] == name_of_class[0]:
+			cleaned_directory_string = name_of_class[0].replace(name_of_class[0], "")
 
 		Node_ClassName.text = name_of_class[1]
+		Node_DirectorySuffix.text = cleaned_directory_string
 
 
 func _globalize_relative_path_and_get_contents() -> String:

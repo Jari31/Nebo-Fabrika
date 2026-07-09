@@ -1,0 +1,9 @@
+[configuration]
+entry_symbol = "init_EnvironmentGenerator"
+compatibility_minimum = "GodotVersion:<SpinBox#1683811800800>"
+reloadable = true
+load_in_editor = EditorPlugin:<CheckButton#1684214454008>
+
+[libraries]
+windows.x86_64 = "res://bin/build/EnvironmentGenerator/EnvironmentGenerator.dll"
+linux.x86_64 = "res://bin/build/EnvironmentGenerator/EnvironmentGenerator.so"

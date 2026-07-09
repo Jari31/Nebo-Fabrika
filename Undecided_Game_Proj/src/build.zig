@@ -1,22 +1,92 @@
 // This script assumes that the project structure is as the same one in the repo
-// Why Zig and not SCons or CMake? Zig is faster. Both at caching and compilation. Hot reloads take seconds.
-// And also because SCons needs WSL + a second compiler + VM for MSVC bindings
-// Zig compiles Zig, C and C++, for basically all platforms (WASI is important for NF's modding API)
-
+//
 // Mac is broken, and I don't intend on supporting it either.
 // It also has a different GPU arch, which will definitely brick some of the compute shaders.
-
+//
 // (*there is a Mac branch, but I have not tested it much due to me lacking a Mac)
-
+//
 // Standard command to build everything: zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-linux
+// Or, for Windows, inside of 'x64 Native Tools Command Prompt for VS 2022': zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-windows
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 var FileExtension: []const u8 = ".cpp"; // mostly redundant because changing this WILL break everything
 const RegistrationFilePrefix: []const u8 = "Register_";
 var BuildFolderPath = "../GDProject/bin/build/";
 var SkipDebugFlag: bool = false;
 
+const ObjectFiles = struct {
+    ObjectFiles_ISPC: std.ArrayList([]const u8) = .empty,
+    // where there might be more ObjectFiles_C
+    const GlobFileOptions = struct {
+        DirectoryPath: []const u8 = "cache/ispc",
+        FileWithExtension: []const u8 = ".obj",
+        ExcludeFileWith: std.ArrayList([]const u8) = .empty,
+    };
+
+    pub inline fn GlobFilesInDirectory(
+        Build: *std.Build,
+        ListToAppendTo: *std.ArrayList([]const u8),
+        Options: GlobFileOptions,
+    ) void {
+        const io = Build.graph.io;
+
+        var directory = Build.build_root.handle.openDir(io, Options.DirectoryPath, .{ .iterate = true }) catch @panic("OOM");
+        defer directory.close(io);
+
+        var directory_walker = directory.walk(Build.allocator) catch @panic("OOM");
+        defer directory_walker.deinit();
+
+        while (directory_walker.next(io) catch null) |entry| {
+            if (entry.kind == .file and std.mem.endsWith(
+                u8,
+                entry.path,
+                Options.FileWithExtension,
+            )) {
+                if (Options.ExcludeFileWith.items.len > 0) {
+                    var contains_blacklisted_character = false;
+                    for (Options.ExcludeFileWith.items) |ExcludedCharacter| {
+                        if (std.mem.containsAtLeast(u8, entry.path, 0, ExcludedCharacter)) {
+                            std.debug.print("\x1b[33mFile contains blacklisted identifier \x1b[1;4;33m'{s}'\x1b[0;33m. Ignoring...\x1b[0m\n", .{ExcludedCharacter});
+                            contains_blacklisted_character = true;
+                            break;
+                        }
+                    }
+
+                    if (contains_blacklisted_character) continue;
+                }
+
+                const full_path = Build.fmt("{s}/{s}", .{ Options.DirectoryPath, entry.path });
+                std.debug.print("Found {s} file, appending full path as: {s}", .{ Options.FileWithExtension, full_path });
+                ListToAppendTo.append(Build.allocator, full_path) catch @panic(Build.fmt(
+                    "Failed to appent to list whilst walking the cache directory for {s} in '{s}'.",
+                    .{ FileExtension, Options.DirectoryPath },
+                ));
+            }
+        }
+    }
+
+    pub fn DeInitializeObjects(Self: *ObjectFiles, Allocator: std.mem.Allocator) void {
+        Self.ObjectFiles_ISPC.deinit(Allocator);
+    }
+};
+
+const CompilationOptions = struct {
+    Name: []const u8 = "PCG_Environment",
+    CompileFromDirectory: []const u8 = "Procedural Environment Generator",
+    DebugBuild: bool = true,
+
+    Objects: ?ObjectFiles = null,
+
+    pub fn DeInitializeMembers(Self: *CompilationOptions, Allocator: std.mem.Allocator) void {
+        if (Self.Objects) |*Object| {
+            Object.DeInitializeObjects(Allocator);
+        }
+    }
+};
+
+// idk why this function is here but whatever ig
 fn _print_unsupported_build(Tag: anytype) void {
     std.debug.print("Unsupported build platform target: {}\n", .{Tag});
 }
@@ -34,9 +104,9 @@ fn _add_macros_and_includes(Module: *std.Build.Module, p_Build: *std.Build) void
 fn _read_meta_file_and_compile(
     p_Build: *std.Build,
     Allocator: std.mem.Allocator,
-    DebugBuild: bool,
     Target: std.Build.ResolvedTarget,
     Optimize: std.builtin.OptimizeMode,
+    Options: *CompilationOptions,
 ) void {
     // Follows this format:
     // # This is a comment.
@@ -73,7 +143,12 @@ fn _read_meta_file_and_compile(
             const stripped_line = std.mem.trim(u8, clean_line, " \t\r\n");
 
             const Lambda_CheckLine = struct {
-                pub inline fn CheckWhether_Character_Exists(CleanLine: *[]const u8, Line: []const u8, StrippedLine: []const u8, Character: []const u8) void {
+                pub inline fn CheckWhether_Character_Exists(
+                    CleanLine: *[]const u8,
+                    Line: []const u8,
+                    StrippedLine: []const u8,
+                    Character: []const u8,
+                ) void {
                     if (std.mem.startsWith(u8, StrippedLine, Character)) {
                         CleanLine.* = "";
                     } else if (std.mem.indexOfScalar(u8, StrippedLine, Character[0])) |index| CleanLine.* = Line[0..index];
@@ -108,7 +183,7 @@ fn _read_meta_file_and_compile(
                     return;
                 };
 
-                std.debug.print("Found folder: {s}\n Found file: {s}\nChecking whether they exist.\n", .{ folder, file });
+                std.debug.print("Found folder: {s}\nFound file: {s}\nChecking whether they exist.\n", .{ folder, file });
 
                 const Lambda_CheckFileSystem = struct {
                     /// Expects . (dot) syntax for extension
@@ -159,38 +234,39 @@ fn _read_meta_file_and_compile(
                     continue;
                 }
 
-                _compile(file, p_Build, folder, Target, Optimize, Allocator, DebugBuild);
+                Options.Name = file;
+                Options.CompileFromDirectory = folder;
+
+                _compile(p_Build, Target, Optimize, Allocator, Options);
             }
         }
     }
 }
 
 fn _compile(
-    Name: []const u8,
     p_Build: *std.Build,
-    CompileFromDirectory: []const u8,
     Target: std.Build.ResolvedTarget,
     Optimize: std.builtin.OptimizeMode,
     Allocator: std.mem.Allocator,
-    DebugBuild: bool,
+    Options: *CompilationOptions,
 ) void {
     const os_tag = Target.result.os.tag;
 
-    const optimization_level = if (!DebugBuild and !SkipDebugFlag) std.builtin.OptimizeMode.ReleaseFast else Optimize; // default for Optimize is Debug
+    const optimization_level = if (!Options.DebugBuild and !SkipDebugFlag) std.builtin.OptimizeMode.ReleaseFast else Optimize; // default for Optimize is Debug
 
     p_Build.install_path = p_Build.path(BuildFolderPath).getPath(p_Build);
 
-    const is_windows = if (Target.result.os.tag == .windows) true else false;
+    const is_msvc_abi = if (Target.result.abi == .msvc) true else false;
 
     const base_module = p_Build.createModule(.{
         .root_source_file = p_Build.path("Zig/ZigRegistry.zig"),
         .target = Target,
         .optimize = optimization_level,
         .link_libc = true,
-        .link_libcpp = !is_windows,
+        .link_libcpp = !is_msvc_abi,
     });
 
-    const godot_cpp_lib = switch (DebugBuild) { // Can compile to Android, and such, too, but that's out of this project's scope currently
+    const godot_cpp_lib = switch (Options.DebugBuild) { // Can compile to Android, and such, too, but that's out of this project's scope currently
         true => switch (os_tag) {
             .windows => p_Build.path("../godot-cpp/bin/libgodot-cpp.windows.template_debug.x86_64.lib"),
             .linux => p_Build.path("../godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a"),
@@ -216,13 +292,13 @@ fn _compile(
     const file_path = std.fmt.allocPrint(
         Allocator,
         "{s}{s}{s}",
-        .{ CompileFromDirectory, Name, FileExtension },
+        .{ Options.CompileFromDirectory, Options.Name, FileExtension },
     ) catch return;
     std.debug.print("File path: {s}\n", .{file_path});
     const registration_path = std.fmt.allocPrint(
         Allocator,
         "{s}{s}{s}{s}",
-        .{ CompileFromDirectory, RegistrationFilePrefix, Name, FileExtension },
+        .{ Options.CompileFromDirectory, RegistrationFilePrefix, Options.Name, FileExtension },
     ) catch return;
 
     var flag_list = std.ArrayList([]const u8).empty;
@@ -231,7 +307,7 @@ fn _compile(
     //transliterated from godot-cpp py scripts
     //base_module.addCMacro("GDEXTENSION", "1");
 
-    if (!DebugBuild) {
+    if (!Options.DebugBuild) {
         base_module.addCMacro("PRODUCTION_BUILD", "");
         //base_module.addCMacro("NDEBUG", "1");
     } //else {
@@ -291,7 +367,7 @@ fn _compile(
         else => {},
     }
 
-    const cpp_optimization_level = if (DebugBuild) "-O2" else "-O3";
+    const cpp_optimization_level = if (Options.DebugBuild) "-O2" else "-O3";
     flag_list.appendSlice(Allocator, &.{
         "-std=c++17",
         cpp_optimization_level,
@@ -311,7 +387,27 @@ fn _compile(
         "-fno-asynchronous-unwind-tables", // godot-cpp doesn't use this, but it does drop binary sizes by 3kbs (average from multiple files)
     }) catch @panic("OOM");
 
-    if (!is_windows) {
+    const Lambda_ObjectFileHelper = struct {
+        /// ListOfPathsToObjectFiles is the field of _Options
+        pub inline fn AddObjectFiles(
+            Build: *std.Build,
+            Function_AddObjectFile: anytype,
+            Self: anytype,
+            ListOfPathsToObjectFiles: anytype,
+        ) void {
+            const FunctionType = @typeInfo(@TypeOf(Function_AddObjectFile)).@"fn";
+            //const FirstParameterType = FunctionType.params[0].type.?;
+            if (ListOfPathsToObjectFiles.items.len == 0) {
+                return;
+            }
+
+            for (ListOfPathsToObjectFiles.items) |ObjectFilePath|
+                if (FunctionType.params.len == 2)
+                    Function_AddObjectFile(Self, Build.path(ObjectFilePath));
+        }
+    };
+
+    if (!is_msvc_abi) {
         _add_macros_and_includes(base_module, p_Build);
 
         base_module.addCSourceFiles(.{
@@ -325,7 +421,7 @@ fn _compile(
         base_module.addObjectFile(godot_cpp_lib);
 
         const library = p_Build.addLibrary(.{
-            .name = Name,
+            .name = Options.Name,
             .linkage = .dynamic,
             .root_module = base_module,
         });
@@ -338,9 +434,11 @@ fn _compile(
         //    library.root_module.addRPath(.{ .cwd_relative = "." });
         //}
 
+        Lambda_ObjectFileHelper.AddObjectFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.Objects.?.ObjectFiles_ISPC);
+
         const artifacts = p_Build.addInstallArtifact(
             library,
-            .{ .dest_dir = .{ .override = .{ .custom = Name } } },
+            .{ .dest_dir = .{ .override = .{ .custom = Options.Name } } },
         );
 
         p_Build.getInstallStep().dependOn(&artifacts.step);
@@ -351,6 +449,7 @@ fn _compile(
         // Also, you need to run this in a 'x64 Native Tools Command Prompt for VS 2022'
         // Mostly because Zig currently doesn't have an LTS WindowsSDK API and I didn't want any external dependencies (Aside from MSVC,-
         //  -but again, you can just compile Godot with MinGW or Zig)
+        // If you're using Linux Godot, you can ignore this step.
         const files_to_compile = &[_][]const u8{
             file_path,
             registration_path,
@@ -359,7 +458,7 @@ fn _compile(
         const folder_path = std.fmt.allocPrint(
             Allocator,
             "{s}{s}",
-            .{ BuildFolderPath, Name },
+            .{ BuildFolderPath, Options.Name },
         ) catch @panic("OOM");
 
         const io = p_Build.graph.io;
@@ -369,12 +468,12 @@ fn _compile(
             @panic("Directory creation failed");
         };
 
-        std.debug.print("Creating a subfolder at: {s}", .{folder_path});
+        std.debug.print("Creating a subfolder at: {s}\n", .{folder_path});
 
         const output_location = std.fmt.allocPrint(
             Allocator,
             "/OUT:{s}{s}/{s}.dll",
-            .{ BuildFolderPath, Name, Name },
+            .{ BuildFolderPath, Options.Name, Options.Name },
         ) catch @panic("OOM");
         std.debug.print("Linker outputting to: {s}", .{output_location});
 
@@ -388,7 +487,7 @@ fn _compile(
         });
 
         inline for (files_to_compile, 0..) |source_file, i| {
-            const step_name = std.fmt.allocPrint(Allocator, "{s}_{d}", .{ Name, i }) catch @panic("OOM");
+            const step_name = std.fmt.allocPrint(Allocator, "{s}_{d}", .{ Options.Name, i }) catch @panic("OOM");
             std.debug.print("Linking for step: {s}\n", .{step_name});
 
             const file_module = p_Build.createModule(.{
@@ -416,6 +515,8 @@ fn _compile(
 
         linker_step.addFileArg(godot_cpp_lib);
 
+        Lambda_ObjectFileHelper.AddObjectFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.Objects.?.ObjectFiles_ISPC);
+
         linker_step.addArgs(&.{
             "kernel32.lib",
             "user32.lib",
@@ -423,23 +524,6 @@ fn _compile(
             "vcruntime.lib",
             "ucrt.lib",
         });
-
-        // if (p_Build.graph.environ_map.get("LIB")) |lib_env| {
-        //     var it = std.mem.splitScalar(u8, lib_env, ';');
-        //     while (it.next()) |path| {
-        //         if (path.len == 0) continue;
-        //
-        //         const lib_path_flag = std.fmt.allocPrint(Allocator, "/LIBPATH:{s}", .{path}) catch @panic("OOM");
-        //         linker_step.addArg(lib_path_flag);
-        //     }
-        // } else {
-        //     std.debug.print(
-        //         "\n\x1b[31m[BUILD ERROR] MSVC Linker paths not found.\x1b[0m" ++
-        //             "\\Please run 'zig build' from inside the 'x64 Native Tools Command Prompt for VS 2022'" ++
-        //             "\\so that the required Windows SDK paths can be passed to link.exe." ++ "\n\n",
-        //         .{},
-        //     );
-        // }
 
         p_Build.getInstallStep().dependOn(&linker_step.step);
     }
@@ -481,10 +565,16 @@ pub fn build(p_Build: *std.Build) void {
         "Whether to use another ABI for Windows than MSVC. e.g., GNU for Linux (-Dtarget=x86_64-windows-gnu). Default is false.",
     ) orelse false;
 
+    const location_of_object_files_ispc = p_Build.option(
+        []const u8,
+        "LocationOfObjectFiles_ISPC",
+        "Location of where the ISPC compiler emits its .obj files to. Assumes there is no '/' at the end of the location identifier. Default is 'cache/ispc.'",
+    ) orelse "cache/ispc";
+
     switch (_target.result.os.tag) {
         .windows => {
-            if (!windows_use_another_abi) {
-                std.debug.print("\x1b[33mTarget platform is windows, switching ABI to .msvc...\x1b[0m\n", .{});
+            if (builtin.os.tag == .windows and !windows_use_another_abi) {
+                std.debug.print("\x1b[33mHost operating-system is windows. Switching ABI to .msvc...\x1b[0m\n", .{});
                 target = p_Build.resolveTargetQuery(.{
                     .cpu_arch = .x86_64,
                     .os_tag = .windows,
@@ -512,27 +602,42 @@ pub fn build(p_Build: *std.Build) void {
             return;
         };
 
-    //const directory_base = "../GDProject/bin/build/";
+    var object_files = ObjectFiles{};
 
-    //const compile_to_directory: []const u8 = std.fmt.allocPrint(
-    //    allocator,
-    //    "{s}{s}",
-    //    .{ directory_base, name },
-    //) catch return;
+    var black_listed_characters = std.ArrayList([]const u8).empty;
+
+    if (target.result.cpu.arch.isArm()) {
+        black_listed_characters.appendSlice(allocator, &.{ "avx2", "avx512skx" }) catch @panic("OOM");
+    } else if (target.result.cpu.arch.isX86()) {
+        black_listed_characters.appendSlice(allocator, &.{"neon"}) catch @panic("OOM");
+    }
+    ObjectFiles.GlobFilesInDirectory(p_Build, &object_files.ObjectFiles_ISPC, .{ .ExcludeFileWith = black_listed_characters, .DirectoryPath = location_of_object_files_ispc });
+
+    var compilation_options = CompilationOptions{
+        .Name = name,
+        .CompileFromDirectory = compile_from_directory,
+        .DebugBuild = debug_build,
+        .Objects = object_files,
+    };
+    defer compilation_options.DeInitializeMembers(allocator); // destroys object_files too
 
     const compile_everything = std.mem.eql(u8, "ALL", compile_from_directory) or std.mem.eql(u8, "ALL", name);
     const compile_specifics = name.len > 0 and compile_from_directory.len > 0;
     if (!compile_everything and compile_specifics) {
         _compile(
-            name,
             p_Build,
-            compile_from_directory,
             target,
             optimize,
             allocator,
-            debug_build,
+            &compilation_options,
         );
     } else if (compile_everything) {
-        _read_meta_file_and_compile(p_Build, allocator, debug_build, target, optimize);
+        _read_meta_file_and_compile(
+            p_Build,
+            allocator,
+            target,
+            optimize,
+            &compilation_options,
+        );
     }
 }

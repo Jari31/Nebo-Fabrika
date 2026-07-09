@@ -5,7 +5,7 @@
 [ext_resource type="StyleBox" uid="uid://bsttyo83w8ii0" path="res://addons/GDExtension Helper/Resources/ButtonHolderPanel.tres" id="2_pnfit"]
 [ext_resource type="PackedScene" uid="uid://62nireejj08s" path="res://addons/GDExtension Helper/Resources/SubScenes/FoldableMenu/C++_FoldableMenu.tscn" id="3_a8dbb"]
 
-[node name="C++ Helper" type="MarginContainer" unique_id=124282557 node_paths=PackedStringArray("Node_GenerateBoilerplate", "Node_ClassName", "Node_GodotVersion", "Node_IsEditorPlugin", "Node_GenerateMetaFileBoilerplate", "Node_ClassTypes")]
+[node name="C++ Helper" type="MarginContainer" unique_id=124282557 node_paths=PackedStringArray("Node_GenerateBoilerplate", "Node_ClassName", "Node_GodotVersion", "Node_IsEditorPlugin", "Node_GenerateMetaFileBoilerplate", "Node_ClassTypes", "Node_DirectorySuffix")]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -22,6 +22,7 @@ Node_GodotVersion = NodePath("Panel/FoldableContainer/Contents/GenerationPanel/G
 Node_IsEditorPlugin = NodePath("Panel/FoldableContainer/Contents/GenerationPanel/GridContainer/FoldableContainer/VBoxContainer/EditorPlugin")
 Node_GenerateMetaFileBoilerplate = NodePath("Panel/FoldableContainer/Contents/GenerationPanel/GridContainer/GenerateMetaFileBoilerplate")
 Node_ClassTypes = NodePath("Panel/FoldableContainer/Contents/GenerationPanel/GridContainer/ClassTypes")
+Node_DirectorySuffix = NodePath("Panel/FoldableContainer/Contents/GenerationPanel/GridContainer/DirectorySuffix")
 metadata/_tab_index = 0
 
 [node name="Panel" type="Panel" parent="." unique_id=284071881]
@@ -110,11 +111,12 @@ button_pressed = true
 text = "Generate Meta File Boilerplate"
 alignment = 1
 
-[node name="Dummy" type="LineEdit" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=1897723321]
+[node name="DirectorySuffix" type="LineEdit" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=1897723321]
 custom_minimum_size = Vector2(0, 92)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+placeholder_text = "Suffix directory (in src/) to generate base .cpp and .h files to. e.g., MathLibs/Cpp"
 alignment = 1
 
 [node name="FoldableContainer" type="FoldableContainer" parent="Panel/FoldableContainer/Contents/GenerationPanel/GridContainer" unique_id=73195665]
@@ -149,13 +151,25 @@ layout_mode = 2
 alignment = 1
 autowrap_mode = 2
 selected = 0
-item_count = 3
+item_count = 9
 popup/item_0/text = "Standard"
 popup/item_0/id = 0
 popup/item_1/text = "Resource_t"
 popup/item_1/id = 1
 popup/item_2/text = "Refcounted"
 popup/item_2/id = 2
+popup/item_3/text = "Standard"
+popup/item_3/id = 0
+popup/item_4/text = "Resource_t"
+popup/item_4/id = 1
+popup/item_5/text = "Refcounted"
+popup/item_5/id = 2
+popup/item_6/text = "Standard"
+popup/item_6/id = 0
+popup/item_7/text = "Resource_t"
+popup/item_7/id = 1
+popup/item_8/text = "Refcounted"
+popup/item_8/id = 2
 
 [node name="GlassPanel" parent="Panel/FoldableContainer/Contents" index="1" unique_id=1244242819]
 offset_transform_position_ratio = Vector2(0, 1)

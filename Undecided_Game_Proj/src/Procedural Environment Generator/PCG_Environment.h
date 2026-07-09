@@ -52,12 +52,12 @@ namespace godot {
             RenderingDevice* RenderingDevice_Local = nullptr;
             RenderingServer* RenderingServer_Local = nullptr;
             const float WORLD_SCALE = 1.0;
-            struct ComputeUniformData 
+            struct ComputeUniformData
             {
                 Vector4i SCENE_PROPERTIES;
 
                 Vector4 NOISE_PARAMS;
-                
+
                 Vector4i CHUNK_SIZE;
 
                 Vector4i VOXELS_PER_CHUNK;
@@ -69,7 +69,7 @@ namespace godot {
                 Vector4 PLANET_BOUNDS;
             };
 
-            
+
             struct voxelData {
                 float matID;
                 float density;
@@ -86,7 +86,7 @@ namespace godot {
                 uint32_t z;
             };
 
-            struct PushConstant 
+            struct PushConstant
             {
                 uint32_t PassNum = 0;
                 uint32_t PassOffset = 0;
@@ -106,7 +106,7 @@ namespace godot {
                 Vector4i CHUNK_SIZE = Vector4i(4, 4, 4, 256);
                 Vector4i VOXELS_PER_CHUNK = Vector4i(64, 64, 64, 64);
                 Vector4i VertexOffsetLoD = Vector4i(0, 0, 0, 0);
-                
+
             };
             struct AtomicBuffer
             {
@@ -124,7 +124,7 @@ namespace godot {
             {
                 Vector4 Normals[];
             };
-            
+
             struct DC_UVBuffer
             {
                 Vector2 UV[];
@@ -173,7 +173,7 @@ namespace godot {
                 float TRUTH_GRID_SIZE = 256;
             };
 
-            struct PCGPipelines 
+            struct PCGPipelines
             {
                 RID density            = RID();
                 RID dual_contour_dense = RID();
@@ -252,16 +252,16 @@ namespace godot {
         public:
             PCG_Environment();
             ~PCG_Environment();
-            
+
             void passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC_CPU_TO_GPU,
-                                    const PackedInt32Array VOXELS_PER_CHUNK, 
+                                    const PackedInt32Array VOXELS_PER_CHUNK,
                                     const PackedInt32Array CHUNK_SIZE,
                                     const PackedInt32Array VERTEX_LOCATION_OFFSET,
                                     const uint32_t LEVEL_OF_DETAIL);
 
             static Ref<RDUniform> RefWrapper(int Binding, RID Buffer_RID, RenderingDevice::UniformType UniformType);
 
-            void Density_Generation_Pass(int64_t &ComputeList);        
+            void Density_Generation_Pass(int64_t &ComputeList);
 
             void DualContour_Generation_Pass(int64_t &ComputeList);
 
@@ -277,5 +277,5 @@ namespace godot {
             void SetSettings(bool initLocalRenderingServer, bool UseLocalRenderingDevice, bool DEBUG, uint32_t DC_WORKGROUP_SIZE=8, uint32_t SVO_WORKGROUP_SIZE=8, uint32_t PLANET_GEN_WORKGROUP_SIZE=8);
             void SetRIDStorage(RID VertexTexture, RID NormalTexture, RID UVTexture, RID IndexTexture);
             void PrintGeneratedData();
-    }; 
+    };
 }

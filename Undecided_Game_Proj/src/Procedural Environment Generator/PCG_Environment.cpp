@@ -35,7 +35,7 @@ using namespace godot;
     }
 #else
 #define CHECK_RENDERING_DEVICE()
-#define ERR_PRINT_LINE() 
+#define ERR_PRINT_LINE()
 #define COMPUTE_LIST_CHECK()
 #endif
 
@@ -47,32 +47,32 @@ using namespace godot;
 
 void PCG_Environment::_bind_methods() {
     // PCG Parameter Passing
-    ClassDB::bind_method(D_METHOD("PassParamsToPCG", 
-        "isCPU_or_GPU", "SYNC_CPU_TO_GPU", 
-        "VOXELS_PER_CHUNK", "CHUNK_SIZE", 
-        "VERTEX_LOCATION_OFFSET", 
+    ClassDB::bind_method(D_METHOD("PassParamsToPCG",
+        "isCPU_or_GPU", "SYNC_CPU_TO_GPU",
+        "VOXELS_PER_CHUNK", "CHUNK_SIZE",
+        "VERTEX_LOCATION_OFFSET",
         "LEVEL_OF_DETAIL"), &PCG_Environment::passParams_to_PCG);
 
-    ClassDB::bind_method(D_METHOD("initCompute", 
+    ClassDB::bind_method(D_METHOD("initCompute",
         "SEED", "MAXVERTs",
         "SKIP_PRE_INIT_TEXTURES",
-        "CHUNK_SIZE", "VOXELS_PER_CHUNK", 
+        "CHUNK_SIZE", "VOXELS_PER_CHUNK",
         "MeshInstance", "INDEX_COEFFICIENT",
-        "VertexLoDOffsets", "RefMeshVertexCount"), 
+        "VertexLoDOffsets", "RefMeshVertexCount"),
         &PCG_Environment::initCompute);
-        
+
     ClassDB::bind_method(D_METHOD("GetLocalRenderingDeviceRID"), &PCG_Environment::GetLocalRenderingDeviceRID);
 
     ClassDB::bind_method(
-        D_METHOD("SetCompiledShaders", 
-            "planet_shader", 
+        D_METHOD("SetCompiledShaders",
+            "planet_shader",
             "dc_dense",
-            "vertex_pull"), 
+            "vertex_pull"),
         &PCG_Environment::SetCompiledShaders
     );
 
-    ClassDB::bind_method(D_METHOD("SetSettings", 
-                                "initLocalRenderingServer", 
+    ClassDB::bind_method(D_METHOD("SetSettings",
+                                "initLocalRenderingServer",
                                 "UseLocalRenderingDevice",
                                 "DEBUG",
                                 "DC_WORKGROUP_SIZE",
@@ -150,7 +150,7 @@ void PCG_Environment::PrintGeneratedData()
     const Vector4* DataPtr = reinterpret_cast<const Vector4*>(Data.ptr());
     for(int i = 3; i < 6 + 6; i++)
         UtilityFunctions::print("Vertex found: ", i, " | ", DataPtr[i]);
-    
+
     PackedByteArray counterData = RenderingDevice_Local->buffer_get_data(storage.atomic_counter);
     const uint32_t* counterPtr = reinterpret_cast<const uint32_t*>(counterData.ptr());
     for(int i = 0; i < 3; i++)
@@ -178,7 +178,7 @@ void PCG_Environment::PrintGeneratedData()
     */
 }
 
-void PCG_Environment::SetSettings(bool initLocalRenderingServer, bool UseLocalRenderingDevice, bool DEBUG, 
+void PCG_Environment::SetSettings(bool initLocalRenderingServer, bool UseLocalRenderingDevice, bool DEBUG,
                                   uint32_t DC_WORKGROUP_SIZE, uint32_t SVO_WORKGROUP_SIZE, uint32_t PLANET_GEN_WORKGROUP_SIZE)
 {
     if(initLocalRenderingServer){
@@ -238,7 +238,7 @@ void PCG_Environment::Density_Generation_Pass(int64_t &ComputeList)
     RenderingDevice_Local->compute_list_set_push_constant(ComputeList, pushconst_buffer, pushconst_buffer.size());
     //RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.uniform_set, 0);
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.voxel_storage, 0);
-    
+
     size_t DispatchSize = G_GRID_SIZE / storage.WORKGROUP_SIZE_PLANET;
     RenderingDevice_Local->compute_list_dispatch(ComputeList, DispatchSize, DispatchSize, DispatchSize);
     #ifndef PRODUCTION_BUILD
@@ -259,7 +259,7 @@ void PCG_Environment::DualContour_Generation_Pass(int64_t &ComputeList)
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.dc_dense_storage[0], 0);
     RenderingDevice_Local->compute_list_bind_uniform_set(ComputeList, storage.dc_dense_storage[1], 1);
 
-    uint32_t DispatchSize = ceil(G_GRID_SIZE / storage.WORKGROUP_SIZE_DUAL_CONTOUR); 
+    uint32_t DispatchSize = ceil(G_GRID_SIZE / storage.WORKGROUP_SIZE_DUAL_CONTOUR);
 
     auto p_const_copy = [&](int64_t p_ComputeList)
     {
@@ -289,7 +289,7 @@ void PCG_Environment::DualContour_Generation_Pass(int64_t &ComputeList)
 
             pass();
 
-        
+
             BasicPushConstant.PassOffset++;
         }
 
@@ -299,7 +299,7 @@ void PCG_Environment::DualContour_Generation_Pass(int64_t &ComputeList)
             pass();
         }
     }
-    BasicPushConstant.PassOffset = 2147483647; // INT32_MAX. It serves as a special condition for the index generation pass. 
+    BasicPushConstant.PassOffset = 2147483647; // INT32_MAX. It serves as a special condition for the index generation pass.
                                                  // If the pass offset is this specific value, the index generation runs. Otherwise, it does not.
     pass(); // triangle generation pass
     #ifndef PRODUCTION_BUILD
@@ -327,7 +327,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     const int IDX_SQRT_MAX_VERTS = int(ceil(sqrt(MAXVERTs * INDEX_COEFFICIENT)));
     BasicPushConstant.CHUNK_SIZE.w = SQRT_MAX_VERTS;
     BasicPushConstant.VOXELS_PER_CHUNK.w = IDX_SQRT_MAX_VERTS;
-    
+
     BasicPushConstant.IndexCoefficient = INDEX_COEFFICIENT;
 
     BasicPushConstant.GridSize = BasicPushConstant.CHUNK_SIZE.x * BasicPushConstant.VOXELS_PER_CHUNK.x;
@@ -336,7 +336,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
 
     #ifndef PRODUCTION_BUILD
     if(G_DEBUG)
-        UtilityFunctions::print("Chunk size: ", BasicPushConstant.CHUNK_SIZE, "\n", 
+        UtilityFunctions::print("Chunk size: ", BasicPushConstant.CHUNK_SIZE, "\n",
                                 "Voxels per chunk: ", BasicPushConstant.VOXELS_PER_CHUNK, "\n",
                                 "Grid size: ", BasicPushConstant.GridSize, "\n",
                                 "Voxel size: ", BasicPushConstant.VoxelSize);
@@ -351,29 +351,29 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     int BufferPadding = 0;
 
     {
-    BasicPushConstant.Dense_TotalNodes = (CHUNK_SIZE[0]) * (CHUNK_SIZE[1]) * (CHUNK_SIZE[2] ) * 
+    BasicPushConstant.Dense_TotalNodes = (CHUNK_SIZE[0]) * (CHUNK_SIZE[1]) * (CHUNK_SIZE[2] ) *
                                          (VOXELS_PER_CHUNK[0]) * (VOXELS_PER_CHUNK[1]) * (VOXELS_PER_CHUNK[2]);
     #ifndef PRODUCTION_BUILD
         if(G_DEBUG)
         UtilityFunctions::print("Voxel grid's total nodes per axis: ", BasicPushConstant.Dense_TotalNodes);
     #endif
     PackedByteArray VoxelBufferArray;
-    int64_t OutputSize = sizeof(voxelData) * (CHUNK_SIZE[0] + BufferPadding) * (CHUNK_SIZE[1] + BufferPadding) * (CHUNK_SIZE[2] + BufferPadding) 
+    int64_t OutputSize = sizeof(voxelData) * (CHUNK_SIZE[0] + BufferPadding) * (CHUNK_SIZE[1] + BufferPadding) * (CHUNK_SIZE[2] + BufferPadding)
                          * (VOXELS_PER_CHUNK[0] + BufferPadding) * (VOXELS_PER_CHUNK[1] + BufferPadding) * (VOXELS_PER_CHUNK[2] + BufferPadding);
-    
+
     #ifndef PRODUCTION_BUILD
     if(G_DEBUG)
         UtilityFunctions::print("Voxel grid size: ", OutputSize);
     #endif
-    
+
     VoxelBufferArray.resize(OutputSize);
     storage.voxel_output = RenderingDevice_Local->storage_buffer_create(VoxelBufferArray.size(), VoxelBufferArray);
     }
 
-        
+
     auto create_storage_buffer = [&](auto& buffer_struct, int64_t count, float multiplier = 1.0f) {
         using BufferType = std::remove_reference_t<decltype(buffer_struct)>;
-        
+
         PackedByteArray byteArray;
         int64_t size = static_cast<int64_t>(ceil(sizeof(BufferType) * count * multiplier));
         byteArray.resize(size);
@@ -433,7 +433,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     Ref<RDTextureFormat> TextureFormat;
     TextureFormat.instantiate();
     TextureFormat->set_format(RenderingDevice::DATA_FORMAT_R32G32B32A32_SFLOAT);
-    
+
     TextureFormat->set_width(SQRT_MAX_VERTS);
     TextureFormat->set_height(SQRT_MAX_VERTS);
     TextureFormat->set_usage_bits(RenderingDevice::TEXTURE_USAGE_SAMPLING_BIT | RenderingDevice::TEXTURE_USAGE_STORAGE_BIT | RenderingDevice::TEXTURE_USAGE_CAN_COPY_FROM_BIT
@@ -443,18 +443,18 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     TextureView.instantiate();
 
     storage.dc_vertex_texture = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
-    
+
     storage.dc_normal_texture = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
-    
+
     TextureFormat->set_format(RenderingDevice::DATA_FORMAT_R32G32_SFLOAT);
 
     storage.dc_uv_texture     = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
-    
+
     TextureFormat->set_format(RenderingDevice::DATA_FORMAT_R32_SFLOAT);
     TextureFormat->set_width(IDX_SQRT_MAX_VERTS);
     TextureFormat->set_height(IDX_SQRT_MAX_VERTS);
 
-    storage.dc_index_texture   = RenderingDevice_Local->texture_create(TextureFormat, TextureView); 
+    storage.dc_index_texture   = RenderingDevice_Local->texture_create(TextureFormat, TextureView);
     }
 
     Ref<RDUniform> VoxelStorageBuffer_UniformRef = RefWrapper(0, storage.voxel_output,              RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
@@ -484,8 +484,8 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     GeometryArray.push_back(DC_VertexIndexBuffer_UniformRef);
     GeometryArray.push_back(DC_EdgeMaskBuffer_UniformRef);
     GeometryArray.push_back(DC_VertexOffsetBuffer_UniformRef);
-    
-    
+
+
     #ifndef PRODUCTION_BUILD
     if(G_DEBUG)
         WARN_PRINT("Creating for planet shader. NOT AN ERROR; IGNORE THIS.");
@@ -498,7 +498,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     #endif
     storage.dc_dense_storage[0]              = RenderingDevice_Local->uniform_set_create(Voxel_Storage, compiled_shaders.CompiledShader_DualContour_Dense, 0);
     storage.dc_dense_storage[1]              = RenderingDevice_Local->uniform_set_create(GeometryArray,     compiled_shaders.CompiledShader_DualContour_Dense, 1);
-    
+
     // create the actual mesh to display DC generated verts
     if(!SKIP_PRE_INIT_TEXTURES){
     InstanceRID = MeshInstance;
@@ -525,7 +525,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
     }
     {/*
     PackedInt32Array PreInitVal;
-    
+
     PreInitVal.resize(sizeof(DC_VertexIndexBuffer) * std::pow((G_GRID_SIZE), 3));
     PreInitVal.fill(-1);
     RenderingDevice_Local->buffer_update(storage.dc_vertex_index_buffer, 0, PreInitVal.size(), PreInitVal.to_byte_array());
@@ -549,7 +549,7 @@ void PCG_Environment::initCompute(const uint32_t &SEED, const int32_t &MAXVERTs,
 
 
 void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC_CPU_TO_GPU,
-                                        const PackedInt32Array VOXELS_PER_CHUNK, 
+                                        const PackedInt32Array VOXELS_PER_CHUNK,
                                         const PackedInt32Array CHUNK_SIZE,
                                         const PackedInt32Array VERTEX_LOCATION_OFFSET,
                                         const uint32_t LEVEL_OF_DETAIL){
@@ -562,27 +562,27 @@ void PCG_Environment::passParams_to_PCG(const bool isCPU_or_GPU, const bool SYNC
         BasicPushConstant.VertexOffsetLoD.z = VERTEX_LOCATION_OFFSET[2];
 
         BasicPushConstant.WriteToTexturesInFirstPass = 1;
-        
+
         RenderingDevice_Local->buffer_clear(storage.atomic_counter, 0, sizeof(AtomicBuffer));
         RenderingDevice_Local->texture_clear(storage.dc_vertex_texture, Color(0,0,0,0), 0, 1, 0, 1);
         RenderingDevice_Local->texture_clear(storage.dc_index_texture, Color(0,0,0,0), 0, 1, 0, 1);
 
         G_GRID_SIZE = VOXELS_PER_CHUNK[0] * CHUNK_SIZE[0];
-        
-        
+
+
         int64_t ComputeList = RenderingDevice_Local->compute_list_begin();
         COMPUTE_LIST_CHECK();
-  
+
         PCG_Environment::Density_Generation_Pass(ComputeList);
         PCG_Environment::DualContour_Generation_Pass(ComputeList);
-        
+
         RenderingDevice_Local->compute_list_end();
-       
+
         #ifndef PRODUCTION_BUILD
         if(G_DEBUG)
             UtilityFunctions::print("Compute list recorded: ", ComputeList);
         #endif
-        
+
         #ifndef PRODUCTION_BUILD
         if(G_DEBUG)
             UtilityFunctions::print("Compute successful. Setting mesh visibility.");

@@ -6,4 +6,5 @@
 
 Procedural Environment Generator:PCG_Environment # you can also comment in front of meta lines!
 Shader compiler:ShaderComp
-GahdZamn:GahdZamn
+
+PCG/EnvironmentGenerator:EnvironmentGenerator

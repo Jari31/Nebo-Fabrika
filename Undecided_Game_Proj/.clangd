@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/include"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gen/include"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gdextension"
+    - -std=c++17
+    - -Wall
+  Remove: [-Wclean-room]

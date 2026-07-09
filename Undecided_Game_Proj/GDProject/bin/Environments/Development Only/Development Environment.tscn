@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c2pm1fraw3gho"]
 
-[ext_resource type="Script" uid="uid://byh1noufa2dsx" path="res://bin/GDScripts/Network System/NetworkManager.gd" id="1_gk34y"]
-[ext_resource type="PackedScene" uid="uid://cg86cfj6hr1xt" path="res://bin/GDScripts/Entity System/Player/player.tscn" id="2_f3knc"]
+[ext_resource type="Script" uid="uid://byh1noufa2dsx" path="res://bin/GDScripts/Legacy/Network System/NetworkManager.gd" id="1_gk34y"]
+[ext_resource type="PackedScene" uid="uid://cg86cfj6hr1xt" path="res://bin/GDScripts/Legacy/Entity System/Player/player.tscn" id="2_f3knc"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_s08hj"]
 
