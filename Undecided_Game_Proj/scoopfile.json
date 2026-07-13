@@ -1,0 +1,35 @@
+{
+  "buckets": [
+    {
+      "Name": "main",
+      "Source": "https://github.com/ScoopInstaller/Main"
+    },
+    {
+      "Name": "versions",
+      "Source": "https://github.com/ScoopInstaller/Versions"
+    }
+  ],
+  "apps": [
+    {
+      "Name": "ispc",
+      "Source": "main"
+    },
+
+    {
+      "Name": "xmake",
+      "Source": "main"
+    },
+    {
+      "Name": "slang",
+      "Source": "main"
+    },
+    {
+      "Name": "odin-dev",
+      "Source": "versions"
+    },
+    {
+      "Name": "zig",
+      "Source": "main"
+    }
+  ]
+}

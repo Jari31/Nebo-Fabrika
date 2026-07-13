@@ -1,0 +1,41 @@
+#pragma once
+#include "../Vectors/Vectors.isph"
+
+inline float Fractional(uniform float Value)
+{
+    return Value - floor(Value);
+}
+
+/// assumes the vector provided is unsigned
+inline vec3 Scalar_GradientHash(vec3 InputVector, uint32 Seed)
+{
+    uint32 x = intbits(InputVector.x);
+    uint32 y = intbits(InputVector.y);
+    uint32 z = intbits(InputVector.z);
+
+    x ^= Seed ^ 0x5f3759dfu; // fast inv sqrt because why not. even though it wont do anything. ah well, spam constants!
+    y ^= Seed ^ 0x9e3779b9u;
+    z ^= Seed ^ 0x4f3759dfu;
+
+    x *= 0x45d9f3bu;
+    y *= 0x135a50f3u;
+    z *= 0x2c641115u;
+
+    int32 hashes[3];
+    hashes[0] = (x ^ (z >> 15)) * ((y << 15) | (y >> 17));
+    hashes[1] = (y ^ (x >> 15)) * ((z << 15) | (z >> 17));
+    hashes[2] = (z ^ (y >> 15)) * ((x << 15) | (x >> 17));
+
+    //int32 hash = (x * 73856093u) ^ (y * 19349663u) ^ (z * 83492791u) ^ Seed;
+
+    // hash ^= hash >> 16;
+    // hash *= 0x7feb352dU;
+    // hash ^= hash >> 15;
+    // hash *= 0x846ca68bU;
+    // hash ^= hash >> 16;
+
+    float v0 = ((float)(hashes[0]) * (1.0f / 4294967295.0f)) * 2.0f - 1.0f;
+    float v1 = ((float)(hashes[1]) * (1.0f / 4294967295.0f)) * 2.0f - 1.0f;
+    float v2 = ((float)(hashes[2]) * (1.0f / 4294967295.0f)) * 2.0f - 1.0f;
+    return MakeVector3(v0, v1, v2);
+}

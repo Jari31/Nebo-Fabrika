@@ -1,0 +1,27 @@
+#pragma once
+
+struct vec3
+{
+    float x, y, z;
+};
+
+inline vec3 MakeVector3(float x, float y, float z)
+{
+    vec3 vector = {x, y, z};
+    return vector;
+};
+
+inline vec3 AddVector3(vec3 a, vec3 b)
+{
+    return MakeVector3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+inline vec3 SubtractVector3(vec3 a, vec3 b)
+{
+    return MakeVector3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+inline vec3 MultiplyVector3(vec3 a, vec3 b)
+{
+    return MakeVector3(a.x * b.x, a.y * b.y, a.z * b.z);
+}

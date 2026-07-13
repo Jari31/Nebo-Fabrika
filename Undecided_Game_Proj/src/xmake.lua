@@ -1,6 +1,7 @@
-add_requires("ispc", "slang", "zig")
+add_requires("ispc", "slang", "zig", "taskflow")
 
 local GlobalCache = path.join(os.projectdir(), "cache")
+--set_config("packagedir", path.join(GlobalCache, "cache/Libraries"))
 
 rule("ispc_rule")
     set_extensions(".ispc")
@@ -11,29 +12,52 @@ rule("ispc_rule")
         local objfile = path.join(cache_dir, path.basename(sourcefile) .. ".obj")
         local header = path.join(cache_dir, path.basename(sourcefile) .. ".h")
 
+        batchcmds:show_progress(opt.progress, "compiling.ispc %s", sourcefile)
+
         batchcmds:execv("ispc", {
             sourcefile,
             "-O3",
-            "--target=sse2-i32x4,sse4-i32x4,avx1-i32x8,avx2-i32x8,avx2-i32x16,avx512skx-x16,avx512icl-x16,avx512spr-x16,avx512gnr-x16,avx10.2dmr-x16,avx10.2nvl-x16,neon-i32x4,neon-i16x16,neon-i8x32,wasm32-i32x4",
+            "--target=sse4.2-i32x8,avx1-i32x8,avx2-i32x8,avx512skx-x8,neon-i32x8",
             "-h", header,
-            "-o", objfile,
-            "-v"
+            "-o", objfile
+            --"-v"
         })
 
         batchcmds:add_depfiles(sourcefile)
+
         target:add("objects", objfile)
     end)
 
 target("test_ispc")
-    set_kind("static")
+    set_kind("object")
     add_packages("ispc")
-    add_rules("ispc_rule")
     add_files("**.ispc")
-    add_files("dummy.c")
+    add_rules("ispc_rule")
 
     before_link( function (target)
         local cache_dir = path.join(GlobalCache, "ispc")
-        for _, obj in ipairs(os.files(path.join(cache_dir, "*_*.obj"))) do
+        for _, obj in ipairs(os.files(path.join(cache_dir, "*.obj"))) do
             target:add("objects", obj)
         end
     end)
+--[[
+target("fetch_dependencies")
+    set_kind("headeronly")
+    add_packages("taskflow")
+
+    on_build(function (target)
+        import("core.project.project")
+
+        for package_name, _ in pairs(target:pkgs()) do
+            local package_instance = target:pkg(package_name)
+
+            local include_directories = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
+            if include_directories then
+                for _, include_directory in ipairs(include_directories) do
+                    print("--> Copying " .. package_name .. " headers from " .. include_directory)
+                    os.cp(include_directory .. "/*", "cache/Libraries/")
+                end
+            end
+        end
+    end)
+]]--

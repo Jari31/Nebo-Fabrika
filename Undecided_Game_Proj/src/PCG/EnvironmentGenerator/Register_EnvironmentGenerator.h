@@ -1,6 +1,6 @@
 #pragma once
 
-#include "EnvironmentGenerator.h"
+#include "EnvironmentGenerator.hpp"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/defs.hpp>
