@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cg86cfj6hr1xt"]
 
-[ext_resource type="Script" uid="uid://b644av4dmw55k" path="res://bin/GDScripts/Legacy/Entity System/Player/Player3D.gd" id="1_alfjv"]
+[ext_resource type="Script" uid="uid://b644av4dmw55k" path="res://bin/Source/Legacy/Entity System/Player/Player3D.gd" id="1_alfjv"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_m5jr6"]
 

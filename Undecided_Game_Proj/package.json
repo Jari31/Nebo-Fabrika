@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "clang": "^1.0.9"
+  }
+}

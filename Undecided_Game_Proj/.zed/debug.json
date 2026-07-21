@@ -1,0 +1,17 @@
+[
+  {
+    "adapter": "CodeLLDB",
+    "label": "Debug GDExtension (Godot)",
+    "request": "launch",
+    "program": "F:/Godot/Godot_v4.7-stable_win64.exe/Godot_v4.7-stable_win64.exe",
+    "args": [
+      "--path",
+      "F:/Openworld_Game/Undecided_Game_Proj/GDProject",
+      "res://bin/Source/World/PCG/EnvironmentGenerator/TestScene.tscn",
+    ],
+    "cwd": "F:/Openworld_Game/Undecided_Game_Proj/src",
+    // "initCommands": [
+    //   "settings set target.debug-file-search-paths F:/Openworld_Game/Undecided_Game_Proj/GDProject/bin/build",
+    // ],
+  },
+]

@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 from SCons.Script import ARGUMENTS, Dir, Tool
 
 # Add godot-cpp folder to sys.path, so that we can import local modules.
@@ -21,6 +22,7 @@ except Exception:
 
 if ARGUMENTS.get("platform") == "macos":
     import tools.macos as godot_macos
+
     godot_macos.exists = lambda environment: True
 
 env.PrependENVPath("PATH", os.getenv("PATH"))
@@ -49,7 +51,7 @@ Help(opts.GenerateHelpText(env))
 
 is_windows = env["platform"] == "windows"
 
-if(not is_windows): 
+if not is_windows:
     print("Platform not windows; switching to LLVM...")
     env["use_llvm"] = True
 
@@ -70,25 +72,27 @@ cpp_tool.generate(env)
 target_os = ARGUMENTS.get("target_os", env["platform"])
 target_os = "linux" if len(target_os) <= 0 else target_os
 
-if(not is_windows):
+if not is_windows:
     if "suffix" in env:
         env["suffix"] = env["suffix"].replace(f".{env['platform']}.", f".{target_os}.")
 
     old_platform_string = f".{env['platform']}.{env['target']}"
     new_platform_string = f".{target_os}.{env['target']}"
-    
+
     if "OBJSUFFIX" in env:
-        env["OBJSUFFIX"] = env["OBJSUFFIX"].replace(old_platform_string, new_platform_string)
+        env["OBJSUFFIX"] = env["OBJSUFFIX"].replace(
+            old_platform_string, new_platform_string
+        )
 
     env["CC"] = "zig cc"
     env["CXX"] = "zig c++"
     env["LINK"] = "zig c++"
-    #env["AR"] = "zig ar"
+    # env["AR"] = "zig ar"
 
     zig_target = ""
-    if target_os == "linux": 
+    if target_os == "linux":
         zig_target = ["-target", "x86_64-linux"]
-    elif target_os == "macos": 
+    elif target_os == "macos":
         zig_target = ["-target", "x86_64-macos"]
 
         if "CPPDEFINES" in env:
@@ -99,7 +103,7 @@ if(not is_windows):
         TLS_model = "-fno-emulated-tls -pthread"
         env.Append(CCFLAGS=TLS_model)
         env.Append(LINKFLAGS=TLS_model)
-        
+
     env.Append(CFLAGS=zig_target)
     env.Append(CCFLAGS=zig_target)
     env.Append(LINKFLAGS=zig_target)
@@ -107,7 +111,7 @@ if(not is_windows):
     def AR_Command(target, source, env):
         import subprocess
         import sys
-        
+
         target_string = os.path.normpath(str(target[0]))
 
         if os.path.exists(target_string):
@@ -115,15 +119,15 @@ if(not is_windows):
                 os.remove(target_string)
             except OSError:
                 return 1
-            
-        #for s in source:
+
+        # for s in source:
         #    print("Source contains: ", str(s))
         #    print("Norm path: ", os.path.normpath(str(s)))
 
         source_strings = [os.path.normpath(str(s)) for s in source]
         zig_chunk_size = 50
         for i in range(0, len(source_strings), zig_chunk_size):
-            zig_chunk = source_strings[i: i + zig_chunk_size]
+            zig_chunk = source_strings[i : i + zig_chunk_size]
 
             cmd = ["zig", "ar", "q", target_string] + zig_chunk
             try:
@@ -131,16 +135,18 @@ if(not is_windows):
             except subprocess.CalledProcessError as e:
                 print(f"Zig ar failed: {e.stderr}")
                 return 1
-                
+
         return 0
 
     env["ARCOM"] = Action(AR_Command, "Archiving $TARGET with Zig chunks...")
 
     env["RANLIB"] = "zig ranlib"
 
-    #env["ARCOM"] = "${TEMPFILE('$AR $ARFLAGS $TARGET $SOURCES', '$ARCOMSTR')}"
+    # env["ARCOM"] = "${TEMPFILE('$AR $ARFLAGS $TARGET $SOURCES', '$ARCOMSTR')}"
     env["LINK"] = ["zig", "c++"]
-    env["LINKCOM"] = "${TEMPFILE('$LINK $LINKFLAGS $_LINKFLAGS -o $TARGET $SOURCES $_LIBDIRFLAGS $_LIBFLAGS', '$LINKCOMSTR')}"
+    env["LINKCOM"] = (
+        "${TEMPFILE('$LINK $LINKFLAGS $_LINKFLAGS -o $TARGET $SOURCES $_LIBDIRFLAGS $_LIBFLAGS', '$LINKCOMSTR')}"
+    )
 
     if "CCFLAGS" in env:
         env["CCFLAGS"] = [f for f in env["CCFLAGS"] if not f.startswith("-march=")]

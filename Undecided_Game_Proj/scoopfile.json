@@ -10,6 +10,8 @@
     }
   ],
   "apps": [
+    { "Name": "doxygen", "Source": "main" },
+    { "Name": "graphviz", "Source": "main" },
     {
       "Name": "ispc",
       "Source": "main"

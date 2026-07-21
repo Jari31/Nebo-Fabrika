@@ -98,7 +98,6 @@ func _generate_boilerplate():
 	
 	var header_guard = ClassName.to_upper()
 	
-	
 	match CPPBoilerplateType:
 		_:
 			class_h = "#ifndef {header_guard}_H\n#define {header_guard}_H\n\n#include <godot_cpp/classes/{base_class_lowercase}.hpp>\n\nnamespace godot {\n\nclass {class_name} : public {base_class} {\n    GDCLASS({class_name}, {base_class});\n\nprotected:\n    static void _bind_methods();\n\npublic:\n    {class_name}();\n    ~{class_name}();\n};\n\n}\n\n#endif".format({"base_class": "Node3D", "base_class_lowercase": "node3d", "header_guard": header_guard, "class_name": ClassName})
@@ -109,7 +108,7 @@ func _generate_boilerplate():
 			
 			class_register_cpp = "#include \"Register_{class_name}.h\"\n\nusing namespace godot;\n\nvoid initialize{module_name}(ModuleInitializationLevel level) {\n    if (level != MODULE_INITIALIZATION_LEVEL_SCENE)\n        return;\n\n    GDREGISTER_RUNTIME_CLASS({class_name});\n}\n\nvoid uninitialize{module_name}(ModuleInitializationLevel level) {\n    if (level != MODULE_INITIALIZATION_LEVEL_SCENE)\n        return;\n}\n\nextern \"C\" {\nGDExtensionBool GDE_EXPORT init_{module_name}(GDExtensionInterfaceGetProcAddress p_get_proc_address, const GDExtensionClassLibraryPtr p_library, GDExtensionInitialization *r_initialization) {\n    godot::GDExtensionBinding::InitObject init_obj(p_get_proc_address, p_library, r_initialization);\n\n    init_obj.register_initializer(initialize{module_name});\n    init_obj.register_terminator(uninitialize{module_name});\n    init_obj.set_minimum_library_initialization_level(MODULE_INITIALIZATION_LEVEL_SCENE);\n\n    return init_obj.init();\n}\n}".format({"class_name": ClassName, "module_name":  ClassName})
 			
-			class_gdextension = "[configuration]\nentry_symbol = \"init_{module_name}\"\ncompatibility_minimum = \"{compat_min}\"\nreloadable = true\nload_in_editor = {editor_tool}\n\n[libraries]\nwindows.x86_64 = \"res://bin/build/{class_name}/{class_name}.dll\"\nlinux.x86_64 = \"res://bin/build/{class_name}/{class_name}.so\"".format({"class_name": ClassName, "module_name":  ClassName, "editor_tool": Node_IsEditorPlugin, "compat_min": Node_GodotVersion})
+			class_gdextension = "[configuration]\nentry_symbol = \"init_{module_name}\"\ncompatibility_minimum = \"{compat_min}\"\nreloadable = true\nload_in_editor = {editor_tool}\n\n[libraries]\nwindows.x86_64 = \"res://bin/build/{class_name}/{class_name}.dll\"\nlinux.x86_64 = \"res://bin/build/{class_name}/{class_name}.so\"".format({"class_name": ClassName, "module_name":  ClassName, "editor_tool": true if Node_IsEditorPlugin.toggle_mode == true else false, "compat_min": Node_GodotVersion.value})
 	
 	#function inlining? never heard of it
 	var lambda_create_and_write_to_file = func(Pattern: String, FileType: FileTypes):
@@ -122,7 +121,7 @@ func _generate_boilerplate():
 		print(File)
 	
 		if File:
-			match(FileType): # man I wish I could use macros because writing all this by hand makes me feel like a caveman
+			match(FileType): 
 				FileTypes.ClassH: File.store_string(class_h)
 				FileTypes.ClassRegisterCpp: File.store_string(class_register_cpp)
 				FileTypes.ClassRegisterH: File.store_string(class_register_h)
@@ -145,7 +144,7 @@ func _generate_boilerplate():
 		
 func _display_last_used_parameters(MetaFileText: String):
 	var lines: PackedStringArray = MetaFileText.split("\n")
-	var lines_size = lines.size() - 1 # because the bumass compiler (or lack thereof) can't do proper inlining due to a lack of static analysis 
+	var lines_size = lines.size() - 1
 	if lines_size > 0:
 		var last_line: String = lines[-1].strip_edges()
 		

@@ -1,6 +1,6 @@
 // This script assumes that the project structure is as the same one in the repo
 //
-// Mac is broken, and I don't intend on supporting it either.
+// Mac is broken.
 // It also has a different GPU arch, which will definitely brick some of the compute shaders.
 //
 // (*there is a Mac branch, but I have not tested it much due to me lacking a Mac)
@@ -9,6 +9,7 @@
 // Or, for Windows, inside of 'x64 Native Tools Command Prompt for VS 2022': zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-windows
 
 const std = @import("std");
+const compile_commands = @import("compile_commands");
 const builtin = @import("builtin");
 
 var FileExtension: []const u8 = ".cpp"; // mostly redundant because changing this WILL break everything
@@ -16,8 +17,9 @@ const RegistrationFilePrefix: []const u8 = "Register_";
 var BuildFolderPath = "../GDProject/bin/build/";
 var SkipDebugFlag: bool = false;
 
-const ObjectFiles = struct {
+const IncludeFiles = struct {
     ObjectFiles_ISPC: std.ArrayList([]const u8) = .empty,
+    StaticFiles_LibraryCache: std.ArrayList([]const u8) = .empty,
     // where there might be more ObjectFiles_C
     const GlobFileOptions = struct {
         DirectoryPath: []const u8 = "cache/ispc",
@@ -25,7 +27,7 @@ const ObjectFiles = struct {
         ExcludeFileWith: std.ArrayList([]const u8) = .empty,
     };
 
-    pub inline fn GlobFilesInDirectory(
+    pub fn GlobFilesInDirectory(
         Build: *std.Build,
         ListToAppendTo: *std.ArrayList([]const u8),
         Options: GlobFileOptions,
@@ -47,8 +49,8 @@ const ObjectFiles = struct {
                 if (Options.ExcludeFileWith.items.len > 0) {
                     var contains_blacklisted_character = false;
                     for (Options.ExcludeFileWith.items) |ExcludedCharacter| {
-                        if (std.mem.containsAtLeast(u8, entry.path, 0, ExcludedCharacter)) {
-                            std.debug.print("\x1b[33mFile contains blacklisted identifier \x1b[1;4;33m'{s}'\x1b[0;33m. Ignoring...\x1b[0m\n", .{ExcludedCharacter});
+                        if (std.mem.containsAtLeast(u8, entry.path, 1, ExcludedCharacter)) {
+                            std.debug.print("\x1b[33mFile ({s}) contains blacklisted identifier \x1b[1;4;33m'{s}'\x1b[0;33m. Ignoring...\x1b[0m\n", .{ entry.basename, ExcludedCharacter });
                             contains_blacklisted_character = true;
                             break;
                         }
@@ -56,18 +58,27 @@ const ObjectFiles = struct {
 
                     if (contains_blacklisted_character) continue;
                 }
-
-                const full_path = Build.fmt("{s}/{s}", .{ Options.DirectoryPath, entry.path });
-                std.debug.print("Found {s} file, appending full path as: {s}", .{ Options.FileWithExtension, full_path });
-                ListToAppendTo.append(Build.allocator, full_path) catch @panic(Build.fmt(
-                    "Failed to appent to list whilst walking the cache directory for {s} in '{s}'.",
+                const found_path = if (std.mem.endsWith( // ugly way to do it. but it works, so eh
+                    u8,
+                    Options.DirectoryPath,
+                    "/",
+                )) Build.fmt("{s}{s}", .{
+                    Options.DirectoryPath,
+                    entry.path,
+                }) else Build.fmt("{s}/{s}", .{
+                    Options.DirectoryPath,
+                    entry.path,
+                });
+                std.debug.print("Found {s} file, appending full path as: {s}\n", .{ Options.FileWithExtension, found_path });
+                ListToAppendTo.append(Build.allocator, found_path) catch @panic(Build.fmt(
+                    "Failed to appent to list whilst walking the cache directory for {s} in '{s}'.\n",
                     .{ FileExtension, Options.DirectoryPath },
                 ));
             }
         }
     }
 
-    pub fn DeInitializeObjects(Self: *ObjectFiles, Allocator: std.mem.Allocator) void {
+    pub fn DeInitializeObjects(Self: *IncludeFiles, Allocator: std.mem.Allocator) void {
         Self.ObjectFiles_ISPC.deinit(Allocator);
     }
 };
@@ -77,11 +88,11 @@ const CompilationOptions = struct {
     CompileFromDirectory: []const u8 = "Procedural Environment Generator",
     DebugBuild: bool = true,
 
-    Objects: ?ObjectFiles = null,
+    FileIncludes: ?IncludeFiles = null,
 
     pub fn DeInitializeMembers(Self: *CompilationOptions, Allocator: std.mem.Allocator) void {
-        if (Self.Objects) |*Object| {
-            Object.DeInitializeObjects(Allocator);
+        if (Self.FileIncludes) |*FileInclude| {
+            FileInclude.DeInitializeObjects(Allocator);
         }
     }
 };
@@ -91,12 +102,14 @@ fn _print_unsupported_build(Tag: anytype) void {
     std.debug.print("Unsupported build platform target: {}\n", .{Tag});
 }
 
-fn _add_macros_and_includes(Module: *std.Build.Module, p_Build: *std.Build) void {
-    Module.addIncludePath(p_Build.path("../godot-cpp/include"));
-    Module.addIncludePath(p_Build.path("../godot-cpp/gen/include"));
-    Module.addIncludePath(p_Build.path("../godot-cpp/gen/core/include"));
-    Module.addIncludePath(p_Build.path("../godot-cpp/gdextension"));
-    Module.addIncludePath(p_Build.path("../godot-cpp/gen/gdextension/include"));
+fn _add_macros_and_includes(Module: *std.Build.Module, Build: *std.Build) void {
+    Module.addIncludePath(Build.path("../godot-cpp/include"));
+    Module.addIncludePath(Build.path("../godot-cpp/gen/include"));
+    Module.addIncludePath(Build.path("../godot-cpp/gen/core/include"));
+    Module.addIncludePath(Build.path("../godot-cpp/gdextension"));
+    Module.addIncludePath(Build.path("../godot-cpp/gen/gdextension/include"));
+    Module.addIncludePath(Build.path("cache/"));
+    Module.addIncludePath(Build.path("InternalLibraries/"));
 
     Module.addCMacro("TYPED_METHOD_BIND", "1"); // technically pointless because the flag-list already contains this as a flag, but eh
 }
@@ -220,13 +233,16 @@ fn _read_meta_file_and_compile(
 
                 const CheckFilePrefixesAndExtensions = [_]struct { Prefix: []const u8, Extension: []const u8 }{
                     .{ .Prefix = "", .Extension = ".cpp" },
-                    .{ .Prefix = "", .Extension = ".h" },
+                    //.{ .Prefix = "", .Extension = ".h" },
+                    //.{ .Prefix = "", .Extension = ".hpp" },
                     .{ .Prefix = RegistrationFilePrefix, .Extension = ".cpp" },
                     .{ .Prefix = RegistrationFilePrefix, .Extension = ".h" },
                 };
 
                 for (CheckFilePrefixesAndExtensions) |Pair| {
                     file_exists = Lambda_CheckFileSystem.FileWith_Extension_Exists(p_Build, io, folder, file, Pair.Prefix, Pair.Extension);
+
+                    if (!file_exists) break;
                 }
 
                 if (!file_exists) {
@@ -268,9 +284,9 @@ fn _compile(
 
     const godot_cpp_lib = switch (Options.DebugBuild) { // Can compile to Android, and such, too, but that's out of this project's scope currently
         true => switch (os_tag) {
-            .windows => p_Build.path("../godot-cpp/bin/libgodot-cpp.windows.template_debug.x86_64.lib"),
-            .linux => p_Build.path("../godot-cpp/bin/libgodot-cpp.linux.template_debug.x86_64.a"),
-            .macos => p_Build.path("../godot-cpp/bin/libgodot-cpp.macos.template_debug.x86_64.a"),
+            .windows => p_Build.path("../godot-cpp/bin/libgodot-cpp.windows.template_debug.dev.x86_64.lib"),
+            .linux => p_Build.path("../godot-cpp/bin/libgodot-cpp.linux.template_debug.dev.x86_64.a"),
+            .macos => p_Build.path("../godot-cpp/bin/libgodot-cpp.macos.template_debug.dev.x86_64.a"),
 
             else => {
                 _print_unsupported_build(os_tag);
@@ -289,17 +305,15 @@ fn _compile(
         },
     };
 
-    const file_path = std.fmt.allocPrint(
-        Allocator,
+    const file_path = p_Build.fmt(
         "{s}{s}{s}",
         .{ Options.CompileFromDirectory, Options.Name, FileExtension },
-    ) catch return;
+    );
     std.debug.print("File path: {s}\n", .{file_path});
-    const registration_path = std.fmt.allocPrint(
-        Allocator,
+    const registration_path = p_Build.fmt(
         "{s}{s}{s}{s}",
         .{ Options.CompileFromDirectory, RegistrationFilePrefix, Options.Name, FileExtension },
-    ) catch return;
+    );
 
     var flag_list = std.ArrayList([]const u8).empty;
     defer flag_list.deinit(Allocator);
@@ -324,7 +338,7 @@ fn _compile(
             if (Target.result.abi == .msvc) {
                 //base_module.addCMacro("_HAS_EXCEPTIONS", "0");
                 flag_list.appendSlice(Allocator, &.{
-                    //"-fms-runtime-lib=dll",
+                    "-fms-runtime-lib=dll",
                     //    "-fno-rtti",
                 }) catch @panic("OOM");
 
@@ -367,9 +381,17 @@ fn _compile(
         else => {},
     }
 
+    if (optimization_level == .Debug) {
+        flag_list.appendSlice(Allocator, &.{
+            "-g", "-fno-omit-frame-pointer", "-DTRACY_ENABLE",
+        }) catch @panic("OOM");
+    } else {
+        flag_list.appendSlice(Allocator, &.{"-s"}) catch @panic("OOM");
+    }
+
     const cpp_optimization_level = if (Options.DebugBuild) "-O2" else "-O3";
     flag_list.appendSlice(Allocator, &.{
-        "-std=c++17",
+        "-std=c++23",
         cpp_optimization_level,
         "-Wall",
         //"-Werror",
@@ -385,11 +407,14 @@ fn _compile(
         "-fno-exceptions",
         "-fvisibility=hidden", // godot-cpp uses this, and it drops binary sizes by 2 kbs
         "-fno-asynchronous-unwind-tables", // godot-cpp doesn't use this, but it does drop binary sizes by 3kbs (average from multiple files)
+
+        // #embed
+        "-Wno-c23-extensions",
     }) catch @panic("OOM");
 
-    const Lambda_ObjectFileHelper = struct {
+    const Lambda_IncludeFileHelper = struct {
         /// ListOfPathsToObjectFiles is the field of _Options
-        pub inline fn AddObjectFiles(
+        pub inline fn AddIncludedFiles(
             Build: *std.Build,
             Function_AddObjectFile: anytype,
             Self: anytype,
@@ -398,12 +423,20 @@ fn _compile(
             const FunctionType = @typeInfo(@TypeOf(Function_AddObjectFile)).@"fn";
             //const FirstParameterType = FunctionType.params[0].type.?;
             if (ListOfPathsToObjectFiles.items.len == 0) {
+                std.debug.print("\x1b[33mList of paths passed to includer, but is empty.\n\x1b[0m", .{});
                 return;
             }
 
-            for (ListOfPathsToObjectFiles.items) |ObjectFilePath|
-                if (FunctionType.params.len == 2)
-                    Function_AddObjectFile(Self, Build.path(ObjectFilePath));
+            for (ListOfPathsToObjectFiles.items) |ObjectFilePath| {
+                switch (FunctionType.params.len) {
+                    2 => {
+                        Function_AddObjectFile(Self, Build.path(ObjectFilePath));
+                    },
+                    else => {
+                        @panic("Unkown function signature. Exiting to avoid corruption.");
+                    },
+                }
+            }
         }
     };
 
@@ -427,14 +460,13 @@ fn _compile(
         });
 
         // these two drop binary sizes from 10mbs to 1.25mbs
-        library.root_module.strip = true;
-        library.link_gc_sections = true;
+        if (optimization_level != .Debug) {
+            library.root_module.strip = true;
+            library.link_gc_sections = true;
+        }
 
-        //if (os_tag == .linux) {
-        //    library.root_module.addRPath(.{ .cwd_relative = "." });
-        //}
-
-        Lambda_ObjectFileHelper.AddObjectFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.Objects.?.ObjectFiles_ISPC);
+        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.FileIncludes.?.ObjectFiles_ISPC);
+        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.FileIncludes.?.StaticFiles_LibraryCache);
 
         const artifacts = p_Build.addInstallArtifact(
             library,
@@ -479,12 +511,11 @@ fn _compile(
 
         const linker_step = p_Build.addSystemCommand(&.{"link.exe"});
 
-        linker_step.addArgs(&.{
-            "/DLL",
-            output_location,
-            "/NOLOGO",
-            "/NODEFAULTLIB:libcmt.lib",
-        });
+        linker_step.addArgs(&.{ "/DLL", output_location, "/NOLOGO" });
+
+        if (optimization_level == .Debug) { // Microslo- I mean linker.exe can't see that a null character isn't valid and ignore it like every other linker, causing it to crash if you try to do ternanry operations like that
+            linker_step.addArgs(&.{"/DEBUG"});
+        }
 
         inline for (files_to_compile, 0..) |source_file, i| {
             const step_name = std.fmt.allocPrint(Allocator, "{s}_{d}", .{ Options.Name, i }) catch @panic("OOM");
@@ -515,7 +546,8 @@ fn _compile(
 
         linker_step.addFileArg(godot_cpp_lib);
 
-        Lambda_ObjectFileHelper.AddObjectFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.Objects.?.ObjectFiles_ISPC);
+        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.FileIncludes.?.ObjectFiles_ISPC);
+        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.FileIncludes.?.StaticFiles_LibraryCache);
 
         linker_step.addArgs(&.{
             "kernel32.lib",
@@ -534,6 +566,9 @@ pub fn build(p_Build: *std.Build) void {
 
     const _target = p_Build.standardTargetOptions(.{});
     var target = _target;
+
+    var targets = std.ArrayList(*std.Build.Step.Compile).empty; // track all the compile commands
+    defer targets.deinit(allocator);
 
     const optimize = p_Build.standardOptimizeOption(.{});
 
@@ -568,7 +603,7 @@ pub fn build(p_Build: *std.Build) void {
     const location_of_object_files_ispc = p_Build.option(
         []const u8,
         "LocationOfObjectFiles_ISPC",
-        "Location of where the ISPC compiler emits its .obj files to. Assumes there is no '/' at the end of the location identifier. Default is 'cache/ispc.'",
+        "Location of where the ISPC compiler emits its .obj files to. Default is 'cache/ispc.'",
     ) orelse "cache/ispc";
 
     switch (_target.result.os.tag) {
@@ -601,43 +636,65 @@ pub fn build(p_Build: *std.Build) void {
         {
             return;
         };
+    const documentation_step = p_Build.step("docs", "Generate C++ (and other languages') code documentation maps using Doxygen.");
 
-    var object_files = ObjectFiles{};
+    const doxygen_run_command = p_Build.addSystemCommand(&.{ "doxygen", "Doxyfile" });
+    const doxyfile_path = p_Build.path("Doxyfile");
+    doxygen_run_command.addFileInput(doxyfile_path);
 
-    var black_listed_characters = std.ArrayList([]const u8).empty;
-
-    if (target.result.cpu.arch.isArm()) {
-        black_listed_characters.appendSlice(allocator, &.{ "avx2", "avx512skx" }) catch @panic("OOM");
-    } else if (target.result.cpu.arch.isX86()) {
-        black_listed_characters.appendSlice(allocator, &.{"neon"}) catch @panic("OOM");
-    }
-    ObjectFiles.GlobFilesInDirectory(p_Build, &object_files.ObjectFiles_ISPC, .{ .ExcludeFileWith = black_listed_characters, .DirectoryPath = location_of_object_files_ispc });
-
-    var compilation_options = CompilationOptions{
-        .Name = name,
-        .CompileFromDirectory = compile_from_directory,
-        .DebugBuild = debug_build,
-        .Objects = object_files,
-    };
-    defer compilation_options.DeInitializeMembers(allocator); // destroys object_files too
+    documentation_step.dependOn(&doxygen_run_command.step);
 
     const compile_everything = std.mem.eql(u8, "ALL", compile_from_directory) or std.mem.eql(u8, "ALL", name);
-    const compile_specifics = name.len > 0 and compile_from_directory.len > 0;
-    if (!compile_everything and compile_specifics) {
-        _compile(
-            p_Build,
-            target,
-            optimize,
-            allocator,
-            &compilation_options,
-        );
-    } else if (compile_everything) {
-        _read_meta_file_and_compile(
-            p_Build,
-            allocator,
-            target,
-            optimize,
-            &compilation_options,
-        );
+    const compile_specific_files = name.len > 0 and compile_from_directory.len > 0;
+
+    if (compile_everything or compile_specific_files) {
+        var include_files = IncludeFiles{};
+
+        var black_listed_characters = std.ArrayList([]const u8).empty;
+
+        if (target.result.cpu.arch.isArm()) {
+            black_listed_characters.appendSlice(allocator, &.{ "avx", "sse" }) catch @panic("OOM"); // try doesn't work on build scripts, so a man gotta do what a man gotta do
+        } else if (target.result.cpu.arch.isX86()) {
+            black_listed_characters.appendSlice(allocator, &.{"neon"}) catch @panic("OOM");
+        }
+        IncludeFiles.GlobFilesInDirectory(p_Build, &include_files.ObjectFiles_ISPC, .{
+            .ExcludeFileWith = black_listed_characters,
+            .DirectoryPath = location_of_object_files_ispc,
+        });
+
+        const dependencies_folder = "cache/Libraries/lib/";
+
+        IncludeFiles.GlobFilesInDirectory(p_Build, &include_files.StaticFiles_LibraryCache, .{
+            .DirectoryPath = dependencies_folder,
+            .FileWithExtension = ".lib",
+        });
+
+        var compilation_options = CompilationOptions{
+            .Name = name,
+            .CompileFromDirectory = compile_from_directory,
+            .DebugBuild = debug_build,
+            .FileIncludes = include_files,
+        };
+        defer compilation_options.DeInitializeMembers(allocator); // destroys object_files too
+
+        if (!compile_everything and compile_specific_files) {
+            _compile(
+                p_Build,
+                target,
+                optimize,
+                allocator,
+                &compilation_options,
+            );
+        } else if (compile_everything) {
+            _read_meta_file_and_compile(
+                p_Build,
+                allocator,
+                target,
+                optimize,
+                &compilation_options,
+            );
+        }
+    } else {
+        std.debug.print("\x1b[31mYou didn't tell the compiler to actually do anything! \x1b[30mYa sure you're doin good over there? Try:\x1b[0m \nzig build -DLibraryName='ALL' -DCompileFromDirectory='ALL'\n", .{});
     }
 }

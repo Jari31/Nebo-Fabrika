@@ -3,6 +3,27 @@ CompileFlags:
     - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/include"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gen/include"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gdextension"
-    - -std=c++17
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/cache"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/InternalLibraries"
+    - -std=c++23
     - -Wall
+    - -Wno-c23-extensions
   Remove: [-Wclean-room]
+Diagnostics:
+  ClangTidy:
+    Add:
+      - modernize-*
+      - readability-*
+      - bugprone-*
+      - performance-*
+    Remove: []
+    CheckOptions:
+      readability-identifier-naming.ConstexprVariableCase: UpperCase
+      readability-identifier-naming.MacroDefinitionCase: UpperCase
+
+      readability-identifier-naming.ParameterCase: CamelCase
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes

@@ -4,12 +4,10 @@
 .tmp
 Thumbs.db
 .vscode/
-build/
 /export/
 $RECYCLE.BIN/
 desktop.ini
 .vs
-/build/
 .venv
 .idea
 *.xml
@@ -28,6 +26,11 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 *.obj
 *.pdb
 *.obj
+*.dll
+*.export
+*.lib
+*.ilk
+
 /Undecided_Game_Proj/RustSetup/target/flycheck0
 /Undecided_Game_Proj/RustSetup/target/flycheck0
 /Undecided_Game_Proj/RustSetup/target/flycheck0
@@ -35,3 +38,6 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 /Undecided_Game_Proj/src/.xmake
 /Undecided_Game_Proj/RustSetup/target
 /Undecided_Game_Proj/RustSetup/target
+/Undecided_Game_Proj/node_modules
+/Undecided_Game_Proj/src/html
+/Undecided_Game_Proj/src/latex

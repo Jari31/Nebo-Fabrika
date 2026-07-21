@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://6byuve5jw5ua"]
+
+[ext_resource type="Script" uid="uid://nltqvrwp1cjn" path="res://bin/Source/World/PCG/EnvironmentGenerator/TestScript.gd" id="1_t0u6e"]
+
+[node name="Node3D" type="Node3D" unique_id=855790440]
+
+[node name="EnvironmentGenerator" type="EnvironmentGenerator" parent="." unique_id=37463921]
+script = ExtResource("1_t0u6e")
