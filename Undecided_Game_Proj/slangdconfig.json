@@ -1,0 +1,4 @@
+{
+  "slang.additionalSearchPaths": ["./src/InternalLibraries"],
+  "slang.predefinedMacros": []
+}

@@ -151,7 +151,7 @@ layout_mode = 2
 alignment = 1
 autowrap_mode = 2
 selected = 0
-item_count = 12
+item_count = 15
 popup/item_0/text = "Standard"
 popup/item_0/id = 0
 popup/item_1/text = "Resource_t"
@@ -176,6 +176,12 @@ popup/item_10/text = "Resource_t"
 popup/item_10/id = 1
 popup/item_11/text = "Refcounted"
 popup/item_11/id = 2
+popup/item_12/text = "Standard"
+popup/item_12/id = 0
+popup/item_13/text = "Resource_t"
+popup/item_13/id = 1
+popup/item_14/text = "Refcounted"
+popup/item_14/id = 2
 
 [node name="GlassPanel" parent="Panel/FoldableContainer/Contents" index="1" unique_id=1244242819]
 offset_transform_position_ratio = Vector2(0, 1)

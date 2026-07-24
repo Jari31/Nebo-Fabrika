@@ -1,4 +1,6 @@
+#pragma once
 #include "Libraries/include/slang.h"
+#include "godot_cpp/variant/utility_functions.hpp"
 #include <Libraries/include/slang-com-ptr.h>
 #include <cstdint>
 #include <iterator>
@@ -44,6 +46,17 @@ auto CompileSourceToSPIRV(
     Slang::ComPtr<slang::IBlob> diagnostics_blob;
     slang::IModule             *module = session->loadModuleFromSourceString(
         Options.EntryPointName, Options.PathToShader, Options.Source, diagnostics_blob.writeRef());
+
+    const char *error_message = nullptr;
+    if (diagnostics_blob)
+    {
+        error_message = static_cast<const char *>(diagnostics_blob->getBufferPointer());
+    }
+    if (error_message && error_message[0] != '\0')
+    {
+        godot::UtilityFunctions::printerr("[Slang Error] ", error_message);
+        return {};
+    }
 
     if (module == nullptr)
     {

@@ -26,10 +26,6 @@
       "Source": "main"
     },
     {
-      "Name": "odin-dev",
-      "Source": "versions"
-    },
-    {
       "Name": "zig",
       "Source": "main"
     }

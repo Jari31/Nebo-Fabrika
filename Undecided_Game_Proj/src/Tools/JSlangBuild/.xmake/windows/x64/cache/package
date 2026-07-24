@@ -1,0 +1,31 @@
+{
+    ["toml++"] = {
+        __requirestr = "toml++",
+        __enabled = true,
+        envs = {
+            PATH = {
+                [[C:\Users\User\AppData\Local\.xmake\packages\n\ninja\v1.13.2\388143d312d14320a9c5240d43405107\bin]],
+                [[C:\Users\User\AppData\Local\.xmake\packages\c\cmake\4.2.3\674adf9609f646bc9f678b5e946b080a\bin]]
+            }
+        },
+        version = "v3.4.0",
+        installdir = [[C:\Users\User\AppData\Local\.xmake\packages\t\toml++\v3.4.0\ebf92e91826542d2870a252ce5988599]],
+        license = "MIT",
+        sysincludedirs = [[C:\Users\User\AppData\Local\.xmake\packages\t\toml++\v3.4.0\ebf92e91826542d2870a252ce5988599\include]]
+    },
+    cli11 = {
+        __requirestr = "cli11",
+        sysincludedirs = [[C:\Users\User\AppData\Local\.xmake\packages\c\cli11\v2.6.2\b4e39fdd89634b4094a36e3989efb351\include]],
+        __enabled = true,
+        envs = {
+            PATH = {
+                [[C:\Users\User\AppData\Local\.xmake\packages\n\ninja\v1.13.2\388143d312d14320a9c5240d43405107\bin]],
+                [[C:\Users\User\AppData\Local\.xmake\packages\c\cmake\4.2.3\674adf9609f646bc9f678b5e946b080a\bin]]
+            }
+        },
+        version = "v2.6.2",
+        installdir = [[C:\Users\User\AppData\Local\.xmake\packages\c\cli11\v2.6.2\b4e39fdd89634b4094a36e3989efb351]],
+        syslinks = "shell32",
+        license = "BSD"
+    }
+}

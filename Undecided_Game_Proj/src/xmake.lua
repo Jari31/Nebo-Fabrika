@@ -83,11 +83,11 @@ target("fetch_dependencies")
         for package_name, _ in pairs(target:pkgs()) do
             local package_instance = target:pkg(package_name)
             if package_instance then
-                local include_dirs = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
-                if include_dirs then
-                    for _, inc_dir in ipairs(include_dirs) do
-                        print("Copying " .. package_name .. " headers from " .. inc_dir)
-                        os.cp(inc_dir .. "/*", "cache/Libraries/include/")
+                local include_directories = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
+                if include_directories then
+                    for _, include_directory in ipairs(include_directories) do
+                        print("Copying " .. package_name .. " headers from " .. include_directory)
+                        os.cp(include_directory .. "/*", "cache/Libraries/include/")
                     end
                 end
 
@@ -104,8 +104,7 @@ target("fetch_dependencies")
 
 
     after_build( function (targets)
-        local copy_dlls_to_directory = path.join(BuildFolder, "DEPENDENCIES")
-        print("Copying over .dll files over to ", copy_dlls_to_directory)
+        print("Copying over .dll files over to ", BuildFolder)
 
-        os.cp(path.join(GlobalCache, "Libraries/lib/*.dll"), copy_dlls_to_directory)
+        os.cp(path.join(GlobalCache, "Libraries/lib/*.dll"), BuildFolder)
     end)

@@ -1,0 +1,200 @@
+{
+    find_program_msvc_arch_x64_plat_windows_checktoolld = {
+        ["link.exe"] = [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\link.exe]]
+    },
+    find_program_fetch_package_xmake = {
+        cmake = false,
+        ninja = false
+    },
+    find_program = {
+        dotnet = [[C:\Program Files\dotnet\dotnet.exe]],
+        curl = [[C:\Users\User\scoop\apps\xmake\current\winenv\bin\curl]],
+        ["7z"] = [[C:\Users\User\scoop\apps\xmake\current\winenv\bin\7z]],
+        nim = [[C:\Users\User\.nimble\bin\nim.exe]],
+        git = [[C:\Program Files\Git\cmd\git.exe]],
+        pkgconf = false,
+        ["pkg-config"] = false,
+        cmake = [[C:\Program Files\CMake\bin\cmake]],
+        ["cl.exe"] = [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\cl.exe]],
+        gzip = false,
+        tar = [[C:\Windows\System32\tar.exe]],
+        aria2c = false,
+        ["C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\cl.exe"] = [[c:\program files\microsoft visual studio\2022\community\vc\tools\msvc\14.44.35207\bin\hostx64\x64\cl.exe]],
+        zig = [[C:\Users\User\scoop\shims\zig.exe]],
+        ninja = [[C:\Users\User\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts\ninja.exe]]
+    },
+    find_package_windows_x64_fetch_package_xmake = {
+        ["xmake::toml++_ebf92e91826542d2870a252ce5988599_release_v3.4.0_external"] = {
+            version = "v3.4.0",
+            license = "MIT",
+            sysincludedirs = {
+                [[C:\Users\User\AppData\Local\.xmake\packages\t\toml++\v3.4.0\ebf92e91826542d2870a252ce5988599\include]]
+            }
+        },
+        ["xmake::cli11_b4e39fdd89634b4094a36e3989efb351_release_v2.6.2_external"] = {
+            sysincludedirs = {
+                [[C:\Users\User\AppData\Local\.xmake\packages\c\cli11\v2.6.2\b4e39fdd89634b4094a36e3989efb351\include]]
+            },
+            syslinks = "shell32",
+            license = "BSD",
+            version = "v2.6.2"
+        }
+    },
+    find_program_msvc_arch_x64_plat_windows_checktoolcxx = {
+        ["cl.exe"] = [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\cl.exe]]
+    },
+    find_programver_fetch_package_system = {
+        ["C:\\Users\\User\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python312\\Scripts\\ninja.exe"] = "1.11.1",
+        ["C:\\Program Files\\CMake\\bin\\cmake"] = "4.3.1"
+    },
+    ["detect.sdks.find_dotnet"] = {
+        dotnet = {
+            netfxsdk = {
+                sdkver = "4.8",
+                includedir = [[C:\Program Files (x86)\Windows Kits\NETFXSDK\4.8\Include]],
+                sdkdir = [[C:\Program Files (x86)\Windows Kits\NETFXSDK]],
+                libdir = [[C:\Program Files (x86)\Windows Kits\NETFXSDK\4.8\Lib]]
+            },
+            sdks = {
+                {
+                    version = "6.0.100",
+                    directory = [[C:\Program Files\dotnet\sdk\6.0.100]]
+                },
+                {
+                    version = "9.0.100",
+                    directory = [[C:\Program Files\dotnet\sdk\9.0.100]]
+                },
+                {
+                    version = "9.0.312",
+                    directory = [[C:\Program Files\dotnet\sdk\9.0.312]]
+                }
+            },
+            sdkver = "9.0.312",
+            runtimes = {
+                {
+                    name = "Microsoft.AspNetCore.App",
+                    version = "3.1.32"
+                },
+                {
+                    name = "Microsoft.AspNetCore.App",
+                    version = "6.0.0"
+                },
+                {
+                    name = "Microsoft.AspNetCore.App",
+                    version = "8.0.25"
+                },
+                {
+                    name = "Microsoft.AspNetCore.App",
+                    version = "9.0.0"
+                },
+                {
+                    name = "Microsoft.AspNetCore.App",
+                    version = "9.0.14"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "3.1.32"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "6.0.0"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "6.0.35"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "7.0.0"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "8.0.3"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "8.0.14"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "8.0.25"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "9.0.0"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "9.0.14"
+                },
+                {
+                    name = "Microsoft.NETCore.App",
+                    version = "10.0.0"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "3.1.32"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "6.0.0"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "6.0.35"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "7.0.0"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "8.0.3"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "8.0.25"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "9.0.0"
+                },
+                {
+                    name = "Microsoft.WindowsDesktop.App",
+                    version = "9.0.14"
+                }
+            },
+            version = "9.0.312",
+            sdkdir = [[C:\Program Files\dotnet\sdk\9.0.312]],
+            bindir = [[C:\Program Files\dotnet]]
+        }
+    },
+    find_programver = {
+        ["C:\\Program Files\\CMake\\bin\\cmake"] = "4.3.1",
+        ["C:\\Users\\User\\scoop\\apps\\xmake\\current\\winenv\\bin\\curl"] = "8.19.0",
+        ["C:\\Program Files\\dotnet\\dotnet.exe"] = "9.0.312",
+        ["C:\\Users\\User\\scoop\\shims\\zig.exe"] = "0.16.0"
+    },
+    ["detect.sdks.find_vcpkgdir"] = false,
+    find_package_windows_x64_fetch_package_system = {
+        cli11_b4e39fdd89634b4094a36e3989efb351_release_external = false,
+        ["toml++_ebf92e91826542d2870a252ce5988599_release_external"] = false
+    },
+    find_program_fetch_package_system = {
+        cmake = [[C:\Program Files\CMake\bin\cmake]],
+        ninja = [[C:\Users\User\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts\ninja.exe]]
+    },
+    find_program_msvc_arch_x64_plat_windows_checktoolsh = {
+        ["link.exe"] = [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\link.exe]]
+    },
+    find_program_msvc_arch_x64_plat_windows_checktoolar = {
+        ["link.exe"] = [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\link.exe]]
+    },
+    ["lib.detect.has_flags"] = {
+        ["windows_x64_c:\\program files\\microsoft visual studio\\2022\\community\\vc\\tools\\msvc\\14.44.35207\\bin\\hostx64\\x64\\cl.exe__cxx_cxflags_-nologo_cl_external_includedir"] = true,
+        ["windows_x64_c:\\program files\\microsoft visual studio\\2022\\community\\vc\\tools\\msvc\\14.44.35207\\bin\\hostx64\\x64\\cl.exe__cxx_cxflags_-nologo_-MD"] = true
+    },
+    find_program_msvc_arch_x64_plat_windows_checktoolcc = {
+        ["cl.exe"] = [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\cl.exe]]
+    }
+}

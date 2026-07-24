@@ -7,6 +7,9 @@
 //
 // Standard command to build everything: zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-linux
 // Or, for Windows, inside of 'x64 Native Tools Command Prompt for VS 2022': zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-windows
+//
+
+// IMPORTANT: This script is pretty messy; rewrite in 0.17
 
 const std = @import("std");
 const compile_commands = @import("compile_commands");
@@ -310,7 +313,7 @@ fn _compile(
         .{ Options.CompileFromDirectory, Options.Name, FileExtension },
     );
     std.debug.print("File path: {s}\n", .{file_path});
-    const registration_path = p_Build.fmt(
+    const registration_file_path = p_Build.fmt(
         "{s}{s}{s}{s}",
         .{ Options.CompileFromDirectory, RegistrationFilePrefix, Options.Name, FileExtension },
     );
@@ -446,7 +449,7 @@ fn _compile(
         base_module.addCSourceFiles(.{
             .files = &.{
                 file_path,
-                registration_path,
+                registration_file_path,
             },
             .flags = flag_list.items,
         });
@@ -470,7 +473,7 @@ fn _compile(
 
         const artifacts = p_Build.addInstallArtifact(
             library,
-            .{ .dest_dir = .{ .override = .{ .custom = Options.Name } } },
+            .{},
         );
 
         p_Build.getInstallStep().dependOn(&artifacts.step);
@@ -484,13 +487,13 @@ fn _compile(
         // If you're using Linux Godot, you can ignore this step.
         const files_to_compile = &[_][]const u8{
             file_path,
-            registration_path,
+            registration_file_path,
         };
 
         const folder_path = std.fmt.allocPrint(
             Allocator,
-            "{s}{s}",
-            .{ BuildFolderPath, Options.Name },
+            "{s}",
+            .{BuildFolderPath},
         ) catch @panic("OOM");
 
         const io = p_Build.graph.io;
@@ -504,10 +507,15 @@ fn _compile(
 
         const output_location = std.fmt.allocPrint(
             Allocator,
-            "/OUT:{s}{s}/{s}.dll",
-            .{ BuildFolderPath, Options.Name, Options.Name },
+            "/OUT:{s}{s}.dll",
+            .{ BuildFolderPath, Options.Name },
         ) catch @panic("OOM");
-        std.debug.print("Linker outputting to: {s}", .{output_location});
+        // const output_location = std.fmt.allocPrint(
+        //     Allocator,
+        //     "/OUT:{s}{s}/{s}.dll",
+        //     .{ BuildFolderPath, Options.Name },
+        // ) catch @panic("OOM");
+        std.debug.print("Linker outputting to: {s}\n", .{output_location});
 
         const linker_step = p_Build.addSystemCommand(&.{"link.exe"});
 
