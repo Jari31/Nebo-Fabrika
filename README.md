@@ -131,6 +131,7 @@ This project uses libraries with their own licenses. For example:
 | AngelScript | zlib                           |
 | CPUInfo     | BSD 2-Clause                   |
 | Tracy       | BSD 3-Clause                   |
+| Godot       | MIT                            |
 
 ---
 
