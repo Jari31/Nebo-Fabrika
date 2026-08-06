@@ -120,7 +120,7 @@ If you want more information about the build systems, never forget that you can 
 
 # License
 
-This project itself uses the Mozilla Public License (MPL 2.0). Check it [here](LICENSE).
+This project itself uses the Mozilla Public License (MPL 2.0). Check it [here](LICENSE.md).
 
 This project uses libraries with their own licenses. For example:
 
