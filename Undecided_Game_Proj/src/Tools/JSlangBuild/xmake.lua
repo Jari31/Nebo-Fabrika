@@ -1,11 +1,11 @@
-set_config("vs_toolset", "14.43")
-if os.subhost() == "windows" then
-    add_requires("msvc 14.43.17+13")
-    set_toolchains("@msvc")
-elseif os.subhost() == "linux" then
-    add_requires("msvc-wine")
-    set_toolchains("@msvc-wine")
-end
+-- set_config("vs_toolset", "14.43")
+-- if os.subhost() == "windows" then
+--     add_requires("msvc 14.43.17+13")
+--     set_toolchains("@msvc")
+-- elseif os.subhost() == "linux" then
+--     add_requires("msvc-wine")
+--     set_toolchains("@msvc-wine")
+-- end
     -- set_toolchains("mingw@llvm-mingw")
 
 -- add_requireconfs("*", {

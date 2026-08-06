@@ -120,7 +120,35 @@ If you want more information about the build systems, never forget that you can 
 
 # License
 
-This project itself uses the Mozilla Public License (MPL 2.0)
+This project itself uses the Mozilla Public License (MPL 2.0). Check it [here](LICENSE).
+
+This project uses libraries with their own licenses. For example:
+
+| Library     | License                        |
+| ----------- | ------------------------------ |
+| Slang       | Apache 2.0 with LLVM exception |
+| EnkiTS      | zlib                           |
+| AngelScript | zlib                           |
+| CPUInfo     | BSD 2-Clause                   |
+| Tracy       | BSD 3-Clause                   |
+
+---
+
+Submodules:
+
+## JSlang
+
+| Library         | License                        |
+| --------------- | ------------------------------ |
+| Slang           | Apache 2.0 with LLVM exception |
+| EnkiTS          | zlib                           |
+| CLI11           | BSD 3-Clause                   |
+| xxHash          | BSD 2-Clause                   |
+| unordered_dense | MIT                            |
+
+---
+
+Windows SDK and C++ runtime apply with their own licenses.
 
 # Q/A
 
