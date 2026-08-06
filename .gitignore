@@ -36,6 +36,7 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 /Undecided_Game_Proj/RustSetup/target/flycheck0
 /Undecided_Game_Proj/src/cache
 /Undecided_Game_Proj/src/.xmake
+/Undecided_Game_Proj/src/build
 /Undecided_Game_Proj/RustSetup/target
 /Undecided_Game_Proj/RustSetup/target
 /Undecided_Game_Proj/node_modules
@@ -45,4 +46,5 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 /Undecided_Game_Proj/src/Tools/JSlangBuild/.zig-cache
 /Undecided_Game_Proj/src/Tools/JSlangBuild/build
 /Undecided_Game_Proj/src/Tools/JSlangBuild/cache
-/Undecided_Game_Proj/src/Tools/JSlangBuild/.zig-cache
+/Undecided_Game_Proj/src/zig-pkg
+/Undecided_Game_Proj/RustSetup
