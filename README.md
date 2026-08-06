@@ -1,6 +1,17 @@
 # Nebo Fabrika
 
-A game project led by Jari. Developed on Godot 4.7+. Experimental.
+A game project led by Jari. Developed on Godot 4.7+. Experimental. 
+
+## A brief overview.
+Nebo Fabrika is a 3D, FPS project about space exploration and colonization. Space exploration how? By procedural generation, utilizing both the CPU and GPU. 
+
+Currently, the project is in its early infancy. Gameplay is not in effect, but subsystems such as procedural generation have had their foundations set in place. Such as SIMD and SIMT optimized Simplex3D and SIMT optimized Dual Contouring (draft version; to be ported to Slang and optimized further).
+
+This project is also split licensed like projects like DOOM or Quake. in other words, the repo you currently see is open source, but the assets (e.g., 3D models, audio files, 2D assets, etc.) are omitted.  
+
+Regardless, this project is huge in scope, and the scope creep is a part of the plan. As it spins off more subprojects (like JSlang, the build utility) that serve as a learning experience, even if subpar compared to production tools. For the project would be a platformer game with 3 levels if releasing to Steam was the goal.
+
+**For more details, consult me (Jari).**
 
 # Meta
 
