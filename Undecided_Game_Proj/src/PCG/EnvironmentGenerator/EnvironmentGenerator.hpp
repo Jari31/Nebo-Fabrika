@@ -124,41 +124,42 @@ class EnvironmentGenerator : public Node3D
 
         struct GPU
         {
-            RenderingDevice *ObjectRenderingDevice;
-            RenderingServer *ObjectRenderingServer;
+            // RenderingDevice *ObjectRenderingDevice;
+            // RenderingServer *ObjectRenderingServer;
 
             void InitializeGenerator()
             {
-                ObjectRenderingServer = RenderingServer::get_singleton();
-                ObjectRenderingDevice = ObjectRenderingServer->get_rendering_device();
+                //                 ObjectRenderingServer = RenderingServer::get_singleton();
+                //                 ObjectRenderingDevice =
+                //                 ObjectRenderingServer->get_rendering_device();
 
-                namespace ShaderSlang = ShaderCompiler::ShaderSlang;
+                //                 namespace ShaderSlang = ShaderCompiler::ShaderSlang;
 
-                constexpr char SlangSourceCode[] = // NOLINT
-                    {
-#embed "Shaders/TestShader.slang"
-                    };
+                //                 constexpr char SlangSourceCode[] = // NOLINT
+                //                     {
+                // #embed "Shaders/TestShader.slang"
+                //                     };
 
-                ShaderSlang::CompileToSPIRV_Options CompilerOptions = {
-                    .Source = SlangSourceCode, .EntryPointName = "main"};
+                //                 ShaderSlang::CompileToSPIRV_Options CompilerOptions = {
+                //                     .Source = SlangSourceCode, .EntryPointName = "main"};
 
-                auto CompiledSource = ShaderSlang::CompileSourceToSPIRV(
-                    CompilerOptions,
-                    std::array<char *, 60>{const_cast<char *>(
-                        "F:/Openworld_Game/Undecided_Game_Proj/src/InternalLibraries")});
+                //                 auto CompiledSource = ShaderSlang::CompileSourceToSPIRV(
+                //                     CompilerOptions,
+                //                     std::array<char *, 60>{const_cast<char *>(
+                //                         "F:/Openworld_Game/Undecided_Game_Proj/src/InternalLibraries")});
 
-                String ByteString = "[";
-                for (size_t i = 0; i < CompiledSource.size(); ++i)
-                {
-                    ByteString += String::num_int64(CompiledSource[i]);
-                    if (i + 1 < CompiledSource.size())
-                    {
-                        ByteString += ", ";
-                    }
-                }
-                ByteString += "]";
+                //                 String ByteString = "[";
+                //                 for (size_t i = 0; i < CompiledSource.size(); ++i)
+                //                 {
+                //                     ByteString += String::num_int64(CompiledSource[i]);
+                //                     if (i + 1 < CompiledSource.size())
+                //                     {
+                //                         ByteString += ", ";
+                //                     }
+                //                 }
+                //                 ByteString += "]";
 
-                UtilityFunctions::print(ByteString);
+                //                 UtilityFunctions::print(ByteString);
             }
         };
 

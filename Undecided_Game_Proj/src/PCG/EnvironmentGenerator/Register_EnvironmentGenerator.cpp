@@ -8,8 +8,8 @@ void initializeEnvironmentGenerator(ModuleInitializationLevel level)
     if (level != MODULE_INITIALIZATION_LEVEL_SCENE)
         return;
 
-    GDREGISTER_RUNTIME_CLASS(EnvironmentGenerator);
-    GDREGISTER_RUNTIME_CLASS(VoxelBuffer);
+    GDREGISTER_CLASS(EnvironmentGenerator);
+    GDREGISTER_CLASS(VoxelBuffer);
 }
 
 void uninitializeEnvironmentGenerator(ModuleInitializationLevel level)

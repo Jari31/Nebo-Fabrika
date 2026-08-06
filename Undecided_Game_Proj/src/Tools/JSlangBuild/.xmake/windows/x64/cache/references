@@ -1,6 +1,0 @@
-{
-    packages = {
-        [[C:\Users\User\AppData\Local\.xmake\packages\t\toml++\v3.4.0\ebf92e91826542d2870a252ce5988599]],
-        [[C:\Users\User\AppData\Local\.xmake\packages\c\cli11\v2.6.2\b4e39fdd89634b4094a36e3989efb351]]
-    }
-}

@@ -9,14 +9,15 @@
 // Or, for Windows, inside of 'x64 Native Tools Command Prompt for VS 2022': zig build -DLibraryName="ALL" -DCompileFromDirectory='ALL' -Dtarget=x86_64-windows
 //
 
-// IMPORTANT: This script is pretty messy; rewrite in 0.17
+// IMPORTANT: This script is pretty messy (since I wrote it whilst learning Zig); rewrite in 0.17
 
 const std = @import("std");
 const compile_commands = @import("compile_commands");
 const builtin = @import("builtin");
 
 var FileExtension: []const u8 = ".cpp"; // mostly redundant because changing this WILL break everything
-const RegistrationFilePrefix: []const u8 = "Register_";
+const REGISTRATION_FILE_PREFIX: []const u8 = "Register_";
+const CACHE_FILE_LOCATION = "cache/";
 var BuildFolderPath = "../GDProject/bin/build/";
 var SkipDebugFlag: bool = false;
 
@@ -30,6 +31,7 @@ const IncludeFiles = struct {
         ExcludeFileWith: std.ArrayList([]const u8) = .empty,
     };
 
+    // WARN: Uses string concat. Use Build.path instead when refactoring comes
     pub fn GlobFilesInDirectory(
         Build: *std.Build,
         ListToAppendTo: *std.ArrayList([]const u8),
@@ -74,7 +76,7 @@ const IncludeFiles = struct {
                 });
                 std.debug.print("Found {s} file, appending full path as: {s}\n", .{ Options.FileWithExtension, found_path });
                 ListToAppendTo.append(Build.allocator, found_path) catch @panic(Build.fmt(
-                    "Failed to appent to list whilst walking the cache directory for {s} in '{s}'.\n",
+                    "Failed to append to list whilst walking the cache directory for {s} in '{s}'.\n",
                     .{ FileExtension, Options.DirectoryPath },
                 ));
             }
@@ -158,7 +160,7 @@ fn _read_meta_file_and_compile(
         { // comments
             const stripped_line = std.mem.trim(u8, clean_line, " \t\r\n");
 
-            const Lambda_CheckLine = struct {
+            const CheckLine = struct {
                 pub inline fn CheckWhether_Character_Exists(
                     CleanLine: *[]const u8,
                     Line: []const u8,
@@ -171,8 +173,8 @@ fn _read_meta_file_and_compile(
                 }
             };
 
-            Lambda_CheckLine.CheckWhether_Character_Exists(&clean_line, line, stripped_line, "#");
-            Lambda_CheckLine.CheckWhether_Character_Exists(&clean_line, line, stripped_line, "<");
+            CheckLine.CheckWhether_Character_Exists(&clean_line, line, stripped_line, "#");
+            CheckLine.CheckWhether_Character_Exists(&clean_line, line, stripped_line, "<");
 
             if (clean_line.len <= 0) continue;
         }
@@ -201,7 +203,7 @@ fn _read_meta_file_and_compile(
 
                 std.debug.print("Found folder: {s}\nFound file: {s}\nChecking whether they exist.\n", .{ folder, file });
 
-                const Lambda_CheckFileSystem = struct {
+                const CheckFileSystem = struct {
                     /// Expects . (dot) syntax for extension
                     pub fn FileWith_Extension_Exists(
                         Build: *std.Build,
@@ -238,12 +240,12 @@ fn _read_meta_file_and_compile(
                     .{ .Prefix = "", .Extension = ".cpp" },
                     //.{ .Prefix = "", .Extension = ".h" },
                     //.{ .Prefix = "", .Extension = ".hpp" },
-                    .{ .Prefix = RegistrationFilePrefix, .Extension = ".cpp" },
-                    .{ .Prefix = RegistrationFilePrefix, .Extension = ".h" },
+                    .{ .Prefix = REGISTRATION_FILE_PREFIX, .Extension = ".cpp" },
+                    .{ .Prefix = REGISTRATION_FILE_PREFIX, .Extension = ".h" },
                 };
 
                 for (CheckFilePrefixesAndExtensions) |Pair| {
-                    file_exists = Lambda_CheckFileSystem.FileWith_Extension_Exists(p_Build, io, folder, file, Pair.Prefix, Pair.Extension);
+                    file_exists = CheckFileSystem.FileWith_Extension_Exists(p_Build, io, folder, file, Pair.Prefix, Pair.Extension);
 
                     if (!file_exists) break;
                 }
@@ -278,10 +280,10 @@ fn _compile(
     const is_msvc_abi = if (Target.result.abi == .msvc) true else false;
 
     const base_module = p_Build.createModule(.{
-        .root_source_file = p_Build.path("Zig/ZigRegistry.zig"),
+        // .root_source_file = p_Build.path("main.cpp"),
         .target = Target,
         .optimize = optimization_level,
-        .link_libc = true,
+        .link_libc = !is_msvc_abi,
         .link_libcpp = !is_msvc_abi,
     });
 
@@ -315,7 +317,7 @@ fn _compile(
     std.debug.print("File path: {s}\n", .{file_path});
     const registration_file_path = p_Build.fmt(
         "{s}{s}{s}{s}",
-        .{ Options.CompileFromDirectory, RegistrationFilePrefix, Options.Name, FileExtension },
+        .{ Options.CompileFromDirectory, REGISTRATION_FILE_PREFIX, Options.Name, FileExtension },
     );
 
     var flag_list = std.ArrayList([]const u8).empty;
@@ -342,6 +344,9 @@ fn _compile(
                 //base_module.addCMacro("_HAS_EXCEPTIONS", "0");
                 flag_list.appendSlice(Allocator, &.{
                     "-fms-runtime-lib=dll",
+                    "-nostdinc",
+                    "-nostdinc++",
+                    "-Wl,-force:multiple",
                     //    "-fno-rtti",
                 }) catch @panic("OOM");
 
@@ -415,7 +420,7 @@ fn _compile(
         "-Wno-c23-extensions",
     }) catch @panic("OOM");
 
-    const Lambda_IncludeFileHelper = struct {
+    const IncludeFileHelper = struct {
         /// ListOfPathsToObjectFiles is the field of _Options
         pub inline fn AddIncludedFiles(
             Build: *std.Build,
@@ -443,130 +448,166 @@ fn _compile(
         }
     };
 
-    if (!is_msvc_abi) {
-        _add_macros_and_includes(base_module, p_Build);
+    // if (!is_msvc_abi) {
+    _add_macros_and_includes(base_module, p_Build);
 
-        base_module.addCSourceFiles(.{
-            .files = &.{
-                file_path,
-                registration_file_path,
-            },
-            .flags = flag_list.items,
-        });
-
-        base_module.addObjectFile(godot_cpp_lib);
-
-        const library = p_Build.addLibrary(.{
-            .name = Options.Name,
-            .linkage = .dynamic,
-            .root_module = base_module,
-        });
-
-        // these two drop binary sizes from 10mbs to 1.25mbs
-        if (optimization_level != .Debug) {
-            library.root_module.strip = true;
-            library.link_gc_sections = true;
-        }
-
-        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.FileIncludes.?.ObjectFiles_ISPC);
-        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.FileIncludes.?.StaticFiles_LibraryCache);
-
-        const artifacts = p_Build.addInstallArtifact(
-            library,
-            .{},
-        );
-
-        p_Build.getInstallStep().dependOn(&artifacts.step);
-    } else {
-        // If you don't use MSVC's linker.exe, it segfaults Godot because Godot expects MSVC ABIs and not LLVM
-        // You could avoid this and use the steps above if you compiled Godot with MinGW instead of MSVC (MSVC genuinely is so ass)
-        // I recommend doing that if you are on Linux and don't want to setup a VM or a WINE environment
-        // Also, you need to run this in a 'x64 Native Tools Command Prompt for VS 2022'
-        // Mostly because Zig currently doesn't have an LTS WindowsSDK API and I didn't want any external dependencies (Aside from MSVC,-
-        //  -but again, you can just compile Godot with MinGW or Zig)
-        // If you're using Linux Godot, you can ignore this step.
-        const files_to_compile = &[_][]const u8{
+    base_module.addCSourceFiles(.{
+        .files = &.{
             file_path,
             registration_file_path,
-        };
+        },
+        .flags = flag_list.items,
+    });
 
-        const folder_path = std.fmt.allocPrint(
-            Allocator,
-            "{s}",
-            .{BuildFolderPath},
-        ) catch @panic("OOM");
+    base_module.addObjectFile(godot_cpp_lib);
 
-        const io = p_Build.graph.io;
+    const library = p_Build.addLibrary(.{
+        .name = Options.Name,
+        .linkage = .dynamic,
+        .root_module = base_module,
+    });
 
-        std.Io.Dir.createDirPath(std.Io.Dir.cwd(), io, folder_path) catch |err| {
-            std.debug.print("Failed to create directory {s}: {}\n", .{ folder_path, err });
-            @panic("Directory creation failed");
-        };
-
-        std.debug.print("Creating a subfolder at: {s}\n", .{folder_path});
-
-        const output_location = std.fmt.allocPrint(
-            Allocator,
-            "/OUT:{s}{s}.dll",
-            .{ BuildFolderPath, Options.Name },
-        ) catch @panic("OOM");
-        // const output_location = std.fmt.allocPrint(
-        //     Allocator,
-        //     "/OUT:{s}{s}/{s}.dll",
-        //     .{ BuildFolderPath, Options.Name },
-        // ) catch @panic("OOM");
-        std.debug.print("Linker outputting to: {s}\n", .{output_location});
-
-        const linker_step = p_Build.addSystemCommand(&.{"link.exe"});
-
-        linker_step.addArgs(&.{ "/DLL", output_location, "/NOLOGO" });
-
-        if (optimization_level == .Debug) { // Microslo- I mean linker.exe can't see that a null character isn't valid and ignore it like every other linker, causing it to crash if you try to do ternanry operations like that
-            linker_step.addArgs(&.{"/DEBUG"});
-        }
-
-        inline for (files_to_compile, 0..) |source_file, i| {
-            const step_name = std.fmt.allocPrint(Allocator, "{s}_{d}", .{ Options.Name, i }) catch @panic("OOM");
-            std.debug.print("Linking for step: {s}\n", .{step_name});
-
-            const file_module = p_Build.createModule(.{
-                .root_source_file = p_Build.path("Zig/ZigRegistry.zig"),
-                .target = Target,
-                .optimize = optimization_level,
-                .link_libc = true,
-                .link_libcpp = false, // is_windows is always true here
-            });
-
-            _add_macros_and_includes(file_module, p_Build);
-
-            const compilation_object = p_Build.addObject(.{
-                .name = step_name,
-                .root_module = file_module,
-            });
-
-            compilation_object.root_module.addCSourceFile(.{
-                .file = p_Build.path(source_file),
-                .flags = flag_list.items,
-            });
-
-            linker_step.addFileArg(compilation_object.getEmittedBin());
-        }
-
-        linker_step.addFileArg(godot_cpp_lib);
-
-        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.FileIncludes.?.ObjectFiles_ISPC);
-        Lambda_IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.FileIncludes.?.StaticFiles_LibraryCache);
-
-        linker_step.addArgs(&.{
-            "kernel32.lib",
-            "user32.lib",
-            "msvcrt.lib",
-            "vcruntime.lib",
-            "ucrt.lib",
-        });
-
-        p_Build.getInstallStep().dependOn(&linker_step.step);
+    // these two drop binary sizes from 10mbs to 1.25mbs
+    if (optimization_level != .Debug) {
+        library.root_module.strip = true;
+        library.link_gc_sections = true;
     }
+
+    if (is_msvc_abi) {
+        const msvc_header_includes = [_][]const u8{
+            ".xwin/crt/include",
+            ".xwin/sdk/include/ucrt",
+            ".xwin/sdk/include/um",
+            ".xwin/sdk/include/shared",
+        };
+
+        const target_cpu_arch: []const u8 = @tagName(Target.result.cpu.arch);
+
+        const msvc_library_includes = [_][]const u8{
+            p_Build.fmt("{s}{s}", .{ ".xwin/crt/lib/", target_cpu_arch }),
+            p_Build.fmt("{s}{s}", .{ ".xwin/sdk/lib/ucrt/", target_cpu_arch }),
+            p_Build.fmt("{s}{s}", .{ ".xwin/sdk/lib/um/", target_cpu_arch }),
+        };
+
+        inline for (msvc_header_includes) |include_header| {
+            library.root_module.addSystemIncludePath(p_Build.path(p_Build.pathJoin(&.{ CACHE_FILE_LOCATION, include_header })));
+        }
+
+        inline for (msvc_library_includes) |include_library| {
+            library.root_module.addLibraryPath(p_Build.path(p_Build.pathJoin(&.{ CACHE_FILE_LOCATION, include_library })));
+        }
+
+        library.root_module.linkSystemLibrary("msvcrt", .{});
+        library.root_module.linkSystemLibrary("vcruntime", .{});
+        library.root_module.linkSystemLibrary("ucrt", .{});
+        library.root_module.linkSystemLibrary("msvcprt", .{});
+        library.root_module.linkSystemLibrary("kernel32", .{});
+        library.root_module.linkSystemLibrary("user32", .{});
+
+        library.linker_allow_undefined_version = true;
+    }
+
+    IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.FileIncludes.?.ObjectFiles_ISPC);
+    IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Module.addObjectFile, library.root_module, &Options.FileIncludes.?.StaticFiles_LibraryCache);
+
+    const artifacts = p_Build.addInstallArtifact(
+        library,
+        .{},
+    );
+
+    p_Build.getInstallStep().dependOn(&artifacts.step);
+    // INFO: The code underneath is just a linker.exe fallback if LLVM lld-link doesn't work for you for some reason.
+    // } else {
+    //     // If you don't use MSVC's linker.exe, it segfaults Godot because Godot expects MSVC ABIs and not LLVM
+    //     // You could avoid this and use the steps above if you compiled Godot with MinGW instead of MSVC (MSVC genuinely is so ass)
+    //     // I recommend doing that if you are on Linux and don't want to setup a VM or a WINE environment
+    //     // Also, you need to run this in a 'x64 Native Tools Command Prompt for VS 2022' (or xrepo env shell)
+    //     // Mostly because Zig currently doesn't have an LTS WindowsSDK API and I didn't want any external dependencies (Aside from MSVC,-
+    //     //  -but again, you can just compile Godot with MinGW or Zig)
+    //     // If you're using Linux Godot, you can ignore this step.
+    //     // WARN -> CORRECTION: check MSVC-WINE for more info
+    //     const files_to_compile = &[_][]const u8{
+    //         file_path,
+    //         registration_file_path,
+    //     };
+
+    //     const folder_path = std.fmt.allocPrint(
+    //         Allocator,
+    //         "{s}",
+    //         .{BuildFolderPath},
+    //     ) catch @panic("OOM");
+
+    //     const io = p_Build.graph.io;
+
+    //     std.Io.Dir.createDirPath(std.Io.Dir.cwd(), io, folder_path) catch |err| {
+    //         std.debug.print("Failed to create directory {s}: {}\n", .{ folder_path, err });
+    //         @panic("Directory creation failed");
+    //     };
+
+    //     std.debug.print("Creating a subfolder at: {s}\n", .{folder_path});
+
+    //     const output_location = std.fmt.allocPrint(
+    //         Allocator,
+    //         "/OUT:{s}{s}.dll",
+    //         .{ BuildFolderPath, Options.Name },
+    //     ) catch @panic("OOM");
+    //     // const output_location = std.fmt.allocPrint(
+    //     //     Allocator,
+    //     //     "/OUT:{s}{s}/{s}.dll",
+    //     //     .{ BuildFolderPath, Options.Name },
+    //     // ) catch @panic("OOM");
+    //     std.debug.print("Linker outputting to: {s}\n", .{output_location});
+
+    //     const linker_step = p_Build.addSystemCommand(&.{"link.exe"});
+
+    //     linker_step.addArgs(&.{ "/DLL", output_location, "/NOLOGO" });
+
+    //     if (optimization_level == .Debug) { // Microslo- I mean linker.exe can't see that a null character isn't valid and ignore it like every other linker, causing it to crash if you try to do ternary operations like that
+    //         linker_step.addArgs(&.{"/DEBUG"});
+    //     }
+
+    //     inline for (files_to_compile, 0..) |source_file, i| {
+    //         const step_name = std.fmt.allocPrint(Allocator, "{s}_{d}", .{ Options.Name, i }) catch @panic("OOM");
+    //         std.debug.print("Linking for step: {s}\n", .{step_name});
+
+    //         const file_module = p_Build.createModule(.{
+    //             .root_source_file = p_Build.path("Zig/ZigRegistry.zig"),
+    //             .target = Target,
+    //             .optimize = optimization_level,
+    //             .link_libc = true,
+    //             .link_libcpp = false, // is_windows is always true here
+    //         });
+
+    //         _add_macros_and_includes(file_module, p_Build);
+
+    //         const compilation_object = p_Build.addObject(.{
+    //             .name = step_name,
+    //             .root_module = file_module,
+    //         });
+
+    //         compilation_object.root_module.addCSourceFile(.{
+    //             .file = p_Build.path(source_file),
+    //             .flags = flag_list.items,
+    //         });
+
+    //         linker_step.addFileArg(compilation_object.getEmittedBin());
+    //     }
+
+    //     linker_step.addFileArg(godot_cpp_lib);
+
+    //     IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.FileIncludes.?.ObjectFiles_ISPC);
+    //     IncludeFileHelper.AddIncludedFiles(p_Build, std.Build.Step.Run.addFileArg, linker_step, &Options.FileIncludes.?.StaticFiles_LibraryCache);
+
+    //     linker_step.addArgs(&.{
+    //         "kernel32.lib",
+    //         "user32.lib",
+    //         "msvcrt.lib",
+    //         "vcruntime.lib",
+    //         "ucrt.lib",
+    //     });
+
+    //     p_Build.getInstallStep().dependOn(&linker_step.step);
+    // }
 }
 
 pub fn build(p_Build: *std.Build) void {
@@ -668,13 +709,14 @@ pub fn build(p_Build: *std.Build) void {
         IncludeFiles.GlobFilesInDirectory(p_Build, &include_files.ObjectFiles_ISPC, .{
             .ExcludeFileWith = black_listed_characters,
             .DirectoryPath = location_of_object_files_ispc,
+            .FileWithExtension = if (target.result.abi == .msvc) ".obj" else ".o",
         });
 
         const dependencies_folder = "cache/Libraries/lib/";
 
         IncludeFiles.GlobFilesInDirectory(p_Build, &include_files.StaticFiles_LibraryCache, .{
             .DirectoryPath = dependencies_folder,
-            .FileWithExtension = ".lib",
+            .FileWithExtension = if (target.result.abi == .msvc) ".lib" else ".a",
         });
 
         var compilation_options = CompilationOptions{

@@ -8,9 +8,9 @@ zig build docs # in /src/
 
 Then, go to the [HTML folder](Undecided_Game_Proj/src/html) and find and click _index.html_.
 
-# Obisidan
+# Obsidian
 
-The obsidian .mds within the [Obsidian folder](Undecided_Game_Proj/Obsidian%20Files) explain every algorithm currently implemented. Alongside that, they show diagrams to visualize the flow. (W.I.P. and might be outdated in some parts.)
+The Obsidian .mds within the [Obsidian folder](Undecided_Game_Proj/Obsidian%20Files) explain every algorithm currently implemented. Alongside that, they show diagrams to visualize the flow. (W.I.P. and might be outdated in some parts.)
 
 ### Color-coding for nodes within Obsidian:
 

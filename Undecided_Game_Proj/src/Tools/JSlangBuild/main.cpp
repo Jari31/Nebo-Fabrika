@@ -1,104 +1,128 @@
-
+#include <cstddef>
 #include <cstdint>
-#include <expected>
-#include <optional>
+#include <format>
+#include <vector>
 #define TOML_EXCEPTIONS 0
-#define TOML_ENABLE_FORMATTERS 1
 
+#include "Includes/Parser.hpp"
+#include "Includes/TerminalTextStyling.hpp"
 #include "Libraries/include/CLI/CLI.hpp"
-#include "TerminalTextStyling.hpp"
+#include "Libraries/include/enkiTS/TaskScheduler.h"
 #include <Libraries/include/toml++/toml.hpp>
 #include <filesystem>
 #include <print>
+#include <string>
 
 namespace filesystem = std::filesystem;
 
-namespace JSlangBuild::Parser
+namespace JSlang
 {
-enum class Errors : uint8_t
+struct Build
 {
-    ParserError,
-};
+    enki::TaskScheduler      TaskScheduler;
+    std::vector<std::string> ShadersToCompilePaths;
 
-struct ParsedOptions
-{
-    std::vector<std::string> Paths;
-};
-
-inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path &BuildFilePath)
-{
-    auto parse_result = toml::parse_file(BuildFilePath.string());
-
-    if (parse_result.failed())
+    struct CLIOptions
     {
-        const auto &error_source = parse_result.error().source();
+        bool     Verbose     = false;
+        uint32_t ThreadCount = 0;
+    } ObjectCLIOptions;
 
-        std::print(
-            "{}Failed to parse jslangbuild.toml with error: {}\n| at |\nBEGIN : LINE {} COLUMN "
-            "{}\nEND : LINE {} COLUMN {}{}\n",
-            TerminalTextStyling::Foreground::RED,
-            parse_result.error().description(),
-            error_source.begin.line,
-            error_source.begin.column,
-            error_source.end.line,
-            error_source.end.column,
-            TerminalTextStyling::RESET);
-
-        return std::unexpected(Errors::ParserError);
-    }
-
-    auto          table = std::move(parse_result).table();
-    ParsedOptions parsed_options;
-
-    if (auto *file_paths = table["SlangFilePaths"]["tags"].as_array())
+    void CreateSubCommand(CLI::App &ParentApp)
     {
-        parsed_options.Paths.reserve(file_paths->size());
+        auto *subcommand =
+            ParentApp.add_subcommand("build", "Build shaders listed within jslangbuild.toml");
+        subcommand->add_flag("-v, --verbose", ObjectCLIOptions.Verbose);
+        subcommand->add_option(
+            "--thread_count",
+            ObjectCLIOptions.ThreadCount,
+            "How many threads to use in the building process. Recommended 2-4 for HDDs, and as "
+            "many as you can spare for SSDs.");
 
-        for (auto &&element : *file_paths)
-        {
-            if (auto path = element.value<std::string>())
+        subcommand->callback(
+            [this]()
             {
-                parsed_options.Paths.push_back(*path);
-            }
-        }
+                if (ObjectCLIOptions.Verbose)
+                {
+                    BuildShaders<true>();
+                }
+                else
+                {
+                    BuildShaders<false>();
+                }
+            });
     }
 
-    return parsed_options;
-}
-} // namespace JSlangBuild::Parser
+    template <bool Verbose>
+    void _glob_and_hash_files() {
+
+    };
+
+    template <bool Verbose> int BuildShaders()
+    {
+        if constexpr (Verbose)
+        {
+            std::print("Initializing TaskScheduler...\n");
+        }
+
+        if (ObjectCLIOptions.ThreadCount != 0)
+        {
+            ObjectCLIOptions.ThreadCount = std::thread::hardware_concurrency();
+        }
+
+        if constexpr (Verbose)
+        {
+            std::print("Building with {} thread(s).\n", ObjectCLIOptions.ThreadCount);
+        }
+
+        TaskScheduler.Initialize(ObjectCLIOptions.ThreadCount);
+
+        if constexpr (Verbose)
+        {
+            std::print("TaskScheduler initialized.\n");
+        }
+
+        filesystem::path current_working_directory = filesystem::current_path();
+        filesystem::path expected_file             = "jslangbuild.toml";
+
+        auto path_to_expected_file = current_working_directory / expected_file;
+
+        if (!filesystem::exists(path_to_expected_file))
+        {
+            using namespace TerminalTextStyling;
+
+            std::print(
+                "{}{}jslangbuild.toml{} not found.{} Checked for path: {}\n",
+                Foreground::YELLOW,
+                Style::UNDERLINE,
+                Style::UNDERLINE_OFF,
+                RESET,
+                path_to_expected_file.string());
+
+            return 0;
+        }
+
+        auto parsed_options = JSlang::Parser::ParseTOMLFile(expected_file);
+
+        if (!parsed_options)
+        {
+            return -1;
+        };
+
+        return 0;
+    };
+};
+} // namespace JSlang
 
 int main(int ArgumentCount, char **ArgumentVector)
 {
     CLI::App app{"A simple build system for Slang."};
+    app.require_subcommand(1);
+
+    JSlang::Build ObjectBuild;
+    ObjectBuild.CreateSubCommand(app);
 
     CLI11_PARSE(app, ArgumentCount, ArgumentVector);
-
-    filesystem::path current_working_directory = filesystem::current_path();
-    filesystem::path expected_file             = "jslangbuild.toml";
-
-    auto path_to_expected_file = current_working_directory / expected_file;
-
-    if (!filesystem::exists(path_to_expected_file))
-    {
-        using namespace TerminalTextStyling;
-
-        std::print(
-            "{}{}jslangbuild.toml{} not found.{} Checked for string: {}\n",
-            Foreground::YELLOW,
-            Style::UNDERLINE,
-            Style::UNDERLINE_OFF,
-            RESET,
-            path_to_expected_file.string());
-
-        return 0;
-    }
-
-    auto parsed_options = JSlangBuild::Parser::ParseTOMLFile(expected_file);
-
-    if (!parsed_options)
-    {
-        return -1;
-    };
 
     return 0;
 }

@@ -98,7 +98,10 @@ Open up an administrator shell:
 ```bash
 cd Undecided_Game_Proj/src
 
-xrepo env xwin --accept-license splat --output .xwin --disable-symlinks
+xrepo env xwin --accept-license splat --output .xwin --disable-symlinks # this downloads the required binaries
+                                                                        # and headers to compile for the MSVC ABI.
+                                                                        # you can safely ignore this if you don't want to
+                                                                        # compile for the MSVC ABI
 
 xmake # or, if you'd prefer: zig build -DLibraryName='ALL' -DCompileFromDirectory='ALL'
 ```
@@ -114,6 +117,10 @@ If you want more information about the build systems, never forget that you can 
 
     zig build --help # in the /src/ folder
 ```
+
+# License
+
+This project itself uses the Mozilla Public License (MPL 2.0)
 
 # Q/A
 

@@ -1,8 +1,0 @@
-[configuration]
-entry_symbol = "init_ShaderComp"
-compatibility_minimum = "4.5"
-reloadable = true
-load_in_editor = true
-
-[libraries]
-windows.x86_64 = "res://bin/build/ShaderComp.dll"
