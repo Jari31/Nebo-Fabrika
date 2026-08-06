@@ -1,10 +1,6 @@
 # Nebo Fabrika
 
-A game project led by Jari. Developed on Godot 4.5+.
-
-# IF YOU ARE A DESIGNER/ARTIST
-
-This is not for you (but still try to follow the compilation process to setup the project). Refer to the Google Doc for more info.
+A game project led by Jari. Developed on Godot 4.7+. Experimental.
 
 # Meta
 
@@ -36,7 +32,7 @@ This project is only suited for cross compilation across Windows and Linux.
 
 ---
 
-## Compiling on Windows
+## Compiling For Windows
 
 To begin, do:
 
@@ -48,9 +44,9 @@ Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
 cd Undecided_Game_Proj
 
 # After that:
-scoop import scoopfile.json # Sit back and wait a minute, because it's going to be downloading the required binaries so you can get developing.
-
-winget install Microsoft.VisualStudio.2022.BuildTools
+scoop import scoopfile.json # Sit back and wait a minute,
+                            # because it's going to be downloading the
+                            # required binaries so you can get developing.
 ```
 
 Great! Now ignore the linux nerds below, and jump to [^using_xmake].
@@ -61,10 +57,6 @@ Since Linux does not have Scoop unlike Windows, you have to resort to XMake. To 
 
 ```bash
 curl -fsSL https://xmake.io/shget.text | bash
-
-xrepo install doxygen graphviz ispc slang zig # slang might be outdated (v2025) for xrepo, so if that becomes an issue, either download it through the website, or install the Vulkan SDK
-
-xrepo env
 ```
 
 _*IF*_ this does not work for you, refer to: https://xmake.io/posts/quickstart-1-installation.html and install it in the other ways XMake provides.
@@ -83,9 +75,13 @@ zig build
 
 ### Wait a second!
 
-And we're done! Just kidding. There's some quirks with Zig compiling for godot-cpp because the godot-cpp build system uses MSVC on and for Windows. You CAN avoid that by rewriting parts of the SCons build scripts to fully use Zig, but at that point, setting up a docker environment is easier. **Take my advice:** If you're on Linux, just compile for Linux and be done with it, if you don't want to setup a docker environment. If you're on Windows, you can compile for both Linux and Windows.
+And we're done! Just kidding. There's some quirks with for Windows. Why? Because most libraries pre-build for MSVC (Microsoft's compiler toolchain), which means that you'd either have to build giant libraries like Slang from source (easily takes half an hour) to compile seamlessly for the GNU toolchain (which Zig embeds, meaning you get 1 click compilation), or just use the MSVC compiler. Now thankfully, you don't have to use the MSVC toolchain, since the Zig build script handles that with lld-link.
 
-Alright, so now copy the file from Undecided_Game_Proj/zig godot-cpp build scripts/SConstruct and replace the SConstruct inside Undecided_Game_Proj/godot-cpp/. Afterwards,
+But for legal reasons, the Zig team, and we too, can not embed the required binaries and headers to compile for the MSVC ABI for C++. To fix that, **you** need to download the required binaries. The build script can not do it for you automatically, since you need to accept Microsoft's license.
+
+Anyway, before we move onto the next step, copy the file from Undecided_Game_Proj/zig godot-cpp build scripts/SConstruct and replace the SConstruct inside Undecided_Game_Proj/godot-cpp/. You will need to use the MSVC compiler for this step if you're compiling for Windows (ironic, I know, but that's just how vendor lock in works). If you're on Linux, you can look at [MSVC WINE](https://github.com/mstorsjo/msvc-wine). MSVC WINE hasn't been tested against godot-cpp within this repo, but please do document it if you do figure out how to use MSVC WINE to compile for godot-cpp.
+
+Either way, do:
 
 ```bash
 cd Undecided_Game_Proj/godot-cpp/
@@ -97,10 +93,14 @@ scons target=template_release dev_build=no use_static_cpp=no
 
 ### Finally
 
+Open up an administrator shell:
+
 ```bash
 cd Undecided_Game_Proj/src
 
-zig build -DLibraryName='ALL' -DCompileFromDirectory='ALL'
+xrepo env xwin --accept-license splat --output .xwin --disable-symlinks
+
+xmake # or, if you'd prefer: zig build -DLibraryName='ALL' -DCompileFromDirectory='ALL'
 ```
 
 It will automatically assume it's a debug build. Now just boot up Godot 4.7+, and go to Undecided_Game_Proj\GDProject. **Congrats, you're done!**
@@ -127,11 +127,13 @@ But of course, keep VS Code in the back, as only VS Code has an extension for IS
 
 Because XMake isn't really that great for making complex build graphs. To put it simply, setting up a build system for godot-cpp is easier with Zig.
 
+Zig itself is a drop-in C/C++ compiler and linker. You don't need to download the whole nine yards to compile for Linux from Windows. Even if godot-cpp forces it in some places.
+
 ## What even is ISPC and Slang?
 
 ISPC is just Intel's SPMD compiler. To put it simply, your CPU has threads, and those threads have vector units. Those vector units have a certain amount of lanes (imagine them as mini-threads). Those lanes can process data in parallel, much like threads themselves.
 
-Or, even more simply: Your CPU has workers, and those workers have machines. Those machines can do a ton of work in one go. This is called Single Instruction, Multiple Data (SIMD)
+Or, even more simply: Your CPU has workers, and those workers have machines. Those machines can do a ton of work in one go. This is called Single Instruction, Multiple Data (SIMD). SPMD is Single Program, Multiple Data.
 
 ISPC lets you write linear looking code, and the compiler automatically writes jobs for the machine. So the code you write actually looks very simple, which makes maintaining and writing it a joy. Quite unlike manual intrinsics...
 
@@ -139,7 +141,7 @@ ISPC lets you write linear looking code, and the compiler automatically writes j
 
 Slang is basically just if HLSL (Microsoft's shading language) wasn't painful to use. It's hard to explain what it does better than GLSL if you've never used GLSL or HLSL.
 
-Much like ISPC, it compiles for parallel execution, but on the GPU (ISPC supports GPUs, but mainly for Intel GPUs).
+Much like ISPC, it compiles for parallel execution (Single Instruction, Multiple Threads (SIMT), which is SPMD wearing a different trench coat), but on the GPU (ISPC supports GPUs, but mainly for Intel GPUs).
 
 ## Why ISPC and Slang?
 
@@ -153,15 +155,37 @@ Well... Pick your poison at the start, and then you can't change it without spen
 
 ## Why is the build system so complex?
 
-Because cross-compiling with godot-cpp is... Well, complex. For example, the main build.zig script inside /src/ is about 600 lines. Just to compile C++. Meanwhile, the one in src/Tools/JSlangBuild is about 45 lines, which compiles an entire program.
+Because cross-compiling with godot-cpp is... Well, complex. For example, the main build.zig script inside /src/ is about 600 lines (although, admittedly, it's a bit over-engineered in some aspects). Just to compile C++. Meanwhile, the one in src/Tools/JSlangBuild is about 45 lines, which compiles an entire program.
 
 But hey, incremental builds within a second! (To improve in Zig 0.17, but that's a few more months ahead.)
 
-# Why so many languages?
+## Why so many languages?
 
-Because they do one thing, and one thing well. If, for example, we were to use C++ SIMD intrinsics, you'd have to hope and pray to the compiler, "Oh please, please don't alias this pointer! Please vectorize this loop!" Or, again, make a custom eDSL that ISPC already handles.
+Because they do one thing, and one thing well. If, for example, we were to use C++ SIMD intrinsics, you'd have to hope and pray to the compiler, "Oh please, please don't alias this pointer! Please vectorize this loop! Please don't have me write for NEON again! I don't want to read assembly, please tell me when you aren't actually vectorizing my code!" Or, again, make a custom eDSL that ISPC already handles.
 
-**ISPC gurantees it.** And it also yells at you if you're destroying performance.
+**ISPC guarantees it.** And it also yells at you if you're destroying performance.
+
+## Can I use AI?
+
+Depends.
+
+### Vibe coding?
+
+Absolutely not.
+
+### Generating boilerplate?
+
+Sure, as long as you understand most of it.
+
+### Using it to google?
+
+Fine, but make sure to test and understand it fully before committing.
+
+### Using it as a teacher?
+
+A bit iffy for production, but as long as you are writing every single line of it, and you can explain every single line of it.
+
+The rule of thumb is that **you** need to _own every single line of code._ You must know the _why_ and _how._
 
 ---
 

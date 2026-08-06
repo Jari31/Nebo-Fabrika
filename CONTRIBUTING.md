@@ -1,6 +1,6 @@
 # Naming Conventions
 
-The naming convention is a mix of PascalCase, snake_case and SCREAMING_SNAKE_CASE. Verbosity and long-term usability and stability is valued above all else. Abbriviation is discouraged in most cases.
+The naming convention is a mix of PascalCase, snake_case and SCREAMING_SNAKE_CASE. Verbosity and long-term usability and stability is valued above all else. Abbreviation is discouraged in most cases.
 
 ### PascalCase
 
@@ -92,12 +92,12 @@ That is intentional. If it aids in readability and usability, you can put aside 
                 uint32_t i_z = i / ChunksPerSlice;
 ```
 
-Abbreviation like this is acceptable _only if the thing you're abbreviating is well known and aids in readability._ **Do not optimize for how many keystrokes it takes to write code.** You are not a programmer from the 1980s; you have an IDE. Use it. As for what is readability? Ask a fellow dev when in doubt.
+Abbreviation like this is acceptable _only if the thing you're abbreviating is well known and aids in readability._ **Do not optimize for how many keystrokes it takes to write code.** Writing code is only a fraction of the battle; people, including you, will have to read it in the future. And you are not a programmer from the 1980s; you have an IDE with autocomplete. Use it. As for what is readability? Ask a fellow dev when in doubt.
 
 # Comments
 
-Write code that comments itself, though, not as dogmatically as Uncle Bob would have you. Comment things that are not obvious, like a physics solver, or whilst talking to another API. Otherwise, keep comments minimal, and keep code noise at minima.
+Write code that comments itself, though, not dogmatically. Comment things that are not obvious, like a physics solver, or whilst talking to another API. Otherwise, keep comments minimal, and keep code noise at minima.
 
 # What else?
 
-_**Use ClangD.**_
+_**Use ClangD and Cppcheck before committing. Be respectful to people.**_

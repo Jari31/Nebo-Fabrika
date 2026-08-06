@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "init_PCGENV"
+compatibility_minimum = "4.5"
+reloadable = true
+load_in_editor = false
+
+[libraries]
+windows.x86_64 = "res://bin/build/PCG_Environment.dll"
