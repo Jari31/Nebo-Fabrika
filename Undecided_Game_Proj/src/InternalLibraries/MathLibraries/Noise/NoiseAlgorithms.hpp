@@ -156,6 +156,7 @@ inline void CPU_ParallelSimplex3D(
     uint32_t             Seed // NOLINT
 )
 {
+    auto profiler_start = std::chrono::high_resolution_clock::now();
     using namespace CPU_Generics;
     ParallelNoise3D_Options options = {
         .TaskScheduler         = TaskScheduler,
@@ -174,6 +175,25 @@ inline void CPU_ParallelSimplex3D(
                 Context.WorkUntilIndex.data(),
                 OutputBuffer.data());
         });
+    auto profiler_end = std::chrono::high_resolution_clock::now();
+    auto time_taken_nanoseconds =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(profiler_end - profiler_start);
+    auto time_taken_microseconds =
+        std::chrono::duration_cast<std::chrono::microseconds>(profiler_end - profiler_start);
+    auto time_taken_milliseconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(profiler_end - profiler_start);
+
+    auto nanoseconds  = time_taken_nanoseconds.count();
+    auto microseconds = time_taken_microseconds.count();
+    auto milliseconds = time_taken_milliseconds.count();
+
+    godot::UtilityFunctions::print(
+        milliseconds,
+        " milliseconds | ",
+        microseconds,
+        " microseconds | ",
+        nanoseconds,
+        " nanoseconds");
 }
 }; // namespace Simplex3D
 }; // namespace NoiseAlgorithms

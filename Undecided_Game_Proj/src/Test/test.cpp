@@ -1,28 +1,29 @@
-#include "test.h"
+#include "test.hpp"
 #include <godot_cpp/variant/string.hpp>
 
 using namespace godot;
 
-void GDTest::_bind_methods(){
+void GDTest::_bind_methods()
+{
     ClassDB::bind_method(D_METHOD("CPP_Print", "String"), &GDTest::CPP_Print);
 }
 
-GDTest::GDTest(){
+GDTest::GDTest()
+{
     set_process(true);
 }
 
-GDTest::~GDTest(){
+GDTest::~GDTest() {}
 
-}
-
-void GDTest::CPP_Print(const String &printable_string){
-    UtilityFunctions::print(printable_string); 
+void GDTest::CPP_Print(const String &printable_string)
+{
+    UtilityFunctions::print(printable_string);
 }
 
 /*
 void GDTest::_process(double delta){
-    i += 1;    
-    
+    i += 1;
+
     String stringIn = "Hello, World!";
 
     if(i == 100){

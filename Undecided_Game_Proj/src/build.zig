@@ -275,7 +275,7 @@ fn _compile(
 
     const optimization_level = if (!Options.DebugBuild and !SkipDebugFlag) std.builtin.OptimizeMode.ReleaseFast else Optimize; // default for Optimize is Debug
 
-    p_Build.install_path = p_Build.path(BuildFolderPath).getPath(p_Build);
+    // p_Build.install_path = p_Build.path(BuildFolderPath).getPath(p_Build);
 
     const is_msvc_abi = if (Target.result.abi == .msvc) true else false;
 
@@ -289,6 +289,7 @@ fn _compile(
 
     const godot_cpp_lib = switch (Options.DebugBuild) { // Can compile to Android, and such, too, but that's out of this project's scope currently
         true => switch (os_tag) {
+            //"F:\Openworld_Game\Undecided_Game_Proj\godot-cpp\bin\libgodot-cpp.windows.template_debug.dev.x86_64.lib"
             .windows => p_Build.path("../godot-cpp/bin/libgodot-cpp.windows.template_debug.dev.x86_64.lib"),
             .linux => p_Build.path("../godot-cpp/bin/libgodot-cpp.linux.template_debug.dev.x86_64.a"),
             .macos => p_Build.path("../godot-cpp/bin/libgodot-cpp.macos.template_debug.dev.x86_64.a"),
@@ -512,7 +513,7 @@ fn _compile(
 
     const artifacts = p_Build.addInstallArtifact(
         library,
-        .{},
+        .{ .dest_dir = .{ .override = .{ .custom = "../../GDProject/bin/build/" } } },
     );
 
     p_Build.getInstallStep().dependOn(&artifacts.step);

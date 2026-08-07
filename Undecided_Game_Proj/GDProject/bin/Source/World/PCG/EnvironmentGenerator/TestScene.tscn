@@ -4,5 +4,5 @@
 
 [node name="Node3D" type="Node3D" unique_id=855790440]
 
-[node name="EnvironmentGenerator2" type="EnvironmentGenerator" parent="." unique_id=366282524]
+[node name="EnvironmentGenerator2" type="EnvironmentGenerator" parent="." unique_id=1934154178]
 script = ExtResource("1_t0u6e")

@@ -8,3 +8,4 @@ Procedural Environment Generator:PCG_Environment # you can also comment in front
 Shader compiler:ShaderComp
 
 PCG/EnvironmentGenerator:EnvironmentGenerator
+Test:test

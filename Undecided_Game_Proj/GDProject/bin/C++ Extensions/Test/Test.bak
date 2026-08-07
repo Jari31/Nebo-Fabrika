@@ -1,0 +1,9 @@
+[configuration]
+entry_symbol = "test_library_init"
+compatibility_minimum = 4.6
+reloadable = true
+load_in_editor = false
+
+
+[libraries]
+windows.x86_64 = "res://bin/build/test.dll"

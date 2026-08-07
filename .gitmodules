@@ -1,4 +1,4 @@
 [submodule "Undecided_Game_Proj/godot-cpp"]
 	path = Undecided_Game_Proj/godot-cpp
-	url = https://github.com/godotengine/godot-cpp
-	branch = master
+	url = https://github.com/godotengine/godot-cpp.git
+	branch = godot-4.5-stable
