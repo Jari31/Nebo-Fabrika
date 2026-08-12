@@ -3,6 +3,10 @@ const builtin = @import("builtin");
 
 const PROGRAM_NAME = "jslang";
 
+/// IMPORTANT: *the external cache location for lib and win sdk files. change this to internal cache when made into a standalone repo
+const EXTERNAL_CACHE_FOLDER_LOCATION = "../../cache/";
+const CACHE_FOLDER_LOCATION = "cache";
+
 inline fn GlobFilesWithExtension(Build: *std.Build, FolderPath: std.Build.LazyPath, FileExtension: []const u8, ListToAppendTo: *std.ArrayList(std.Build.LazyPath)) void {
     const io = Build.graph.io;
     var directory = Build.build_root.handle.openDir(io, FolderPath.src_path.sub_path, .{ .iterate = true }) catch @panic("OOM");
@@ -21,16 +25,22 @@ inline fn GlobFilesWithExtension(Build: *std.Build, FolderPath: std.Build.LazyPa
 }
 
 pub fn build(Build: *std.Build) void {
-    const target = Build.standardTargetOptions(.{});
+    var target_query = std.Target.Query.parse(.{}) catch unreachable;
     const optimize = Build.standardOptimizeOption(.{});
 
-    // const is_windows = target.result.os.tag == .windows;
+    if ((target_query.os_tag == .windows or (target_query.os_tag == null and builtin.os.tag == .windows)) and target_query.abi == null) {
+        target_query.abi = .msvc;
+    }
+
+    const target = Build.standardTargetOptions(.{ .default_target = target_query });
+
+    const is_msvc_abi = target.result.os.tag == .windows;
 
     const executable_module = Build.createModule(.{
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
-        .link_libcpp = true,
+        .link_libc = !is_msvc_abi,
+        .link_libcpp = !is_msvc_abi,
     });
 
     executable_module.addIncludePath(Build.path("../../cache/")); // IMPORTANT: remove this if this tool is made public
@@ -42,18 +52,58 @@ pub fn build(Build: *std.Build) void {
     // GlobFilesWithExtension(Build, Build.path("../../cache/Libraries/lib/"), ".lib", &library_file_paths);
 
     GlobFilesWithExtension(Build, Build.path("cache/Libraries/lib/"), if (target.result.os.tag != .windows) ".a" else ".lib", &library_file_paths);
+    GlobFilesWithExtension(Build, Build.path("../../cache/Libraries/lib/"), if (target.result.os.tag != .windows) ".a" else ".lib", &library_file_paths);
+
+    var compilation_flags = std.ArrayList([]const u8).empty;
+    defer compilation_flags.deinit(Build.allocator);
+
+    compilation_flags.appendSlice(Build.allocator, &.{
+        "-std=c++23",
+        "-Wall",
+        "-Wextra",
+
+        // #embed
+        "-Wno-c23-extensions",
+    }) catch {};
+
+    if (is_msvc_abi) {
+        compilation_flags.appendSlice(Build.allocator, &.{
+            "-fms-runtime-lib=dll",
+        }) catch @panic("OOM");
+    }
 
     executable_module.addCSourceFile(.{
         .file = Build.path("main.cpp"),
-        .flags = &.{
-            "-std=c++23",
-            "-Wall",
-            "-Wextra",
-            // "-fms-runtime-lib=static",
-        },
+        .flags = compilation_flags.items,
     });
+    {
+        const os_tag = target.result.os.tag;
 
-    // if (!is_windows) {
+        const library_directory_location = Build.pathJoin(&.{ CACHE_FOLDER_LOCATION, "Libraries/lib/" });
+        const dynamic_library_extension = if (os_tag == .windows) ".dll" else if (os_tag == .macos) ".dylib" else ".so";
+
+        executable_module.addCMacro(
+            "PATH_TO_SLANG_COMPILER_DYNAMIC_LIBRARY",
+            Build.fmt("{}slang-compiler{}", .{ library_directory_location, dynamic_library_extension }),
+        );
+        executable_module.addCMacro(
+            "PATH_TO_SLANG_GLSL_MODULE_DYNAMIC_LIBRARY",
+            Build.fmt("{}slang-glsl-module{}", .{ library_directory_location, dynamic_library_extension }),
+        );
+        executable_module.addCMacro(
+            "PATH_TO_SLANG_GL_SLANG_DYNAMIC_LIBRARY",
+            Build.fmt("{}slang-glslang{}", .{ library_directory_location, dynamic_library_extension }),
+        );
+        executable_module.addCMacro(
+            "PATH_TO_SLANG_LLVM_DYNAMIC_LIBRARY",
+            Build.fmt("{}slang-llvm{}", .{ library_directory_location, dynamic_library_extension }),
+        );
+        executable_module.addCMacro(
+            "PATH_TO_SLANG_RUN_TIME_DYNAMIC_LIBRARY",
+            Build.fmt("{}slang-rt{}", .{ library_directory_location, dynamic_library_extension }),
+        );
+    }
+
     for (library_file_paths.items) |Path| {
         executable_module.addObjectFile(Path);
     }
@@ -63,44 +113,47 @@ pub fn build(Build: *std.Build) void {
         .root_module = executable_module,
     });
 
+    if (is_msvc_abi) {
+        const msvc_header_includes = [_][]const u8{
+            ".xwin/crt/include",
+            ".xwin/sdk/include/ucrt",
+            ".xwin/sdk/include/um",
+            ".xwin/sdk/include/shared",
+        };
+
+        const target_cpu_arch: []const u8 = @tagName(target.result.cpu.arch);
+
+        const msvc_library_includes = [_][]const u8{
+            Build.fmt("{s}{s}", .{ ".xwin/crt/lib/", target_cpu_arch }),
+            Build.fmt("{s}{s}", .{ ".xwin/sdk/lib/ucrt/", target_cpu_arch }),
+            Build.fmt("{s}{s}", .{ ".xwin/sdk/lib/um/", target_cpu_arch }),
+        };
+
+        inline for (msvc_header_includes) |include_header| {
+            executable.root_module.addSystemIncludePath(Build.path(Build.pathJoin(&.{ EXTERNAL_CACHE_FOLDER_LOCATION, include_header })));
+        }
+
+        inline for (msvc_library_includes) |include_library| {
+            executable.root_module.addLibraryPath(Build.path(Build.pathJoin(&.{ EXTERNAL_CACHE_FOLDER_LOCATION, include_library })));
+        }
+
+        executable.root_module.linkSystemLibrary("msvcrt", .{});
+        executable.root_module.linkSystemLibrary("vcruntime", .{});
+        executable.root_module.linkSystemLibrary("ucrt", .{});
+        executable.root_module.linkSystemLibrary("msvcprt", .{});
+        executable.root_module.linkSystemLibrary("kernel32", .{});
+        executable.root_module.linkSystemLibrary("user32", .{});
+        executable.root_module.linkSystemLibrary("ntdll", .{});
+
+        executable.linker_allow_undefined_version = true;
+        executable.subsystem = .Console;
+        executable.entry = .{ .symbol_name = "mainCRTStartup" };
+    }
+
     const install_step = Build.addInstallArtifact(executable, .{
         .dest_dir = .{ .override = .{ .custom = "../" } },
     });
 
     Build.getInstallStep().dependOn(&install_step.step);
     return;
-    // }
-
-    // const compilation_object = Build.addObject(.{
-    //     .name = PROGRAM_NAME,
-    //     .root_module = executable_module,
-    // });
-
-    // const linker_step = Build.addSystemCommand(&.{
-    //     "xrepo",
-    //     "env",
-    // });
-
-    // if (builtin.os.tag == .linux) {
-    //     linker_step.addArgs(&.{ "-p", "msvc-wine" });
-    // }
-
-    // linker_step.addArgs(&.{
-    //     "link.exe",
-    //     "/NOLOGO",
-    //     "/OUT:" ++ PROGRAM_NAME ++ ".exe",
-    //     "kernel32.lib",
-    //     "user32.lib",
-    //     "msvcrt.lib",
-    //     "vcruntime.lib",
-    //     "ucrt.lib",
-    // });
-
-    // linker_step.addFileArg(compilation_object.getEmittedBin());
-
-    // for (library_file_paths.items) |Path| {
-    //     linker_step.addFileArg(Path);
-    // }
-
-    // Build.getInstallStep().dependOn(&linker_step.step);
 }

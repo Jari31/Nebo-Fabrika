@@ -1,9 +1,12 @@
 #pragma once
 
+#include <format>
 #include <functional>
+#include <iterator>
 #define TOML_EXCEPTIONS 0
 
 #include "FileIO.hpp"
+#include "HelperFunctions.hpp"
 #include "Libraries/include/toml++/toml.hpp"
 #include "Math.hpp"
 #include "TerminalTextStyling.hpp"
@@ -30,6 +33,7 @@ struct ParsedOptions
 
 inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path &BuildFilePath)
 {
+    using LogTypes    = HelperFunctions::LogTypes;
     auto parse_result = toml::parse_file(BuildFilePath.string());
 
     if (parse_result
@@ -86,13 +90,12 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
             }
         }
         // INFO seems to only err out a single line; so assuming that...
-        std::print(
-            "{}Failed to parse '{}' with error:\n"
+        HelperFunctions::Log<LogTypes::Error>(
+            "Failed to parse '{}' with error:\n"
             "BEGIN : LINE {} COLUMN {}\n\n"
             "{}{}|{}{}\n"
             "{}\n\n"
             "END : LINE {} COLUMN {}{}\n",
-            TTS::Foreground::RED,
             filesystem::absolute(BuildFilePath).string(),
             error_source.begin.line,
             error_source.begin.column,

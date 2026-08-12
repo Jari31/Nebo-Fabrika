@@ -1,5 +1,6 @@
 words = [
     "CLI",
+    "NOLINT",
     "Shaders",
     "jslangbuild",
     "xrepo",

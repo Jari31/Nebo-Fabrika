@@ -1,23 +1,44 @@
--- set_config("vs_toolset", "14.43")
--- if os.subhost() == "windows" then
---     add_requires("msvc 14.43.17+13")
---     set_toolchains("@msvc")
--- elseif os.subhost() == "linux" then
---     add_requires("msvc-wine")
---     set_toolchains("@msvc-wine")
--- end
-    -- set_toolchains("mingw@llvm-mingw")
-
--- add_requireconfs("*", {
---     build = true, -- Disable prebuilt binary downloads
---     configs = {
---         toolchains = "mingw@llvm-mingw"
---     }
--- })
-
--- add_requires("toml++ master", "cli11", "xxhash", "unordered_dense", "enkits") --, { configs = { toolchains = "mingw@llvm-mingw", cxflags = "-stdlib=libc++" } })
-    -- ,{configs = {shared = false, vs_runtime = "MT"}, system = false})
+add_requires("toml++ master", "cli11 v2.7.2", "xxhash v0.8.3", "unordered_dense v4.9.0", "enkits v1.12", "dylib v3.0.1", "fmt 12.2.0", "whereami 2024.08.26")
+add_requires("slang 2026.14.1", { configs = { binary = true } })
 add_requires("zig v0.16", { verify = false })
+
+set_runtimes("MD")
+
+local target_platform = get_config("plat")
+if not target_platform then
+    target_platform = "linux"
+end
+
+local target_arch = "x86_64"
+if is_arch("arm64") then
+    target_arch = "aarch64"
+elseif is_arch("wasm.*") then
+    target_arch = "wasm"
+end
+
+package("slang") -- because building from source for C++ is a nightmare
+    set_homepage("https://github.com/shader-slang/slang")
+    set_description("Slang is a shading language and compiler framework.")
+
+    set_urls("https://github.com/shader-slang/slang/releases/download/v$(version)/slang-$(version)-" .. target_platform .. "-" .. target_arch .. ".tar.gz")
+
+    on_install( function (package)
+        if package:is_plat("windows") then
+            os.cp("bin/slangc.exe", package:installdir("bin"))
+            os.cp("bin/*.dll", package:installdir("bin"))
+            os.cp("lib/*.lib", package:installdir("lib"))
+        else
+            os.cp("bin/slangc", package:installdir("bin"))
+            os.cp("lib/*.so", package:installdir("lib"))
+            os.cp("lib/*.dylib", package:installdir("lib"))
+        end
+
+        os.cp("include/*", package:installdir("include"))
+    end)
+
+    on_test( function (package)
+        os.vrun("slangc -v")
+    end)
 
 package("xwin")
     set_kind("binary")
@@ -56,18 +77,22 @@ package("zig")
     end)
 
 rule("cache_dependencies")
-    before_build( function (target)
+    ---@diagnostic disable-next-line: undefined-global
+    after_load( function (target)
+
         for package_name, package_instance in pairs(target:pkgs()) do
             if package_instance then
-                local include_dirs = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
-                if include_dirs then
-                    for _, inc_dir in ipairs(include_dirs) do
+                -- Headers
+                local include_directories = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
+                if include_directories then
+                    for _, include_directory in ipairs(include_directories) do
                         local destination_directory = "cache/Libraries/include"
-                        os.vcp(path.join(inc_dir, "*"), destination_directory, { rootdir = inc_dir })
+                        os.vcp(path.join(include_directory, "**"), destination_directory, { rootdir = include_directory })
                     end
                 end
 
-                local lib_files = package_instance:libraryfiles()--package_instance:get("libfiles")
+                -- Libs (.lib / .a)
+                local lib_files = package_instance:get("libfiles")
                 if lib_files then
                     for _, lib_file in ipairs(lib_files) do
                         local destination_file = path.join("cache/Libraries/lib", path.filename(lib_file))
@@ -78,9 +103,27 @@ rule("cache_dependencies")
                         end
                     end
                 end
+
+                -- Dynamic Libs (.dll)
+                local dll_files = package_instance:get("dllfiles")
+                if dll_files then
+                    local dll_directory = "cache/"
+
+                    if dll_directory and #dll_directory > 0 then
+                        for _, dll_file in ipairs(dll_files) do
+                            local destination_file = path.join(dll_directory, path.filename(dll_file))
+
+                            if not os.isfile(destination_file) or os.mtime(dll_file) > os.mtime(destination_file) then
+                                print("Caching DLL: %s", path.filename(dll_file))
+                                os.cp(dll_file, destination_file)
+                            end
+                        end
+                    end
+                end
             end
         end
     end)
+
 
 target("jslang")
     set_kind("binary")
@@ -90,6 +133,10 @@ target("jslang")
     add_packages("xxhash")
     add_packages("enkits")
     add_packages("unordered_dense")
+    add_packages("dylib")
+    add_packages("fmt")
+    add_packages("whereami")
+    add_packages("slang")
 
     add_rules("cache_dependencies")
 

@@ -14,3 +14,4 @@ AllowAllParametersOfDeclarationOnNextLine: false
 AlignAfterOpenBracket: AlwaysBreak
 BinPackParameters: false
 BinPackArguments: false
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse

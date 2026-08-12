@@ -100,4 +100,4 @@ Write code that comments itself, though, not dogmatically. Comment things that a
 
 # What else?
 
-_**Use ClangD and Cppcheck before committing. Be respectful to people.**_
+_**Develop on the dev branch, use ClangD and Cppcheck before committing. Be respectful to people.**_

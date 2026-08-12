@@ -1,5 +1,4 @@
 add_requires("ispc 1.31.0", { verify = false })
-add_requires("slang 2026.14.1", { configs = { binary = true } })
 add_requires("zig v0.16", { verify = false })
 add_requires("xwin 0.9.0", { verify = false })
 add_requires("scons")
@@ -148,51 +147,52 @@ target("ispc_build")
         end
     end)
 
-    rule("cache_dependencies")
-        after_build( function (target)
-            for package_name, package_instance in pairs(target:pkgs()) do
-                if package_instance then
-                    -- Headers
-                    local include_directories = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
-                    if include_directories then
-                        for _, inc_dir in ipairs(include_directories) do
-                            local destination_directory = "cache/Libraries/include"
-                            os.vcp(path.join(inc_dir, "*"), destination_directory, { rootdir = inc_dir })
+rule("cache_dependencies")
+    ---@diagnostic disable-next-line: undefined-global
+    after_load( function (target)
+        for package_name, package_instance in pairs(target:pkgs()) do
+            if package_instance then
+                -- Headers
+                local include_directories = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
+                if include_directories then
+                    for _, inc_dir in ipairs(include_directories) do
+                        local destination_directory = "cache/Libraries/include"
+                        os.vcp(path.join(inc_dir, "*"), destination_directory, { rootdir = inc_dir })
+                    end
+                end
+
+                -- Libs (.lib / .a)
+                local lib_files = package_instance:get("libfiles")
+                if lib_files then
+                    for _, lib_file in ipairs(lib_files) do
+                        local dst_file = path.join("cache/Libraries/lib", path.filename(lib_file))
+
+                        if not os.isfile(dst_file) or os.mtime(lib_file) > os.mtime(dst_file) then
+                            print("Caching binary: %s", path.filename(lib_file))
+                            os.cp(lib_file, dst_file)
                         end
                     end
+                end
 
-                    -- Libs (.lib / .a)
-                    local lib_files = package_instance:get("libfiles")
-                    if lib_files then
-                        for _, lib_file in ipairs(lib_files) do
-                            local dst_file = path.join("cache/Libraries/lib", path.filename(lib_file))
+                -- Dynamic Libs (.dll)
+                local dll_files = package_instance:get("dllfiles")
+                if dll_files then
+                    local dll_directory = "../GDProject/bin/build"
 
-                            if not os.isfile(dst_file) or os.mtime(lib_file) > os.mtime(dst_file) then
-                                print("Caching binary: %s", path.filename(lib_file))
-                                os.cp(lib_file, dst_file)
-                            end
-                        end
-                    end
+                    if dll_directory and #dll_directory > 0 then
+                        for _, dll_file in ipairs(dll_files) do
+                            local destination_file = path.join(dll_directory, path.filename(dll_file))
 
-                    -- Dynamic Libs (.dll)
-                    local dll_files = package_instance:get("dllfiles")
-                    if dll_files then
-                        local dll_directory = "../GDProject/bin/build"
-
-                        if dll_directory and #dll_directory > 0 then
-                            for _, dll_file in ipairs(dll_files) do
-                                local destination_file = path.join(dll_directory, path.filename(dll_file))
-
-                                if not os.isfile(destination_file) or os.mtime(dll_file) > os.mtime(destination_file) then
-                                    print("Caching DLL: %s", path.filename(dll_file))
-                                    os.cp(dll_file, destination_file)
-                                end
+                            if not os.isfile(destination_file) or os.mtime(dll_file) > os.mtime(destination_file) then
+                                print("Caching DLL: %s", path.filename(dll_file))
+                                os.cp(dll_file, destination_file)
                             end
                         end
                     end
                 end
             end
-        end)
+        end
+    end)
 
 target("build")
     set_kind("phony")
@@ -201,7 +201,6 @@ target("build")
     add_packages("angelscript")
     add_packages("cpuinfo")
     add_packages("tracy")
-    add_packages("slang")
     add_packages("ispc")
     add_packages("scons")
     add_packages("xwin")
