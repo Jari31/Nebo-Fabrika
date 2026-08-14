@@ -405,7 +405,7 @@ struct Build
                     TaskScheduler, folder_path, {".slang"}),
                 std::back_inserter(paths_to_shader_files));
 
-            if constexpr (Verbose)
+            if constexpr (!Verbose)
             {
                 continue;
             }
