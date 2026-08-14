@@ -29,8 +29,9 @@ enum class Errors : uint8_t
 
 struct ParsedOptions
 {
-    std::vector<std::string> SearchFolders;
-    filesystem::path         OutputDirectory;
+    std::vector<filesystem::path> SearchFolders;
+    filesystem::path              OutputFolder;
+    bool                          DoFileContentIntegrityChecks;
 };
 
 inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path &BuildFilePath)
@@ -129,8 +130,9 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
         }
     }
 
-    parsed_options.OutputDirectory = table["Build"]["OutputFolder"].value_or("build");
-
+    parsed_options.OutputFolder = table["Build"]["OutputFolder"].value_or("build");
+    parsed_options.DoFileContentIntegrityChecks =
+        table["Build"]["DoFileContentIntegrityChecks"].value_or(false);
     return parsed_options;
 }
 } // namespace JSlang::Parser

@@ -30,6 +30,7 @@ Diagnostics:
       - performance-no-automatic-move
       - readability-magic-numbers
       - modernize-use-trailing-return-type
+      - readability-function-cognitive-complexity
     CheckOptions:
       readability-identifier-naming.ConstexprVariableCase: UpperCase
       readability-identifier-naming.MacroDefinitionCase: UpperCase

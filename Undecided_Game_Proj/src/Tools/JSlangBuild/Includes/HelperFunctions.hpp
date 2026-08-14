@@ -2,13 +2,13 @@
 
 #include "Libraries/include/whereami.h"
 #include "TerminalTextStyling.hpp"
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <format>
 #include <print>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #if defined(_WIN32)
@@ -17,6 +17,7 @@
 
 namespace JSlang::HelperFunctions
 {
+namespace filesystem = std::filesystem;
 
 enum class LogTypes : uint8_t
 {
@@ -101,6 +102,18 @@ std::filesystem::path GetInstallationDirectory()
     installation_path_buffer[directory_name_length] = '\0';
 
     return {installation_path_buffer.data()};
+}
+
+template <typename Type> Type GetFileLastWriteTimeAsType(const filesystem::path &FilePath)
+{
+    auto file_last_write_time = filesystem::last_write_time(FilePath);
+
+    auto system_time = std::chrono::clock_cast<std::chrono::system_clock>(file_last_write_time);
+
+    auto seconds_since_epoch =
+        std::chrono::duration_cast<std::chrono::seconds>(system_time.time_since_epoch()).count();
+
+    return static_cast<Type>(seconds_since_epoch);
 }
 
 } // namespace JSlang::HelperFunctions

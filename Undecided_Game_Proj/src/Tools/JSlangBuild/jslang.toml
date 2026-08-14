@@ -1,0 +1,12 @@
+[Build]
+SearchFolders = ["../../InternalLibraries"]
+OutputFolder = ["../../../GDProject/bin/Build"]
+DoFileContentIntegrityChecks = true
+# Target: "spirv",
+# Profile: "spirv_1_5",
+# OptimizationLevel: "High",
+# DebugInfo: true,
+# MatrixLayout: "column_major",
+# Defines: ["ENGINE_RENDER_VK=1"],
+# IncludePaths: ["../../Shaders/Includes"],
+# GenerateReflection: true,

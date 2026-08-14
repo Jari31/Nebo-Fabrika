@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <expected>
@@ -5,9 +6,9 @@
 #include <format>
 #include <fstream>
 #include <ios>
+#include <iterator>
 #include <span>
 #include <string>
-#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -23,6 +24,7 @@
 #include "Libraries/include/slang.h"
 
 #include "Includes/DirectoryWalker.hpp"
+#include "Includes/HashMap.hpp"
 #include "Libraries/include/slang-com-ptr.h"
 #include <Libraries/include/toml++/toml.hpp>
 
@@ -197,6 +199,11 @@ struct Build
     std::vector<std::string> ShadersToCompilePaths;
     filesystem::path         TemporaryCacheDirectory;
 
+    enum class Error : uint8_t
+    {
+        FailedToFindDirectory,
+    };
+
     struct CLIOptions
     {
         bool     Verbose     = false;
@@ -206,7 +213,7 @@ struct Build
     void CreateSubCommand(CLI::App &ParentApp)
     {
         auto *subcommand =
-            ParentApp.add_subcommand("build", "Build shaders listed within jslangbuild.toml");
+            ParentApp.add_subcommand("build", "Build shaders listed within jslang.toml");
 
         subcommand->add_option(
             "--thread_count",
@@ -238,10 +245,80 @@ struct Build
             });
     }
 
-    template <bool Verbose = false>
-    void _glob_and_hash_files() {
+    static std::expected<uint64_t, Error> hash_file_date_and_size(const filesystem::path &FilePath)
+    {
+        if (!filesystem::exists(FilePath))
+        {
+            return std::unexpected(Error::FailedToFindDirectory);
+        }
 
+        uint64_t file_size        = filesystem::file_size(FilePath);
+        auto file_last_write_time = HelperFunctions::GetFileLastWriteTimeAsType<uint64_t>(FilePath);
+
+        uint64_t hash_input = file_size ^ file_last_write_time;
+        return XXH64(&hash_input, sizeof(hash_input), 0);
+    }
+
+    static std::vector<filesystem::path> _check_shader_filepaths_and_return_what_to_compile(
+        enki::TaskScheduler           &TaskScheduler,
+        std::vector<filesystem::path> &ShaderFilePathsToCheck,
+        filesystem::path              &OutputFolder)
+    {
+        if (!filesystem::exists(".jslang/build_manifest.bin"))
+        {
+            return ShaderFilePathsToCheck;
+        }
+        auto hash_map = HashMap::LoadHashMapFromDisk(".jslang/build_manifest.bin");
+
+        auto thread_count = TaskScheduler.GetNumTaskThreads();
+
+        std::vector<filesystem::path> shader_compilation_list;
+
+        std::vector<std::vector<filesystem::path>> thread_global_shader_compilation_list(
+            thread_count);
+
+        enki::TaskSet task(
+            static_cast<uint32_t>(ShaderFilePathsToCheck.size()),
+            [&](enki::TaskSetPartition Range, uint32_t ThreadIndex) -> void
+            {
+                auto &thread_local_shader_compilation_list =
+                    thread_global_shader_compilation_list[ThreadIndex]; // equivalent to a shared
+                                                                        // buffer in GPGPU
+
+                for (uint32_t i = Range.start; i < Range.end; i++)
+                {
+                    auto &shader_file_path = ShaderFilePathsToCheck[i];
+
+                    auto hashed_file_path = HashMap::HashString(shader_file_path.string(), 0);
+
+                    if (hash_map.contains(hashed_file_path))
+                    {
+                        auto hashed_file_data = hash_file_date_and_size(shader_file_path);
+
+                        if (hashed_file_data.has_value() &&
+                            hash_map[hashed_file_path] == hashed_file_data)
+                        {
+                            continue;
+                        }
+                    }
+
+                    thread_local_shader_compilation_list.push_back(shader_file_path);
+                }
+            });
+
+        TaskScheduler.AddTaskSetToPipe(&task);
+        TaskScheduler.WaitforTask(&task);
+
+        for (uint32_t Thread = 0; Thread < thread_count; Thread++)
+        {
+            std::ranges::move(
+                thread_global_shader_compilation_list[Thread],
+                std::back_inserter(shader_compilation_list));
+        }
+
+        return shader_compilation_list;
     };
+
     template <bool Verbose = false> int BuildShaders()
     {
         auto temporary_directory = HelperFunctions::GetInstallationDirectory() / "temp";
@@ -256,7 +333,17 @@ struct Build
             {
                 HelperFunctions::Log<LogTypes::Info>(
                     "Failed to create temporary directory with error: {}\n", error_code.message());
+                return -1;
             }
+        }
+
+        if (filesystem::exists(".jslang"))
+        {
+            std::error_code error_code;
+            filesystem::create_directory(".jslang", error_code);
+            HelperFunctions::Log<LogTypes::Error>(
+                "Failed to create .jslang directory with error: {}\n", error_code.message());
+            return -1;
         }
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>("Initializing TaskScheduler...\n");
@@ -274,7 +361,7 @@ struct Build
         HelperFunctions::Log<LogTypes::Info, true, Verbose>("TaskScheduler initialized.\n");
 
         filesystem::path current_working_directory = filesystem::current_path();
-        filesystem::path expected_file             = "jslangbuild.toml";
+        filesystem::path expected_file             = "jslang.toml";
 
         auto path_to_expected_file = current_working_directory / expected_file;
 
@@ -283,7 +370,7 @@ struct Build
             using namespace TerminalTextStyling;
 
             HelperFunctions::Log<LogTypes::Error>(
-                "{}jslangbuild.toml{} not found. Checked for path: {}\n",
+                "{}jslang.toml{} not found. Checked for path: {}\n",
                 Style::UNDERLINE,
                 Style::UNDERLINE_OFF,
                 path_to_expected_file.string());
@@ -307,21 +394,64 @@ struct Build
                 "corruption.");
         }
 
-        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-            "Searching for shaders in directory: {}\n", parsed_options->SearchFolders[0]);
-
-        auto shader_files = JSlang::DirectoryWalker::MultithreadedDirectoryWalker(
-            TaskScheduler, parsed_options->SearchFolders[0], {".slang"});
-
-        for (auto &PathToSlangShader : shader_files)
+        std::vector<filesystem::path> paths_to_shader_files;
+        for (const auto &folder_path : parsed_options->SearchFolders)
         {
             HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-                "Found shader file: {}\n", PathToSlangShader.string());
+                "Searching for shaders in directory: {}\n", folder_path.string());
+
+            std::ranges::move(
+                JSlang::DirectoryWalker::MultithreadedFileGlobber(
+                    TaskScheduler, folder_path, {".slang"}),
+                std::back_inserter(paths_to_shader_files));
+
+            if constexpr (Verbose)
+            {
+                continue;
+            }
+
+            for (auto &PathToSlangShader : paths_to_shader_files)
+            {
+                HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+                    "Found shader file: {}\n", PathToSlangShader.string());
+            }
+        }
+
+        if (paths_to_shader_files.size() == 0)
+        {
+            HelperFunctions::Log<LogTypes::Error>(
+                "Failed to find shader files. Exiting to avoid corruption.\n");
+            return -1;
         }
 
         HelperFunctions::Log<LogTypes::Success, true, Verbose>(
-            "Successfully found shaders and loaded their file paths onto memory. Proceeding with "
-            "next step...\n");
+            "Successfully found shaders ({} of them) and loaded their file paths onto memory. "
+            "Proceeding with "
+            "next step...\n",
+            paths_to_shader_files.size());
+
+        if (parsed_options->DoFileContentIntegrityChecks)
+        {
+            HelperFunctions::Log<LogTypes::Warn>(
+                "You have DoFileContentIntegrityChecks set to true. That feature is currently not "
+                "implemented. You can disable this warning by setting it to false, or commenting "
+                "it out.\n");
+        }
+
+        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+            "Figuring out which shader files to compile...\n");
+
+        auto shaders_compilation_list = _check_shader_filepaths_and_return_what_to_compile(
+            TaskScheduler, paths_to_shader_files, parsed_options->OutputFolder);
+
+        if constexpr (Verbose)
+        {
+            for (const auto &ShaderPath : shaders_compilation_list)
+            {
+                HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+                    "Compiling shader file: {}\n", ShaderPath.string());
+            }
+        }
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>(
             "Attempting to load companion dynamic libraries...\n");

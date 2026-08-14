@@ -1,7 +1,7 @@
 #pragma once
 #include "HelperFunctions.hpp"
 #include "Libraries/include/enkiTS/TaskScheduler.h"
-#include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <iterator>
@@ -14,8 +14,8 @@ namespace JSlang::DirectoryWalker
 {
 using LogTypes       = HelperFunctions::LogTypes;
 namespace filesystem = std::filesystem;
-
-std::vector<filesystem::path> MultithreadedDirectoryWalker(
+template <bool WhitelistCheck = true>
+std::vector<filesystem::path> MultithreadedFileGlobber(
     enki::TaskScheduler            &TaskScheduler,
     const filesystem::path         &SearchDirectory,
     const std::vector<std::string> &WhiteListedExtensions)
@@ -23,36 +23,32 @@ std::vector<filesystem::path> MultithreadedDirectoryWalker(
     auto                          thread_count = TaskScheduler.GetNumTaskThreads();
     std::vector<filesystem::path> file_path_output_buffer;
 
-    std::vector<filesystem::path> current_pass_path_buffer;
-    std::vector<filesystem::path> next_pass_path_buffer;
+    std::vector<filesystem::path> directories_to_check_in_current_pass;
+    std::vector<filesystem::path> directories_to_check_in_next_pass;
 
-    current_pass_path_buffer.push_back(SearchDirectory);
+    directories_to_check_in_current_pass.push_back(SearchDirectory);
 
-    auto AppendToFilePathOutputBuffer =
-        [&](const filesystem::path &Path, std::vector<filesystem::path> &AppendToBuffer)
+    auto check_if_file_is_whitelisted = [&](const filesystem::path &Path)
     {
-        if (WhiteListedExtensions.size() > 0)
+        if (WhiteListedExtensions.empty())
         {
-            for (const auto &Extension : WhiteListedExtensions)
-            {
-                if (Path.extension() != Extension)
-                {
-                    return;
-                }
-            }
+            return true;
         }
 
-        AppendToBuffer.push_back(Path);
+        return std::any_of(
+            WhiteListedExtensions.begin(),
+            WhiteListedExtensions.end(),
+            [&Path](const auto &Extension) { return Path.extension() == Extension; });
     };
 
-    while (!current_pass_path_buffer.empty())
+    while (!directories_to_check_in_current_pass.empty())
     {
         using ThreadGlobalPathStorage = std::vector<std::vector<filesystem::path>>;
         ThreadGlobalPathStorage thread_global_directory_output_buffer(thread_count);
         ThreadGlobalPathStorage thread_global_file_path_output_buffer(thread_count);
 
         enki::TaskSet task(
-            static_cast<uint32_t>(current_pass_path_buffer.size()),
+            static_cast<uint32_t>(directories_to_check_in_current_pass.size()),
             [&](enki::TaskSetPartition Range, uint32_t ThreadIndex) -> void
             {
                 auto &thread_local_directory_output_buffer =
@@ -64,15 +60,16 @@ std::vector<filesystem::path> MultithreadedDirectoryWalker(
                 {
                     std::error_code                error_code;
                     filesystem::directory_iterator iterator(
-                        current_pass_path_buffer[i],
+                        directories_to_check_in_current_pass[i],
                         filesystem::directory_options::skip_permission_denied,
                         error_code);
 
                     if (error_code)
                     {
-                        HelperFunctions::Log<LogTypes::Error>(
-                            "Whilst walking directory, ran into error: {}", error_code.message());
-                        return {};
+                        // HelperFunctions::Log<LogTypes::Error>(
+                        //     "Whilst walking directory, ran into error: {}",
+                        //     error_code.message());
+                        return;
                     }
 
                     for (const auto &entry : iterator)
@@ -84,9 +81,13 @@ std::vector<filesystem::path> MultithreadedDirectoryWalker(
                         }
                         else
                         {
+                            if constexpr (WhitelistCheck)
+                            {
+                                auto is_whitelisted = check_if_file_is_whitelisted(entry.path());
+                                if (!is_whitelisted) continue; // NOLINT
+                            }
 
-                            AppendToFilePathOutputBuffer(
-                                entry.path(), thread_local_file_path_output_buffer);
+                            thread_local_file_path_output_buffer.push_back(entry.path());
                         }
                     }
                 }
@@ -95,20 +96,18 @@ std::vector<filesystem::path> MultithreadedDirectoryWalker(
         TaskScheduler.AddTaskSetToPipe(&task);
         TaskScheduler.WaitforTask(&task);
 
-        next_pass_path_buffer.clear();
+        directories_to_check_in_next_pass.clear();
         for (uint32_t ThreadIndex = 0; ThreadIndex < thread_count; ThreadIndex++)
         {
-            next_pass_path_buffer.insert(
-                next_pass_path_buffer.end(),
-                std::make_move_iterator(thread_global_directory_output_buffer[ThreadIndex].begin()),
-                std::make_move_iterator(thread_global_directory_output_buffer[ThreadIndex].end()));
-            file_path_output_buffer.insert(
-                file_path_output_buffer.end(),
-                std::make_move_iterator(thread_global_file_path_output_buffer[ThreadIndex].begin()),
-                std::make_move_iterator(thread_global_file_path_output_buffer[ThreadIndex].end()));
+            std::ranges::move(
+                thread_global_directory_output_buffer[ThreadIndex],
+                std::back_inserter(directories_to_check_in_next_pass));
+            std::ranges::move(
+                thread_global_file_path_output_buffer[ThreadIndex],
+                std::back_inserter(file_path_output_buffer));
         }
 
-        std::swap(current_pass_path_buffer, next_pass_path_buffer);
+        std::swap(directories_to_check_in_current_pass, directories_to_check_in_next_pass);
     }
 
     return file_path_output_buffer;

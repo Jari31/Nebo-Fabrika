@@ -1,7 +1,10 @@
 words = [
     "CLI",
+    "GPGPU",
+    "Globber",
     "NOLINT",
     "Shaders",
+    "jslang",
     "jslangbuild",
     "shader",
     "xrepo",
