@@ -9,6 +9,7 @@ CompileFlags:
     - -std=c++23
     - -Wall
     - -Wno-c23-extensions
+    - "-D__clangd__"
   Remove: [-Wclean-room]
 
 If:
@@ -32,6 +33,7 @@ Diagnostics:
     CheckOptions:
       readability-identifier-naming.ConstexprVariableCase: UpperCase
       readability-identifier-naming.MacroDefinitionCase: UpperCase
+      readability-function-cognitive-complexity.Threshold: 32
 
       readability-identifier-naming.ParameterCase: CamelCase
 
@@ -48,7 +50,7 @@ Index:
   StandardLibrary: Yes
 
 Completion:
-  AllScopes: Yes
+  AllScopes: No
 
 Hover:
   ShowAKA: Yes

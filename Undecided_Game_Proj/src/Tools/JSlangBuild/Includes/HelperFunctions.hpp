@@ -11,6 +11,10 @@
 #include <string_view>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace JSlang::HelperFunctions
 {
 
@@ -67,7 +71,7 @@ void Log(std::format_string<ArgumentsType...> FormatString, ArgumentsType &&...A
     }
 }
 
-constexpr std::string_view GetDLLExtensionForTargetPlatform()
+constexpr std::string GetDLLExtensionForTargetPlatform()
 {
 #if defined(__APPLE__)
     return ".dylib";
@@ -94,7 +98,7 @@ std::filesystem::path GetInstallationDirectory()
     wai_getExecutablePath(
         installation_path_buffer.data(), string_buffer_length, &directory_name_length);
 
-    installation_path_buffer[string_buffer_length] = '\0';
+    installation_path_buffer[directory_name_length] = '\0';
 
     return {installation_path_buffer.data()};
 }

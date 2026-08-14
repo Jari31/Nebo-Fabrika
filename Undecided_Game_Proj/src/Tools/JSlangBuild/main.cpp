@@ -1,9 +1,10 @@
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <ios>
 #include <span>
 #include <string>
 #include <string_view>
@@ -19,8 +20,10 @@
 #include "Libraries/include/ankerl/unordered_dense.h"
 #include "Libraries/include/dylib.hpp"
 #include "Libraries/include/enkiTS/TaskScheduler.h"
-#include "Libraries/include/fmt/os.h"
-#include "Libraries/include/whereami.h"
+#include "Libraries/include/slang.h"
+
+#include "Includes/DirectoryWalker.hpp"
+#include "Libraries/include/slang-com-ptr.h"
 #include <Libraries/include/toml++/toml.hpp>
 
 #define EXTERNAL_CACHE_DIRECTORY "../../cache/"
@@ -45,7 +48,7 @@ enum class Errors : uint8_t
     FailedToCloseCompanionDLLFile,
 };
 
-using DynamicLibraryMap = ankerl::unordered_dense::map<std::string_view, std::span<const uint8_t>>;
+using DynamicLibraryMap = ankerl::unordered_dense::map<std::string, std::span<const uint8_t>>;
 
 template <bool Verbose = false>
 std::expected<bool, Errors> CacheCompanionDynamicLibraries(
@@ -54,51 +57,44 @@ std::expected<bool, Errors> CacheCompanionDynamicLibraries(
 {
     using LogTypes = HelperFunctions::LogTypes;
 
-    for (const auto &[dylib_name, dylib_bytes] : LoadDyLibFromFilePaths)
+    for (const auto &[dylib_name, dynamic_library_bytes] : LoadDyLibFromFilePaths)
     {
-        HelperFunctions::Log<LogTypes::Warn, true, Verbose>(
-            "Loading companion DLL: {}\n", dylib_name);
+        filesystem::path dylib_path = PathToCacheDirectory / dylib_name;
 
-        filesystem::path dll_path = PathToCacheDirectory / dylib_name;
-
-        if (!filesystem::exists(dll_path))
+        if (!filesystem::exists(dylib_path))
         {
             HelperFunctions::Log<LogTypes::Warn, true, Verbose>(
                 "Companion dynamic library file not found: {}. Emitting from memory...\n",
                 dylib_name);
 
-            std::error_code error_code;
+            std::ofstream dylib_file(dylib_path, std::ios::binary);
 
-            auto dylib_file = fmt::output_file(dll_path.string().c_str(), error_code);
-
-            if (error_code)
+            if (!dylib_file)
             {
                 HelperFunctions::Log<LogTypes::Error>(
-                    "Failed to open companion dynamic library file: {}\n", error_code.message());
+                    "Failed to open companion dynamic library file. Maybe there isn't enough "
+                    "space? Maybe you forgot to give the program proper permissions?\n");
                 return std::unexpected(Errors::FailedToOpenCompanionDLLFile);
             }
 
-            std::string_view byte_view(
-                reinterpret_cast<const char *>(dylib_bytes.data()), // NOLINT
-                sizeof(dylib_bytes));                               // NOLINT
+            dylib_file.write(
+                reinterpret_cast<const char *>(dynamic_library_bytes.data()),
+                dynamic_library_bytes.size()); // NOLINT
 
-            dylib_file.print("{}", byte_view,
-                             error_code); // NOLINT
-
-            if (error_code)
+            if (!dylib_file.is_open())
             {
                 HelperFunctions::Log<LogTypes::Error>(
-                    "Failed to write to companion dynamic library file: {}\n",
-                    error_code.message());
+                    "Failed to write to companion dynamic library file. Maybe there isn't enough "
+                    "space? Maybe the program doesn't have proper permissions?\n");
                 return std::unexpected(Errors::FailedToWriteCompanionDLLFile);
             }
 
             dylib_file.close();
 
-            if (error_code)
+            if (dylib_file.bad())
             {
                 HelperFunctions::Log<LogTypes::Error>(
-                    "Failed to close companion dynamic library file: {}\n", error_code.message());
+                    "Failed to close companion dynamic library file.\n");
                 return std::unexpected(Errors::FailedToCloseCompanionDLLFile);
             }
         }
@@ -107,24 +103,26 @@ std::expected<bool, Errors> CacheCompanionDynamicLibraries(
     return true;
 }
 
-inline std::expected<dylib::library, Errors> LoadDLL(const filesystem::path &PathToDynamicLibrary)
+inline std::expected<dylib::library, Errors>
+LoadDynamicLibrary(const filesystem::path &PathToDynamicLibrary)
 {
     using LogTypes = HelperFunctions::LogTypes;
+    try
+    {
+        dylib::library dynamic_library(
+            PathToDynamicLibrary.string(), dylib::decorations::os_default());
 
-    if (!filesystem::exists(PathToDynamicLibrary))
+        return dynamic_library;
+    }
+    catch (const dylib::load_error &Error)
     {
         HelperFunctions::Log<LogTypes::Error>(
-            "Attempted to create companion DLL, and supposedly succeeded, but "
-            "failed to "
-            "open it (maybe it doesn't "
-            "exist?): {}\n",
-            PathToDynamicLibrary.string());
+            "Failed to load slang-compiler dynamic library (maybe the program doesn't have "
+            "sufficient permissions? Maybe there isn't enough RAM? Maybe the dynamic library "
+            "doesn't exist?):  {}\n",
+            Error.what());
         return std::unexpected(Errors::FailedToOpenCompanionDLLFile);
     }
-
-    dylib::library DynamicLibrary(PathToDynamicLibrary.c_str());
-
-    return DynamicLibrary;
 }
 
 }; // namespace DynamicLibraryLoader
@@ -149,25 +147,46 @@ inline std::expected<dylib::library, Errors> LoadDLL(const filesystem::path &Pat
 #define PATH_TO_SLANG_RUN_TIME_DYNAMIC_LIBRARY "../../cache/Libraries/lib/slang-rt.dll"
 #endif
 
+#ifdef __clangd__
+// Feed clangd a single dummy byte so it doesn't try to parse 100MB of DLLs
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_COMPILER[] = {0x00};
+#else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_COMPILER[] = {
 #embed PATH_TO_SLANG_COMPILER_DYNAMIC_LIBRARY // NOLINT
 };
+#endif
 
+#ifdef __clangd__
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GLSL_MODULE[] = {0x00};
+#else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GLSL_MODULE[] = {
 #embed PATH_TO_SLANG_GLSL_MODULE_DYNAMIC_LIBRARY // NOLINT
 };
+#endif
 
+#ifdef __clangd__
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GL_SLANG[] = {0x00};
+#else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GL_SLANG[] = {
-#embed PATH_TO_SLANG_GL_SLANG_DYNAMIC_LIBRARY
+#embed PATH_TO_SLANG_GL_SLANG_DYNAMIC_LIBRARY // NOLINT
 };
+#endif
 
+#ifdef __clangd__
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_LLVM[] = {0x00};
+#else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_LLVM[] = {
 #embed PATH_TO_SLANG_LLVM_DYNAMIC_LIBRARY // NOLINT
 };
+#endif
 
+#ifdef __clangd__
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_RUN_TIME[] = {0x00};
+#else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_RUN_TIME[] = {
-#embed PATH_TO_SLANG_RUN_TIME_DYNAMIC_LIBRARY
+#embed PATH_TO_SLANG_RUN_TIME_DYNAMIC_LIBRARY // NOLINT
 };
+#endif
 
 struct Build
 {
@@ -225,6 +244,21 @@ struct Build
     };
     template <bool Verbose = false> int BuildShaders()
     {
+        auto temporary_directory = HelperFunctions::GetInstallationDirectory() / "temp";
+        if (!filesystem::exists(temporary_directory))
+        {
+            HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+                "Failed to find temporary directory. Creating a new one...\n");
+            std::error_code error_code;
+            filesystem::create_directories(temporary_directory, error_code);
+
+            if (error_code)
+            {
+                HelperFunctions::Log<LogTypes::Info>(
+                    "Failed to create temporary directory with error: {}\n", error_code.message());
+            }
+        }
+
         HelperFunctions::Log<LogTypes::Info, true, Verbose>("Initializing TaskScheduler...\n");
 
         if (ObjectCLIOptions.ThreadCount == 0)
@@ -264,18 +298,91 @@ struct Build
             return -1;
         };
 
-        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-            "Attempting to load companion dynamic libraries...");
+        HelperFunctions::Log<LogTypes::Info, true, Verbose>("Searching for Slang shaders...\n");
 
-        DynamicLibraryLoader::DynamicLibraryMap EmbeddedDynamicLibrary = {
-            {"slang-compiler", std::span{DYNAMIC_LIBRARY_SLANG_COMPILER}}
-        };
+        if (parsed_options->SearchFolders.empty())
+        {
+            HelperFunctions::Log<LogTypes::Error>(
+                "No search path provided ([Build] SearchFolders). Exiting to avoid file "
+                "corruption.");
+        }
+
+        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+            "Searching for shaders in directory: {}\n", parsed_options->SearchFolders[0]);
+
+        auto shader_files = JSlang::DirectoryWalker::MultithreadedDirectoryWalker(
+            TaskScheduler, parsed_options->SearchFolders[0], {".slang"});
+
+        for (auto &PathToSlangShader : shader_files)
+        {
+            HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+                "Found shader file: {}\n", PathToSlangShader.string());
+        }
 
         HelperFunctions::Log<LogTypes::Success, true, Verbose>(
-            "Loaded companion dynamic libraries.");
+            "Successfully found shaders and loaded their file paths onto memory. Proceeding with "
+            "next step...\n");
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-            "Attempting to load the Slang compiler...");
+            "Attempting to load companion dynamic libraries...\n");
+
+        auto dylib_file_extension = HelperFunctions::GetDLLExtensionForTargetPlatform();
+
+        DynamicLibraryLoader::DynamicLibraryMap EmbeddedDynamicLibraries = {
+            {"slang-compiler" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_COMPILER}},
+            {"slang-glsl" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_GLSL_MODULE}},
+            {"slang-glslang" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_GL_SLANG}},
+            {"slang-llvm" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_LLVM}},
+            {"slang-rt" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_RUN_TIME}}};
+
+        auto dylib_caching_result = DynamicLibraryLoader::CacheCompanionDynamicLibraries<Verbose>(
+            temporary_directory, EmbeddedDynamicLibraries);
+
+        if (!dylib_caching_result)
+        {
+            HelperFunctions::Log<LogTypes::Error>("Failed to cache dynamic library.\n");
+            return -1;
+        }
+
+        auto slang_compiler_dylib =
+            DynamicLibraryLoader::LoadDynamicLibrary(temporary_directory / "slang-compiler");
+
+        if (!slang_compiler_dylib)
+        {
+            return -1;
+        }
+
+        HelperFunctions::Log<LogTypes::Success, true, Verbose>(
+            "Loaded companion dynamic libraries.\n");
+
+        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+            "Attempting to load the Slang compiler...\n");
+
+        typedef SlangResult (*SlangCreateGlobalSessionFunc)( // NOLINT
+            SlangInt ApiVersion, slang::IGlobalSession **OutGlobalSession);
+
+        auto CreateSlangGlobalSessionFunction =
+            slang_compiler_dylib->get_function<SlangResult(SlangInt, slang::IGlobalSession **)>(
+                "slang_createGlobalSession");
+
+        if (!CreateSlangGlobalSessionFunction)
+        {
+            HelperFunctions::Log<LogTypes::Error>("Failed to get slang_createGlobalSession.\n");
+            return -1;
+        }
+
+        Slang::ComPtr<slang::IGlobalSession> GlobalSession;
+        SlangResult                          slang_global_session_creation_result =
+            CreateSlangGlobalSessionFunction(SLANG_API_VERSION, GlobalSession.writeRef());
+
+        if (SLANG_FAILED(slang_global_session_creation_result))
+        {
+            HelperFunctions::Log<LogTypes::Error>("Failed to create Slang global session.\n");
+        }
+
+        HelperFunctions::Log<LogTypes::Success, true, Verbose>(
+            "Successfully loaded Slang compiler onto memory. Proceeding to compile Slang "
+            "shaders...\n");
 
         return 0;
     };

@@ -1,4 +1,4 @@
-add_requires("toml++ master", "cli11 v2.7.2", "xxhash v0.8.3", "unordered_dense v4.9.0", "enkits v1.12", "dylib v3.0.1", "fmt 12.2.0", "whereami 2024.08.26")
+add_requires("toml++ master", "cli11 v2.7.2", "xxhash v0.8.3", "unordered_dense v4.9.0", "enkits v1.12", "dylib v3.0.1", "whereami 2024.08.26")
 add_requires("slang 2026.14.1", { configs = { binary = true } })
 add_requires("zig v0.16", { verify = false })
 
@@ -134,7 +134,6 @@ target("jslang")
     add_packages("enkits")
     add_packages("unordered_dense")
     add_packages("dylib")
-    add_packages("fmt")
     add_packages("whereami")
     add_packages("slang")
 

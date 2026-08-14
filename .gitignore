@@ -30,6 +30,7 @@ Undecided_Game_Proj/Obsidian Files/Code Documentation/Procedural Environment Gen
 *.export
 *.lib
 *.ilk
+diff.txt
 *.so
 /Undecided_Game_Proj/RustSetup/target/flycheck0
 /Undecided_Game_Proj/RustSetup/target/flycheck0

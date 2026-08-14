@@ -1,1 +1,3 @@
-SearchFolders = ["PCG"]
+[Build]
+SearchFolders = ["InternalLibraries"]
+OutputFolder = ["../GDProject/bin/build"]

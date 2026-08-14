@@ -3,6 +3,7 @@
 #include <format>
 #include <functional>
 #include <iterator>
+#include <utility>
 #define TOML_EXCEPTIONS 0
 
 #include "FileIO.hpp"
@@ -28,7 +29,8 @@ enum class Errors : uint8_t
 
 struct ParsedOptions
 {
-    std::vector<std::string> Paths;
+    std::vector<std::string> SearchFolders;
+    filesystem::path         OutputDirectory;
 };
 
 inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path &BuildFilePath)
@@ -114,18 +116,20 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
     auto          table = std::move(parse_result).table();
     ParsedOptions parsed_options;
 
-    if (auto *file_paths = table["SlangFilePaths"]["tags"].as_array())
+    if (auto *file_paths = table["Build"]["SearchFolders"].as_array())
     {
-        parsed_options.Paths.reserve(file_paths->size());
+        parsed_options.SearchFolders.reserve(file_paths->size());
 
         for (auto &&element : *file_paths)
         {
             if (auto path = element.value<std::string>())
             {
-                parsed_options.Paths.push_back(*path);
+                parsed_options.SearchFolders.push_back(*path);
             }
         }
     }
+
+    parsed_options.OutputDirectory = table["Build"]["OutputFolder"].value_or("build");
 
     return parsed_options;
 }

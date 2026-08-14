@@ -84,27 +84,41 @@ pub fn build(Build: *std.Build) void {
 
         executable_module.addCMacro(
             "PATH_TO_SLANG_COMPILER_DYNAMIC_LIBRARY",
-            Build.fmt("{}slang-compiler{}", .{ library_directory_location, dynamic_library_extension }),
+            Build.fmt("\"{s}slang-compiler{s}\"", .{ library_directory_location, dynamic_library_extension }),
         );
         executable_module.addCMacro(
             "PATH_TO_SLANG_GLSL_MODULE_DYNAMIC_LIBRARY",
-            Build.fmt("{}slang-glsl-module{}", .{ library_directory_location, dynamic_library_extension }),
+            Build.fmt("\"{s}slang-glsl-module{s}\"", .{ library_directory_location, dynamic_library_extension }),
         );
         executable_module.addCMacro(
             "PATH_TO_SLANG_GL_SLANG_DYNAMIC_LIBRARY",
-            Build.fmt("{}slang-glslang{}", .{ library_directory_location, dynamic_library_extension }),
+            Build.fmt("\"{s}slang-glslang{s}\"", .{ library_directory_location, dynamic_library_extension }),
         );
         executable_module.addCMacro(
             "PATH_TO_SLANG_LLVM_DYNAMIC_LIBRARY",
-            Build.fmt("{}slang-llvm{}", .{ library_directory_location, dynamic_library_extension }),
+            Build.fmt("\"{s}slang-llvm{s}\"", .{ library_directory_location, dynamic_library_extension }),
         );
         executable_module.addCMacro(
             "PATH_TO_SLANG_RUN_TIME_DYNAMIC_LIBRARY",
-            Build.fmt("{}slang-rt{}", .{ library_directory_location, dynamic_library_extension }),
+            Build.fmt("\"{s}slang-rt{s}\"", .{ library_directory_location, dynamic_library_extension }),
         );
     }
 
+    const exclude_library_files_with_name = [_][]const u8{"slang"};
+
     for (library_file_paths.items) |Path| {
+        var contains_black_listed_name = false;
+
+        inline for (exclude_library_files_with_name) |Name| {
+            if (std.mem.containsAtLeast(u8, Path.basename(Build, null), 1, Name)) {
+                contains_black_listed_name = true;
+            }
+        }
+        if (contains_black_listed_name) {
+            // std.debug.print("Excluded {s}.\n", .{Path.basename(Build, null)});
+            continue;
+        }
+
         executable_module.addObjectFile(Path);
     }
 
@@ -144,6 +158,7 @@ pub fn build(Build: *std.Build) void {
         executable.root_module.linkSystemLibrary("kernel32", .{});
         executable.root_module.linkSystemLibrary("user32", .{});
         executable.root_module.linkSystemLibrary("ntdll", .{});
+        executable.root_module.linkSystemLibrary("dbghelp", .{});
 
         executable.linker_allow_undefined_version = true;
         executable.subsystem = .Console;

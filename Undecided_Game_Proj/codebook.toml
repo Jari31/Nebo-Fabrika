@@ -3,5 +3,6 @@ words = [
     "NOLINT",
     "Shaders",
     "jslangbuild",
+    "shader",
     "xrepo",
 ]
