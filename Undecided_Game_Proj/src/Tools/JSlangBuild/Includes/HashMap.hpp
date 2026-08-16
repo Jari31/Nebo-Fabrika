@@ -4,11 +4,13 @@
 #include "Libraries/include/ankerl/unordered_dense.h"
 #include "Libraries/include/xxhash.h"
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <ios>
+#include <string>
 #include <string_view>
 #include <system_error>
 
@@ -65,7 +67,7 @@ void SaveHashMapToDisk(const filesystem::path &FilePath, const HashMap &Map)
     if (hash_map_file.good())
     {
         std::error_code error_code;
-        std::filesystem::rename(temporary_name, FilePath.filename(), error_code);
+        std::filesystem::rename(temporary_name, FilePath, error_code);
         if (error_code)
         {
             HelperFunctions::Log<LogTypes::Error>(
@@ -103,6 +105,20 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
     uint64_t hash_map_size = hash_map_file.tellg();
     hash_map_file.seekg(0, std::ios::beg);
 
+    constexpr size_t entry_size = sizeof(uint64_t) + sizeof(uint64_t); // 16 bytes
+
+    if (hash_map_size % entry_size != 0)
+    {
+        HelperFunctions::Log<LogTypes::Error>(
+            "Corrupted hashmap file {}: file size ({}) is not a multiple of entry size ({}).\n",
+            FilePath.string(),
+            hash_map_size,
+            entry_size);
+        return {};
+    }
+
+    uint64_t number_of_entries = hash_map_size / entry_size;
+
     HashMap map;
 
     try
@@ -118,19 +134,32 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
         return {};
     }
 
-    for (uint64_t i = 0; i < hash_map_size; ++i)
+    for (uint64_t i = 0; i < number_of_entries; i++)
     {
         uint64_t key, value; // NOLINT
 
         hash_map_file.read(reinterpret_cast<char *>(&key), sizeof(key));
         if (!hash_map_file)
         {
-            std::error_code error_code(errno, std::generic_category());
+            std::string reason = "Unknown stream error";
+            if (hash_map_file.eof())
+            {
+                reason = "Unexpected End-of-File (file truncated or size mismatch)";
+            }
+            else if (hash_map_file.bad())
+            {
+                reason = "Fatal I/O error (hardware/system failure)";
+            }
+            else if (hash_map_file.fail())
+            {
+                reason = "Logical I/O error (formatting/type conversion mismatch)";
+            }
+
             HelperFunctions::Log<LogTypes::Error>(
-                "Failed to read key at index {} from hashmap file {}. Error: {}\n",
+                "Failed to read key at index {} from hashmap file {}. Reason: {}\n",
                 i,
                 FilePath.string(),
-                error_code.message());
+                reason);
             return {};
         }
 

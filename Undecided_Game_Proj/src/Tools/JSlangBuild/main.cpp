@@ -11,7 +11,6 @@
 #include <ios>
 #include <iostream>
 #include <iterator>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -210,7 +209,7 @@ struct Build
     using FuncSignatureCreateGlobalSession = SlangResult(SlangInt, slang::IGlobalSession **);
     FuncSignatureCreateGlobalSession *SlangCreateGlobalSession = nullptr;
 
-    using FuncSignatureCreateBlob            = SlangResult(const void *, size_t, slang::IBlob **);
+    using FuncSignatureCreateBlob            = slang::IBlob *(const void *, size_t);
     FuncSignatureCreateBlob *SlangCreateBlob = nullptr;
 
     enum class Error : uint8_t
@@ -226,11 +225,16 @@ struct Build
 
     struct ThreadLocalBuildContext
     {
+        using TypeIRBlobStorage =
+            ankerl::unordered_dense::map<filesystem::path, std::vector<uint8_t>>;
+
         Slang::ComPtr<slang::IGlobalSession> GlobalSession;
         Slang::ComPtr<slang::ISession>       Session;
         HashMap::HashMap                    *ThreadLocalHashMap = nullptr;
         HashMap::HashMap                    *ThreadGlobalHashMap =
             nullptr; // WARN: unsafe to write to; safe to read from
+
+        TypeIRBlobStorage *ThreadLocalIRBlobBuffer = nullptr;
     };
 
     void CreateSubCommand(CLI::App &ParentApp)
@@ -287,33 +291,36 @@ struct Build
         return std::format(".jslang/{}.slang-module", IRFileName.stem().string());
     };
 
-    static bool save_ir_blob_file(
-        slang::IBlob           *IRBlob,
-        const filesystem::path &FileName,
-        std::string            &PrintBuffer)
+    /// WARN: Not thread safe.
+    static bool
+    save_ir_blob_file(const std::vector<uint8_t> &IRSource, const filesystem::path &FileName)
     {
+        if (IRSource.empty())
+        {
+            HelperFunctions::Log<LogTypes::Error>(
+                "IR source is empty. Exiting to avoid corruption.\n");
+            return false;
+        }
+
         std::ofstream ir_file(get_formatted_ir_file_path(FileName), std::ios::binary);
 
         if (!ir_file)
         {
             std::error_code error_code(errno, std::generic_category());
-            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
-                PrintBuffer,
+            HelperFunctions::Log<LogTypes::Error>(
                 "Failed to create a slang module IR blob file for {}. Error: {}\n",
                 FileName.string(),
                 error_code.message());
             return false;
         }
 
-        ir_file.write(
-            reinterpret_cast<const char *>(IRBlob->getBufferPointer()),
-            IRBlob->getBufferSize()); // NOLINT
+        ir_file.write(reinterpret_cast<const char *>(IRSource.data()),
+                      IRSource.size()); // NOLINT
 
         if (!ir_file)
         {
             std::error_code error_code(errno, std::generic_category());
-            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
-                PrintBuffer,
+            HelperFunctions::Log<LogTypes::Error>(
                 "Failed to write IR blob data to file {}. Error: {}\n",
                 FileName.string(),
                 error_code.message());
@@ -330,7 +337,8 @@ struct Build
         const filesystem::path &FileName,
         std::string            &PrintBuffer) const
     {
-        std::ifstream ir_file(get_formatted_ir_file_path(FileName), std::ios::binary);
+        std::ifstream ir_file(
+            get_formatted_ir_file_path(FileName), std::ios::binary | std::ios::ate);
 
         if (!ir_file)
         {
@@ -344,6 +352,7 @@ struct Build
         }
 
         uint64_t ir_file_size = ir_file.tellg();
+
         ir_file.seekg(0, std::ios::beg);
 
         std::vector<char> ir_blob_data(ir_file_size);
@@ -363,13 +372,12 @@ struct Build
         ir_file.close();
 
         Slang::ComPtr<slang::IBlob> ir_blob;
-        SlangResult                 ir_blob_creation_result =
-            SlangCreateBlob(ir_blob_data.data(), ir_blob_data.size(), ir_blob.writeRef());
+        ir_blob = SlangCreateBlob(ir_blob_data.data(), ir_blob_data.size());
 
-        if (SLANG_FAILED(ir_blob_creation_result) || (ir_blob == nullptr))
+        if (ir_blob == nullptr)
         {
             HelperFunctions::ThreadSafeLog<LogTypes::Error>(
-                PrintBuffer, "Failed to create IR blob for module {}.", FileName.stem().string());
+                PrintBuffer, "Failed to create IR blob for module {}.\n", FileName.stem().string());
             return false;
         }
 
@@ -381,12 +389,17 @@ struct Build
             ir_blob,
             diagnostic_blob.writeRef());
 
-        if (!ir_module) // NOLINT
+        if (!ir_module || diagnostic_blob) // NOLINT
         {
             if (diagnostic_blob) // NOLINT
             {
                 HelperFunctions::ThreadSafeLog<LogTypes::Error>(
                     PrintBuffer, "Failed to load module {} from IR blob.\n", FileName.string());
+            }
+            else
+            {
+                HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                    PrintBuffer, "Failed to load module {}.\n", FileName.stem().string());
             }
             return false;
         }
@@ -394,7 +407,7 @@ struct Build
         return true;
     }
 
-    bool compile_ir_module(
+    static bool compile_ir_module(
         ThreadLocalBuildContext &Context,
         const char              *DependencyFilePath,
         std::string             &PrintBuffer)
@@ -404,7 +417,7 @@ struct Build
 
         auto filesystem_dependency_path = filesystem::path(DependencyFilePath);
 
-        if (!module) // NOLINT
+        if (!module || diagnostic_blob) // NOLINT
         {
             if (diagnostic_blob) // NOLINT
             {
@@ -418,35 +431,40 @@ struct Build
             return false;
         }
 
-        compile_module_dependencies(Context, module, PrintBuffer);
-
         Slang::ComPtr<slang::IBlob> ir_blob;
         module->serialize(ir_blob.writeRef());
-
-        if (!save_ir_blob_file(ir_blob, filesystem_dependency_path.filename(), PrintBuffer))
+        if (ir_blob == nullptr)
         {
             HelperFunctions::ThreadSafeLog<LogTypes::Error>(
-                PrintBuffer,
-                "Failed to save IR file for module: {}\n",
-                filesystem_dependency_path.string());
+                PrintBuffer, "Failed to serialize IR blob.\n");
+            return false;
         }
+
+        const auto *ir_blob_source = static_cast<const uint8_t *>(ir_blob->getBufferPointer());
+        size_t      ir_blob_size   = ir_blob->getBufferSize();
+
+        auto ir_blob_buffer = std::vector<uint8_t>(ir_blob_source, ir_blob_source + ir_blob_size);
 
         auto file_path_hash = HashMap::HashString(filesystem_dependency_path.string());
 
         auto file_last_edit_time =
             HelperFunctions::GetFileLastWriteTimeAsType<uint64_t>(filesystem_dependency_path);
 
-        Context.ThreadLocalHashMap->insert_or_assign(file_path_hash, file_last_edit_time);
+        Context.ThreadLocalHashMap->try_emplace(file_path_hash, file_last_edit_time);
+        Context.ThreadLocalIRBlobBuffer->try_emplace(
+            filesystem_dependency_path, std::move(ir_blob_buffer));
         return true;
     }
 
     bool compile_module_dependencies(
         ThreadLocalBuildContext &Context,
         slang::IModule          *Module,
-        std::string             &PrintBuffer)
+        std::string             &PrintBuffer) const
     {
         if (Module == nullptr)
         {
+            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                PrintBuffer, "Provided module is null; unusable.\n");
             return false;
         }
 
@@ -459,7 +477,9 @@ struct Build
 
         bool compiled_all_dependencies = false;
 
-        for (SlangInt32 i = 0; i < dependency_count; i++)
+        for (SlangInt32 i = 1; i < dependency_count;
+             i++) // dependency 0 is the base shader (i.e., the root file in the DAG that's
+                  // importing all this)
         {
             const auto *dependency_file_path = Module->getDependencyFilePath(i);
 
@@ -467,10 +487,15 @@ struct Build
             {
                 compiled_all_dependencies =
                     compile_ir_module(Context, dependency_file_path, PrintBuffer);
+                if (!compiled_all_dependencies)
+                {
+                    HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                        PrintBuffer,
+                        "Failed to compile dependency module {}\n",
+                        dependency_file_path);
+                }
                 return;
             };
-
-            HelperFunctions::Log<LogTypes::Error>("Got here!\n");
 
             if (!dependency_file_path) // NOLINT
             {
@@ -531,6 +556,10 @@ struct Build
             {
                 compile_module_to_ir();
             }
+            else
+            {
+                compiled_all_dependencies = true;
+            }
 
             if (!compiled_all_dependencies)
             {
@@ -546,11 +575,12 @@ struct Build
         std::vector<std::string>                              &SearchPaths,
         std::vector<filesystem::path>                         &ShaderFilePathsToCheck,
         std::vector<Parser::ParsedOptions::TargetDescription> &TargetDescriptions,
-        const filesystem::path                                &OutputFolder)
+        const filesystem::path                                &OutputFolder) const
     {
-        HashMap::HashMap dependency_hash_map;
+        HashMap::HashMap                           dependency_hash_map;
+        ThreadLocalBuildContext::TypeIRBlobStorage dependency_ir_blobs;
 
-        if (filesystem::exists(".jslang/build_manifest.bin"))
+        if (filesystem::exists(".jslang/dependency_hash_map.bin"))
         {
             dependency_hash_map = HashMap::LoadHashMapFromDisk(".jslang/dependency_hash_map.bin");
         }
@@ -562,6 +592,9 @@ struct Build
 
         std::vector<HashMap::HashMap> thread_global_hash_map_buffer;
         thread_global_hash_map_buffer.resize(thread_count);
+
+        std::vector<ThreadLocalBuildContext::TypeIRBlobStorage> thread_global_ir_blob_buffer;
+        thread_global_ir_blob_buffer.resize(thread_count);
 
         auto parse_target_format = [&](std::string &Format) -> SlangCompileTarget
         {
@@ -594,12 +627,12 @@ struct Build
             ShaderFilePathsToCheck.size(),
             [&](enki::TaskSetPartition Range, uint32_t ThreadIndex) -> void
             {
-                auto &thread_local_print_buffer    = thread_global_print_buffer[ThreadIndex];
-                auto &thread_local_hash_map_buffer = thread_global_hash_map_buffer[ThreadIndex];
+                auto &thread_local_print_buffer = thread_global_print_buffer[ThreadIndex];
 
                 ThreadLocalBuildContext context;
-                context.ThreadGlobalHashMap = &dependency_hash_map;
-                context.ThreadLocalHashMap  = &thread_local_hash_map_buffer;
+                context.ThreadGlobalHashMap     = &dependency_hash_map;
+                context.ThreadLocalHashMap      = &thread_global_hash_map_buffer[ThreadIndex];
+                context.ThreadLocalIRBlobBuffer = &thread_global_ir_blob_buffer[ThreadIndex];
 
                 SlangResult slang_global_session_creation_result =
                     SlangCreateGlobalSession(SLANG_API_VERSION, context.GlobalSession.writeRef());
@@ -678,16 +711,17 @@ struct Build
                         continue;
                     }
 
-                    auto *module_layout = module->getLayout();
+                    // auto *module_layout = module->getLayout();
 
-                    if (!module_layout || module_layout->getEntryPointCount() == 0)
+                    if (module->getDefinedEntryPointCount() == 0)
                     {
-                        HelperFunctions::Log<LogTypes::Error>(
-                            "Got here! Thread calling this: {}\n", ThreadIndex);
                         continue;
                     }
 
-                    if (!compile_module_dependencies(context, module, thread_local_print_buffer))
+                    auto module_compilation_result =
+                        compile_module_dependencies(context, module, thread_local_print_buffer);
+
+                    if (!module_compilation_result)
                     {
                         HelperFunctions::ThreadSafeLog<LogTypes::Error>(
                             thread_local_print_buffer,
@@ -708,21 +742,45 @@ struct Build
             }
         }
 
-        size_t total_hash_map_size = dependency_hash_map.size();
-        for (const auto &HashMap : thread_global_hash_map_buffer)
+        auto merge_into = [](auto &DestinationBuffer, auto &SourceBuffers, auto &&CallbackLambda)
         {
-            total_hash_map_size += HashMap.size();
-        }
-        dependency_hash_map.reserve(total_hash_map_size);
-
-        for (auto &HashMap : thread_global_hash_map_buffer)
-        {
-
-            for (auto &&[Key, Value] : HashMap)
+            size_t total_size_of_destination_buffer = DestinationBuffer.size();
+            for (const auto &Buffer : SourceBuffers)
             {
-                dependency_hash_map.insert_or_assign(Key, Value);
+                total_size_of_destination_buffer += Buffer.size();
             }
+            DestinationBuffer.reserve(total_size_of_destination_buffer);
+
+            for (const auto &Buffer : SourceBuffers)
+            {
+                for (auto &&[Key, Value] : Buffer)
+                {
+                    CallbackLambda(
+                        DestinationBuffer,
+                        std::forward<decltype(Key)>(Key),
+                        std::forward<decltype(Value)>(Value));
+                }
+            }
+        };
+
+        merge_into(
+            dependency_ir_blobs,
+            thread_global_ir_blob_buffer,
+            [](auto &DestinationBuffer, auto &Key, auto &Value)
+            { DestinationBuffer.try_emplace(Key, Value); });
+
+        for (auto &&[FilePath, IRSource] : dependency_ir_blobs)
+        {
+            save_ir_blob_file(IRSource, FilePath.filename());
         }
+
+        merge_into(
+            dependency_hash_map,
+            thread_global_hash_map_buffer,
+            [](auto &DestinationBuffer, auto &Key, auto &Value)
+            { DestinationBuffer.insert_or_assign(Key, Value); });
+
+        HashMap::SaveHashMapToDisk(".jslang/dependency_hash_map.bin", dependency_hash_map);
 
         return 0;
     };
