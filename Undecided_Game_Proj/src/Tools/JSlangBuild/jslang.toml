@@ -1,5 +1,5 @@
 [Build]
-SearchFolders = ["../../InternalLibraries/MathLibraries/Noise", "../../InternalLibraries/MathLibraries/Vectors"]
+SearchFolders = ["../../InternalLibraries/MathLibraries/Noise", "../../InternalLibraries/MathLibraries/Vectors", "../../PCG"]
 OutputFolder = "../../../GDProject/bin/Build"
 DoFileContentIntegrityChecks = false
 MacroDefines = ["SOMETHING", "0"] # To apply to all targets

@@ -9,7 +9,6 @@
 #include <format>
 #include <print>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #if defined(_WIN32)
@@ -58,8 +57,8 @@ template <
     auto LogType          = LogTypes::Info,
     bool LogOnlyIfVerbose = false,
     bool Verbose          = false,
-    typename... ArgumentsType>
-void Log(std::format_string<ArgumentsType...> FormatString, ArgumentsType &&...Arguments)
+    typename... ArgumentTypes>
+void Log(std::format_string<ArgumentTypes...> FormatString, ArgumentTypes &&...Arguments)
 {
     namespace TTS = TerminalTextStyling;
 
@@ -70,7 +69,7 @@ void Log(std::format_string<ArgumentsType...> FormatString, ArgumentsType &&...A
 
     std::print("{}", FormatLogMessage<LogType>());
 
-    std::print(FormatString, std::forward<ArgumentsType>(Arguments)...);
+    std::print(FormatString, std::forward<ArgumentTypes>(Arguments)...);
 
     if constexpr (LogType != LogTypes::Debug)
     {
@@ -86,6 +85,7 @@ void ThreadSafeLog(
     if constexpr (!PrintMessages)
     {
         Buffer.append(FormatLogMessage<LogType>());
+        Buffer.append(std::format(FormatString, std::forward<ArgumentTypes>(Arguments)...));
         return;
     }
 

@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <iterator>
 #include <string>
 #include <system_error>
@@ -20,8 +19,9 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
     enki::TaskScheduler            &TaskScheduler,
     const filesystem::path         &SearchDirectory,
     const std::vector<std::string> &WhiteListedExtensions = {},
-    void (*FoundEntryCallback)(filesystem::directory_entry &, std::vector<filesystem::path> &) =
-        nullptr)
+    void (*FoundEntryCallback)(
+        const filesystem::directory_entry &,
+        std::vector<filesystem::path> &) = nullptr)
 {
     auto                          thread_count = TaskScheduler.GetNumTaskThreads();
     std::vector<filesystem::path> file_path_output_buffer;

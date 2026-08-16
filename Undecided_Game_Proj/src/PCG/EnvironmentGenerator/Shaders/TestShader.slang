@@ -1,4 +1,4 @@
-import "MathLibraries/Noise/Simplex3D";
+import Simplex3D;
 
 static const int THREADS_X_3D = 8;
 static const int THREADS_Y_3D = 8;

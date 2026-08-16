@@ -104,7 +104,7 @@ pub fn build(Build: *std.Build) void {
         );
     }
 
-    const exclude_library_files_with_name = [_][]const u8{"slang"};
+    const exclude_library_files_with_name = [_][]const u8{};
 
     for (library_file_paths.items) |Path| {
         var contains_black_listed_name = false;
