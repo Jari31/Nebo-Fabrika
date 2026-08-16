@@ -9,6 +9,7 @@
 #include <format>
 #include <print>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #if defined(_WIN32)
@@ -28,6 +29,30 @@ enum class LogTypes : uint8_t
     Debug,
 };
 
+template <LogTypes LogType> std::string FormatLogMessage()
+{
+    namespace TTS = TerminalTextStyling;
+    if constexpr (LogType == LogTypes::Info)
+    {
+        return std::format("{}[INFO]: ", TTS::Foreground::BLUE);
+    }
+    else if constexpr (LogType == LogTypes::Success)
+    {
+        return std::format("{}[SUCCESS]: ", TTS::Foreground::GREEN);
+    }
+    else if constexpr (LogType == LogTypes::Warn)
+    {
+        return std::format("{}[WARN]: ", TTS::Foreground::YELLOW);
+    }
+    else if constexpr (LogType == LogTypes::Error)
+    {
+        return std::format("{}[ERROR]: ", TTS::Foreground::RED);
+    }
+    else if constexpr (LogType == LogTypes::Debug)
+    {
+        return std::format("[DEBUG]: ");
+    }
+}
 /// Verbose has no effect if LogOnlyIfVerbose is set to false.
 template <
     auto LogType          = LogTypes::Info,
@@ -43,26 +68,7 @@ void Log(std::format_string<ArgumentsType...> FormatString, ArgumentsType &&...A
         return;
     }
 
-    if constexpr (LogType == LogTypes::Info)
-    {
-        std::print("{}[INFO]: ", TTS::Foreground::BLUE);
-    }
-    else if constexpr (LogType == LogTypes::Success)
-    {
-        std::print("{}[SUCCESS]: ", TTS::Foreground::GREEN);
-    }
-    else if constexpr (LogType == LogTypes::Warn)
-    {
-        std::print("{}[WARN]: ", TTS::Foreground::YELLOW);
-    }
-    else if constexpr (LogType == LogTypes::Error)
-    {
-        std::print("{}[ERROR]: ", TTS::Foreground::RED);
-    }
-    else if constexpr (LogType == LogTypes::Debug)
-    {
-        std::print("[DEBUG]: ");
-    }
+    std::print("{}", FormatLogMessage<LogType>());
 
     std::print(FormatString, std::forward<ArgumentsType>(Arguments)...);
 
@@ -70,6 +76,20 @@ void Log(std::format_string<ArgumentsType...> FormatString, ArgumentsType &&...A
     {
         std::print("{}", TTS::RESET);
     }
+}
+template <LogTypes LogType, bool PrintMessages = false, typename... ArgumentTypes>
+void ThreadSafeLog(
+    std::string                         &Buffer,
+    std::format_string<ArgumentTypes...> FormatString,
+    ArgumentTypes &&...Arguments)
+{
+    if constexpr (!PrintMessages)
+    {
+        Buffer.append(FormatLogMessage<LogType>());
+        return;
+    }
+
+    std::print("{}", PrintMessages);
 }
 
 constexpr std::string GetDLLExtensionForTargetPlatform()

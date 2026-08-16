@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <format>
 #include <functional>
 #include <iterator>
@@ -29,9 +30,28 @@ enum class Errors : uint8_t
 
 struct ParsedOptions
 {
-    std::vector<filesystem::path> SearchFolders;
-    filesystem::path              OutputFolder;
-    bool                          DoFileContentIntegrityChecks;
+    struct TargetDescription
+    {
+        std::string Format  = "spirv";
+        std::string Profile = "sm_6_6";
+
+        uint8_t OptimizationLevel = 3;
+
+        bool GenerateWholeProgram  = true;
+        bool GenerateSPIRVDirectly = true;
+
+        std::string MatrixLayout = "column_major";
+
+        std::vector<std::string> MacroDefines = {"DEBUG", "0"};
+    };
+
+    std::vector<std::string>  SearchFolders;
+    std::vector<const char *> MacroDefines;
+
+    filesystem::path OutputFolder;
+    bool             DoFileContentIntegrityChecks;
+
+    std::vector<TargetDescription> TargetDescriptions;
 };
 
 inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path &BuildFilePath)
@@ -117,22 +137,70 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
     auto          table = std::move(parse_result).table();
     ParsedOptions parsed_options;
 
-    if (auto *file_paths = table["Build"]["SearchFolders"].as_array())
+    auto append_to_vector =
+        [&]<typename VectorType>(
+            const toml::array &SourceVector, std::vector<VectorType> &TargetVector)
     {
-        parsed_options.SearchFolders.reserve(file_paths->size());
+        TargetVector.reserve(SourceVector.size());
 
-        for (auto &&element : *file_paths)
+        for (const auto &Node : SourceVector)
         {
-            if (auto path = element.value<std::string>())
+            if (auto Value = Node.value<VectorType>())
             {
-                parsed_options.SearchFolders.push_back(*path);
+                TargetVector.push_back(std::move(*Value));
+            }
+            else
+            {
+                HelperFunctions::Log<LogTypes::Error>("Failed to append to vector.\n");
             }
         }
+    };
+
+    if (auto *SearchFolders = table["Build"]["SearchFolders"].as_array())
+    {
+        append_to_vector(*SearchFolders, parsed_options.SearchFolders);
+    }
+
+    if (auto *MacroDefines = table["Build"]["CompilerArguments"].as_array())
+    {
+        append_to_vector(*MacroDefines, parsed_options.MacroDefines);
     }
 
     parsed_options.OutputFolder = table["Build"]["OutputFolder"].value_or("build");
     parsed_options.DoFileContentIntegrityChecks =
         table["Build"]["DoFileContentIntegrityChecks"].value_or(false);
+
+    if (auto *TargetDescriptions = table["Build.Target"].as_array())
+    {
+        for (auto &&Node : *TargetDescriptions)
+        {
+            if (auto *TargetTable = Node.as_table())
+            {
+                ParsedOptions::TargetDescription TargetDescription;
+                TargetDescription.Format  = TargetTable->get("Format")->value_or("spirv");
+                TargetDescription.Profile = TargetTable->get("Profile")->value_or("sm_6_6");
+
+                TargetDescription.OptimizationLevel =
+                    TargetTable->get("OptimizationLevel")->value_or(3);
+
+                TargetDescription.GenerateWholeProgram =
+                    TargetTable->get("GenerateWholeProgram")->value_or(true);
+                TargetDescription.GenerateSPIRVDirectly =
+                    TargetTable->get("GenerateSPIRVDirectly")->value_or(false);
+
+                TargetDescription.MatrixLayout =
+                    TargetTable->get("MatrixLayout")->value_or("column_major");
+
+                if (auto *macro_defines = TargetTable->get("MacroDefines")->as_array())
+                {
+                    append_to_vector(*macro_defines, TargetDescription.MacroDefines);
+                }
+
+                parsed_options.TargetDescriptions.push_back(TargetDescription);
+            }
+        }
+    }
+
     return parsed_options;
 }
 } // namespace JSlang::Parser

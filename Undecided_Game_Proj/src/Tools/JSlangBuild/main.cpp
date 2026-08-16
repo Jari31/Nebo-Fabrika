@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <expected>
@@ -9,11 +10,14 @@
 #include <iterator>
 #include <span>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
 #define TOML_EXCEPTIONS 0
 
+#include "Includes/DirectoryWalker.hpp"
+#include "Includes/HashMap.hpp"
 #include "Includes/HelperFunctions.hpp"
 #include "Includes/Parser.hpp"
 #include "Includes/TerminalTextStyling.hpp"
@@ -21,11 +25,8 @@
 #include "Libraries/include/ankerl/unordered_dense.h"
 #include "Libraries/include/dylib.hpp"
 #include "Libraries/include/enkiTS/TaskScheduler.h"
-#include "Libraries/include/slang.h"
-
-#include "Includes/DirectoryWalker.hpp"
-#include "Includes/HashMap.hpp"
 #include "Libraries/include/slang-com-ptr.h"
+#include "Libraries/include/slang.h"
 #include <Libraries/include/toml++/toml.hpp>
 
 #define EXTERNAL_CACHE_DIRECTORY "../../cache/"
@@ -259,64 +260,132 @@ struct Build
         return XXH64(&hash_input, sizeof(hash_input), 0);
     }
 
-    static std::vector<filesystem::path> _check_shader_filepaths_and_return_what_to_compile(
-        enki::TaskScheduler           &TaskScheduler,
-        std::vector<filesystem::path> &ShaderFilePathsToCheck,
-        filesystem::path              &OutputFolder)
+    static std::vector<filesystem::path> check_module_dependencies(slang::IModule *Module)
     {
-        if (!filesystem::exists(".jslang/build_manifest.bin"))
+        auto dependency_count = Module->getDependencyFileCount();
+        for (uint32_t i = 0; i < dependency_count; i++)
         {
-            return ShaderFilePathsToCheck;
         }
-        auto hash_map = HashMap::LoadHashMapFromDisk(".jslang/build_manifest.bin");
+    }
+
+    static int _compile_shaders(
+        enki::TaskScheduler                                   &TaskScheduler,
+        std::vector<filesystem::path>                         &ShaderFilePathsToCheck,
+        const Slang::ComPtr<slang::IGlobalSession>            &GlobalSession,
+        std::vector<Parser::ParsedOptions::TargetDescription> &TargetDescriptions,
+        const filesystem::path                                &OutputFolder)
+    {
+        // if (!filesystem::exists(".jslang/build_manifest.bin"))
+        // {
+        //     return ShaderFilePathsToCheck;
+        // }
+        // auto hash_map = HashMap::LoadHashMapFromDisk(".jslang/build_manifest.bin");
 
         auto thread_count = TaskScheduler.GetNumTaskThreads();
 
-        std::vector<filesystem::path> shader_compilation_list;
+        std::vector<std::string> thread_global_shader_compilation_diagnostic_info;
+        thread_global_shader_compilation_diagnostic_info.reserve(thread_count);
+
+        auto parse_target_format = [&](std::string &Format) -> SlangCompileTarget
+        {
+            std::ranges::transform(Format, Format.begin(), ::tolower);
+
+            static const ankerl::unordered_dense::map<std::string_view, SlangCompileTarget>
+                target_map = {
+                    {"spirv", SLANG_SPIRV},
+                    {"spir-v", SLANG_SPIRV},
+                    {"dxil", SLANG_DXIL},
+                    {"hlsl", SLANG_HLSL},
+                    {"glsl", SLANG_GLSL},
+                    {"cuda", SLANG_CUDA_SOURCE},
+                    {"cpp", SLANG_CPP_SOURCE},
+                    {"c++", SLANG_CPP_SOURCE},
+                    {"wgsl", SLANG_WGSL}};
+
+            auto iterator = target_map.find(Format);
+            if (iterator != target_map.end())
+            {
+                return iterator->second;
+            }
+
+            return SLANG_TARGET_UNKNOWN;
+        };
 
         std::vector<std::vector<filesystem::path>> thread_global_shader_compilation_list(
             thread_count);
-
         enki::TaskSet task(
-            static_cast<uint32_t>(ShaderFilePathsToCheck.size()),
+            ShaderFilePathsToCheck.size(),
             [&](enki::TaskSetPartition Range, uint32_t ThreadIndex) -> void
             {
-                auto &thread_local_shader_compilation_list =
-                    thread_global_shader_compilation_list[ThreadIndex]; // equivalent to a shared
-                                                                        // buffer in GPGPU
+                Slang::ComPtr<slang::ISession> session;
+                slang::SessionDesc             session_description = {};
 
-                for (uint32_t i = Range.start; i < Range.end; i++)
+                std::vector<slang::TargetDesc> target_descriptions;
+                target_descriptions.reserve(TargetDescriptions.size());
+
+                uint32_t target_index = 0;
+                for (auto &TargetDescription : TargetDescriptions)
                 {
-                    auto &shader_file_path = ShaderFilePathsToCheck[i];
+                    auto &target_description = target_descriptions[target_index];
 
-                    auto hashed_file_path = HashMap::HashString(shader_file_path.string(), 0);
+                    target_description        = {};
+                    target_description.format = parse_target_format(TargetDescription.Format);
+                    target_description.profile =
+                        GlobalSession->findProfile(TargetDescription.Profile.c_str());
 
-                    if (hash_map.contains(hashed_file_path))
+                    target_description.flags = 0;
+                    if (TargetDescription.GenerateSPIRVDirectly)
                     {
-                        auto hashed_file_data = hash_file_date_and_size(shader_file_path);
+                        target_description.flags |= SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
+                    }
+                    if (TargetDescription.GenerateWholeProgram)
+                    {
+                        target_description.flags |= SLANG_TARGET_FLAG_GENERATE_WHOLE_PROGRAM;
+                    }
+                }
 
-                        if (hashed_file_data.has_value() &&
-                            hash_map[hashed_file_path] == hashed_file_data)
+                session_description.targets     = target_descriptions.data();
+                session_description.targetCount = static_cast<SlangInt>(target_descriptions.size());
+
+                if (SLANG_FAILED(
+                        GlobalSession->createSession(session_description, session.writeRef())))
+                {
+                    HelperFunctions::Log<LogTypes::Error>("Failed to create global session.\n");
+
+                    return -1;
+                }
+
+                auto &thread_local_diagnostic_info =
+                    thread_global_shader_compilation_diagnostic_info[ThreadIndex];
+                Slang::ComPtr<slang::IBlob> diagnostic_blob;
+
+                for (auto &Path : ShaderFilePathsToCheck)
+                {
+                    auto *module =
+                        session->loadModule(Path.string().c_str(), diagnostic_blob.writeRef());
+
+                    if (!module)
+                    {
+                        if (diagnostic_blob)
                         {
-                            continue;
+                            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                thread_local_diagnostic_info,
+                                "While compiling {}, ran into error: {}\n",
+                                Path.string(),
+                                diagnostic_blob->getBufferPointer());
                         }
+
+                        continue;
                     }
 
-                    thread_local_shader_compilation_list.push_back(shader_file_path);
+                    check_module_dependencies(module);
                 }
             });
 
         TaskScheduler.AddTaskSetToPipe(&task);
         TaskScheduler.WaitforTask(&task);
 
-        for (uint32_t Thread = 0; Thread < thread_count; Thread++)
-        {
-            std::ranges::move(
-                thread_global_shader_compilation_list[Thread],
-                std::back_inserter(shader_compilation_list));
-        }
-
-        return shader_compilation_list;
+        return 0;
     };
 
     template <bool Verbose = false> int BuildShaders()
@@ -394,30 +463,30 @@ struct Build
                 "corruption.");
         }
 
-        std::vector<filesystem::path> paths_to_shader_files;
+        std::vector<filesystem::path> path_to_shader_files;
         for (const auto &folder_path : parsed_options->SearchFolders)
         {
             HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-                "Searching for shaders in directory: {}\n", folder_path.string());
+                "Searching for shaders in directory: {}\n", folder_path);
 
             std::ranges::move(
-                JSlang::DirectoryWalker::MultithreadedFileGlobber(
+                FileGlobber::MultithreadedFileGlobber<false>(
                     TaskScheduler, folder_path, {".slang"}),
-                std::back_inserter(paths_to_shader_files));
+                std::back_inserter(path_to_shader_files));
 
             if constexpr (!Verbose)
             {
                 continue;
             }
 
-            for (auto &PathToSlangShader : paths_to_shader_files)
+            for (auto &PathToSlangShader : path_to_shader_files)
             {
                 HelperFunctions::Log<LogTypes::Info, true, Verbose>(
                     "Found shader file: {}\n", PathToSlangShader.string());
             }
         }
 
-        if (paths_to_shader_files.size() == 0)
+        if (path_to_shader_files.size() == 0)
         {
             HelperFunctions::Log<LogTypes::Error>(
                 "Failed to find shader files. Exiting to avoid corruption.\n");
@@ -428,7 +497,7 @@ struct Build
             "Successfully found shaders ({} of them) and loaded their file paths onto memory. "
             "Proceeding with "
             "next step...\n",
-            paths_to_shader_files.size());
+            path_to_shader_files.size());
 
         if (parsed_options->DoFileContentIntegrityChecks)
         {
@@ -436,21 +505,6 @@ struct Build
                 "You have DoFileContentIntegrityChecks set to true. That feature is currently not "
                 "implemented. You can disable this warning by setting it to false, or commenting "
                 "it out.\n");
-        }
-
-        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-            "Figuring out which shader files to compile...\n");
-
-        auto shaders_compilation_list = _check_shader_filepaths_and_return_what_to_compile(
-            TaskScheduler, paths_to_shader_files, parsed_options->OutputFolder);
-
-        if constexpr (Verbose)
-        {
-            for (const auto &ShaderPath : shaders_compilation_list)
-            {
-                HelperFunctions::Log<LogTypes::Info, true, Verbose>(
-                    "Compiling shader file: {}\n", ShaderPath.string());
-            }
         }
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>(
@@ -513,6 +567,13 @@ struct Build
         HelperFunctions::Log<LogTypes::Success, true, Verbose>(
             "Successfully loaded Slang compiler onto memory. Proceeding to compile Slang "
             "shaders...\n");
+
+        _compile_shaders(
+            TaskScheduler,
+            path_to_shader_files,
+            GlobalSession,
+            parsed_options->TargetDescriptions,
+            parsed_options->OutputFolder);
 
         return 0;
     };

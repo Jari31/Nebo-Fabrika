@@ -4,13 +4,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
 
-namespace JSlang::DirectoryWalker
+namespace JSlang::FileGlobber
 {
 using LogTypes       = HelperFunctions::LogTypes;
 namespace filesystem = std::filesystem;
@@ -18,7 +19,9 @@ template <bool WhitelistCheck = true>
 std::vector<filesystem::path> MultithreadedFileGlobber(
     enki::TaskScheduler            &TaskScheduler,
     const filesystem::path         &SearchDirectory,
-    const std::vector<std::string> &WhiteListedExtensions)
+    const std::vector<std::string> &WhiteListedExtensions = {},
+    void (*FoundEntryCallback)(filesystem::directory_entry &, std::vector<filesystem::path> &) =
+        nullptr)
 {
     auto                          thread_count = TaskScheduler.GetNumTaskThreads();
     std::vector<filesystem::path> file_path_output_buffer;
@@ -86,7 +89,11 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
                                 auto is_whitelisted = check_if_file_is_whitelisted(entry.path());
                                 if (!is_whitelisted) continue; // NOLINT
                             }
-
+                            if (FoundEntryCallback)
+                            {
+                                FoundEntryCallback(entry, thread_local_directory_output_buffer);
+                                continue;
+                            }
                             thread_local_file_path_output_buffer.push_back(entry.path());
                         }
                     }
@@ -112,4 +119,4 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
 
     return file_path_output_buffer;
 }
-} // namespace JSlang::DirectoryWalker
+} // namespace JSlang::FileGlobber

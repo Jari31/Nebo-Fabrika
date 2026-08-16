@@ -1,12 +1,24 @@
 [Build]
-SearchFolders = ["../../InternalLibraries"]
-OutputFolder = ["../../../GDProject/bin/Build"]
-DoFileContentIntegrityChecks = true
-# Target: "spirv",
-# Profile: "spirv_1_5",
-# OptimizationLevel: "High",
-# DebugInfo: true,
-# MatrixLayout: "column_major",
-# Defines: ["ENGINE_RENDER_VK=1"],
-# IncludePaths: ["../../Shaders/Includes"],
-# GenerateReflection: true,
+SearchFolders = ["../../InternalLibraries/MathLibraries/Noise", "../../InternalLibraries/MathLibraries/Vectors"]
+OutputFolder = "../../../GDProject/bin/Build"
+DoFileContentIntegrityChecks = false
+MacroDefines = ["SOMETHING", "0"] # To apply to all targets
+
+[[Build.Target]]
+# Output binary/text format: "spirv", "dxil", "hlsl", "glsl", "cuda"
+Format = "spirv"
+
+Profile = "sm_6_6"
+
+# Optimization level: 0 (None), 1 (Default), 2 (High), 3 (Maximal)
+OptimizationLevel = 3
+
+# Compiler behavior flags
+GenerateWholeProgram = false
+GenerateSPIRVDirectly = true
+
+# Memory alignment defaults: "column_major" or "row_major"
+MatrixLayout = "column_major"
+
+# Preprocessor definitions to pass to all shaders (Key-Value pair)
+MacroDefines = ["DEBUG", "0"]
