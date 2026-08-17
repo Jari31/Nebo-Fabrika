@@ -1,12 +1,12 @@
 [Build]
-SearchFolders = ["../../InternalLibraries/MathLibraries/Noise", "../../InternalLibraries/MathLibraries/Vectors", "../../PCG"]
-OutputFolder = "../../../GDProject/bin/Build"
+SearchFolders = ["../../InternalLibraries", "../../PCG"]
+OutputFolder = "build"
 DoFileContentIntegrityChecks = false
 MacroDefines = ["SOMETHING", "0"] # To apply to all targets
 
 [[Build.Target]]
-# Output binary/text format: "spirv", "dxil", "hlsl", "glsl", "cuda"
-Format = "spirv"
+# Output binary/text format: ".spv", ".dxil", ".dxbc", ".glsl", ".hlsl", ".cu", ".ptx", ".wgsl", ".metal", ".cpp",
+Format = ".spv"
 
 Profile = "sm_6_6"
 

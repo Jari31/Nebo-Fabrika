@@ -234,7 +234,8 @@ struct Build
         HashMap::HashMap                    *ThreadGlobalHashMap =
             nullptr; // WARN: unsafe to write to; safe to read from
 
-        TypeIRBlobStorage *ThreadLocalIRBlobBuffer = nullptr;
+        TypeIRBlobStorage                   *ThreadLocalIRBlobBuffer = nullptr;
+        std::vector<slang::IComponentType *> ShaderModules;
     };
 
     void CreateSubCommand(CLI::App &ParentApp)
@@ -292,9 +293,13 @@ struct Build
     };
 
     /// WARN: Not thread safe.
+    template <bool Verbose = false>
     static bool
     save_ir_blob_file(const std::vector<uint8_t> &IRSource, const filesystem::path &FileName)
     {
+        HelperFunctions::Log<LogTypes::Info, true, Verbose>(
+            "Saving IR file {}...\n", FileName.string());
+
         if (IRSource.empty())
         {
             HelperFunctions::Log<LogTypes::Error>(
@@ -302,7 +307,9 @@ struct Build
             return false;
         }
 
-        std::ofstream ir_file(get_formatted_ir_file_path(FileName), std::ios::binary);
+        auto ir_file_save_path = get_formatted_ir_file_path(FileName);
+
+        std::ofstream ir_file(ir_file_save_path + ".temp", std::ios::binary);
 
         if (!ir_file)
         {
@@ -329,16 +336,43 @@ struct Build
 
         ir_file.close();
 
+        if (ir_file.good())
+        {
+            std::error_code error_code;
+            std::filesystem::rename(ir_file_save_path + ".temp", ir_file_save_path, error_code);
+
+            if (error_code)
+            {
+                HelperFunctions::Log<LogTypes::Error>(
+                    "Failed to rename for IR file {}: {}", ir_file_save_path, error_code.message());
+                return false;
+            }
+        }
+        else
+        {
+            HelperFunctions::Log<LogTypes::Error>(
+                "Failed to save IR file for {}\n. (Maybe there isn't enough space? Maybe the "
+                "program doesn't have proper permissions?)",
+                FileName.string());
+            return false;
+        }
+
+        HelperFunctions::Log<LogTypes::Success, true, Verbose>("Successfully saved IR file.\n");
+
         return true;
     }
-
+    template <bool Verbose = false>
     bool load_ir_file_into_session(
-        slang::ISession        *Session,
-        const filesystem::path &FileName,
-        std::string            &PrintBuffer) const
+        ThreadLocalBuildContext &Context,
+        const filesystem::path  &FileName,
+        std::string             &PrintBuffer) const
     {
-        std::ifstream ir_file(
-            get_formatted_ir_file_path(FileName), std::ios::binary | std::ios::ate);
+        const auto ir_file_name = get_formatted_ir_file_path(FileName);
+
+        HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
+            PrintBuffer, "Loading IR file {}...\n", ir_file_name);
+
+        std::ifstream ir_file(ir_file_name, std::ios::binary | std::ios::ate);
 
         if (!ir_file)
         {
@@ -383,13 +417,13 @@ struct Build
 
         Slang::ComPtr<slang::IBlob> diagnostic_blob;
 
-        auto *ir_module = Session->loadModuleFromIRBlob(
+        auto *module = Context.Session->loadModuleFromIRBlob(
             FileName.stem().string().c_str(),
             FileName.string().c_str(),
             ir_blob,
             diagnostic_blob.writeRef());
 
-        if (!ir_module || diagnostic_blob) // NOLINT
+        if (!module || diagnostic_blob) // NOLINT
         {
             if (diagnostic_blob) // NOLINT
             {
@@ -404,14 +438,22 @@ struct Build
             return false;
         }
 
+        Context.ShaderModules.push_back(module);
+
+        HelperFunctions::ThreadSafeLog<LogTypes::Success, true, Verbose>(
+            PrintBuffer, "Successfully loaded IR file.\n");
         return true;
     }
 
+    template <bool Verbose = false>
     static bool compile_ir_module(
         ThreadLocalBuildContext &Context,
         const char              *DependencyFilePath,
         std::string             &PrintBuffer)
     {
+        HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
+            PrintBuffer, "Compiling dependency: {}\n", DependencyFilePath);
+
         Slang::ComPtr<slang::IBlob> diagnostic_blob;
         auto *module = Context.Session->loadModule(DependencyFilePath, diagnostic_blob.writeRef());
 
@@ -453,9 +495,14 @@ struct Build
         Context.ThreadLocalHashMap->try_emplace(file_path_hash, file_last_edit_time);
         Context.ThreadLocalIRBlobBuffer->try_emplace(
             filesystem_dependency_path, std::move(ir_blob_buffer));
+
+        HelperFunctions::ThreadSafeLog<LogTypes::Success, true, Verbose>(
+            PrintBuffer, "Successfully compiled dependency module into an IR format.\n");
+
+        Context.ShaderModules.push_back(module);
         return true;
     }
-
+    template <bool Verbose = false>
     bool compile_module_dependencies(
         ThreadLocalBuildContext &Context,
         slang::IModule          *Module,
@@ -464,7 +511,7 @@ struct Build
         if (Module == nullptr)
         {
             HelperFunctions::ThreadSafeLog<LogTypes::Error>(
-                PrintBuffer, "Provided module is null; unusable.\n");
+                PrintBuffer, "Provided module for dependency resolution is null; unusable.\n");
             return false;
         }
 
@@ -475,18 +522,26 @@ struct Build
             return true;
         }
 
-        bool compiled_all_dependencies = false;
+        Context.ShaderModules.reserve(dependency_count);
+        Context.ShaderModules.push_back(Module);
 
-        for (SlangInt32 i = 1; i < dependency_count;
-             i++) // dependency 0 is the base shader (i.e., the root file in the DAG that's
+        HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
+            PrintBuffer,
+            "Compiling for {} dependencies for module {}.\n",
+            dependency_count,
+            Module->getName());
+
+        for (SlangInt32 i = dependency_count - 1; i > 0;
+             i--) // dependency 0 is the base shader (i.e., the root file in the DAG that's
                   // importing all this)
         {
-            const auto *dependency_file_path = Module->getDependencyFilePath(i);
+            bool        compiled_all_dependencies = false;
+            const auto *dependency_file_path      = Module->getDependencyFilePath(i);
 
             auto compile_module_to_ir = [&]() -> void
             {
                 compiled_all_dependencies =
-                    compile_ir_module(Context, dependency_file_path, PrintBuffer);
+                    compile_ir_module<Verbose>(Context, dependency_file_path, PrintBuffer);
                 if (!compiled_all_dependencies)
                 {
                     HelperFunctions::ThreadSafeLog<LogTypes::Error>(
@@ -532,15 +587,7 @@ struct Build
                 if (file_last_edit_time != Context.ThreadGlobalHashMap->at(hash_map_key))
                 {
                     compile_module_to_ir();
-                    break;
                 }
-
-                if (!filesystem::exists(get_formatted_ir_file_path(
-                        filesystem::path(dependency_file_path).filename())))
-                {
-                    compile_module_to_ir();
-                };
-
                 break;
             }
 
@@ -549,10 +596,8 @@ struct Build
                 continue;
             }
 
-            if (!load_ir_file_into_session(
-                    Context.Session,
-                    filesystem::path(dependency_file_path).filename(),
-                    PrintBuffer))
+            if (!load_ir_file_into_session<Verbose>(
+                    Context, filesystem::path(dependency_file_path).filename(), PrintBuffer))
             {
                 compile_module_to_ir();
             }
@@ -567,9 +612,9 @@ struct Build
             }
         }
 
-        return compiled_all_dependencies;
+        return true;
     }
-
+    template <bool Verbose = false>
     int compile_shaders(
         enki::TaskScheduler                                   &TaskScheduler,
         std::vector<std::string>                              &SearchPaths,
@@ -596,27 +641,45 @@ struct Build
         std::vector<ThreadLocalBuildContext::TypeIRBlobStorage> thread_global_ir_blob_buffer;
         thread_global_ir_blob_buffer.resize(thread_count);
 
-        auto parse_target_format = [&](std::string &Format) -> SlangCompileTarget
+        auto parse_target_format = [&](std::string &Format,
+                                       std::string &PrintBuffer) -> SlangCompileTarget
         {
             std::ranges::transform(Format, Format.begin(), ::tolower);
 
             static const ankerl::unordered_dense::map<std::string_view, SlangCompileTarget>
-                target_map = {
-                    {"spirv", SLANG_SPIRV},
-                    {"spir-v", SLANG_SPIRV},
-                    {"dxil", SLANG_DXIL},
-                    {"hlsl", SLANG_HLSL},
-                    {"glsl", SLANG_GLSL},
-                    {"cuda", SLANG_CUDA_SOURCE},
-                    {"cpp", SLANG_CPP_SOURCE},
-                    {"c++", SLANG_CPP_SOURCE},
-                    {"wgsl", SLANG_WGSL}};
+                extension_to_target_map = {
+                    {".glsl", SLANG_GLSL},
+                    {".hlsl", SLANG_HLSL},
+                    {".spv", SLANG_SPIRV},
+                    {".spvasm", SLANG_SPIRV_ASM},
+                    {".dxbc", SLANG_DXBC},
+                    {".dxbcasm", SLANG_DXBC_ASM},
+                    {".dxil", SLANG_DXIL},
+                    {".dxilasm", SLANG_DXIL_ASM},
+                    {".c", SLANG_C_SOURCE},
+                    {".cpp", SLANG_CPP_SOURCE},
+                    {".exe", SLANG_HOST_EXECUTABLE},
+                    {".cu", SLANG_CUDA_SOURCE},
+                    {".ptx", SLANG_PTX},
+                    {".metal", SLANG_METAL},
+                    {".metallib", SLANG_METAL_LIB},
+                    {".metallibasm", SLANG_METAL_LIB_ASM},
+                    {".wgsl", SLANG_WGSL},
+                    {".slangvm", SLANG_HOST_VM},
+                    {".h", SLANG_CPP_HEADER},
+                    {".cuh", SLANG_CUDA_HEADER},
+                    {".ll", SLANG_SHADER_LLVM_IR},
+                    {".dll", SLANG_SHADER_SHARED_LIBRARY},
+                    {".o", SLANG_OBJECT_CODE}};
 
-            auto iterator = target_map.find(Format);
-            if (iterator != target_map.end())
+            auto iterator = extension_to_target_map.find(Format);
+            if (iterator != extension_to_target_map.end())
             {
                 return iterator->second;
             }
+
+            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                PrintBuffer, "Unknown format \"{}.\"\n", Format);
 
             return SLANG_TARGET_UNKNOWN;
         };
@@ -650,8 +713,16 @@ struct Build
 
                 for (auto &TargetDescription : TargetDescriptions)
                 {
+                    auto target_format =
+                        parse_target_format(TargetDescription.Format, thread_local_print_buffer);
+
+                    if (target_format == SLANG_TARGET_UNKNOWN)
+                    {
+                        return;
+                    }
+
                     slang::TargetDesc target_description = {};
-                    target_description.format = parse_target_format(TargetDescription.Format);
+                    target_description.format            = target_format;
                     target_description.profile =
                         context.GlobalSession->findProfile(TargetDescription.Profile.c_str());
 
@@ -684,7 +755,8 @@ struct Build
                 if (SLANG_FAILED(context.GlobalSession->createSession(
                         session_description, context.Session.writeRef())))
                 {
-                    HelperFunctions::Log<LogTypes::Error>("Failed to create local session.\n");
+                    HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                        thread_local_print_buffer, "Failed to create local session.\n");
 
                     return;
                 }
@@ -693,6 +765,7 @@ struct Build
 
                 for (uint32_t i = Range.start; i < Range.end; i++)
                 {
+
                     auto &path   = ShaderFilePathsToCheck[i];
                     auto *module = context.Session->loadModule(
                         path.string().c_str(), diagnostic_blob.writeRef());
@@ -711,15 +784,21 @@ struct Build
                         continue;
                     }
 
-                    // auto *module_layout = module->getLayout();
+                    const auto *module_name = module->getName();
 
-                    if (module->getDefinedEntryPointCount() == 0)
+                    // auto *module_layout = module->getLayout();
+                    auto module_entry_point_count = module->getDefinedEntryPointCount();
+
+                    if (module_entry_point_count == 0)
                     {
                         continue;
                     }
 
-                    auto module_compilation_result =
-                        compile_module_dependencies(context, module, thread_local_print_buffer);
+                    HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
+                        thread_local_print_buffer, "Compiling for module: {}\n", module->getName());
+
+                    auto module_compilation_result = compile_module_dependencies<Verbose>(
+                        context, module, thread_local_print_buffer);
 
                     if (!module_compilation_result)
                     {
@@ -727,6 +806,225 @@ struct Build
                             thread_local_print_buffer,
                             "Failed to compile dependency modules for {}.\n",
                             path.string());
+                    }
+
+                    HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
+                        thread_local_print_buffer,
+                        "Compiling for {} entry point(s) in {}.\n",
+                        module_entry_point_count,
+                        module_name);
+
+                    uint32_t shader_modules_size = context.ShaderModules.size();
+                    context.ShaderModules.resize(shader_modules_size + 1);
+                    for (SlangInt32 j = 0; j < module_entry_point_count; j++)
+                    {
+                        Slang::ComPtr<slang::IEntryPoint> module_entry_point;
+                        SlangResult                       result_of_get_module_entry_point =
+                            module->getDefinedEntryPoint(j, module_entry_point.writeRef());
+                        if (!module_entry_point || SLANG_FAILED(result_of_get_module_entry_point))
+                        {
+                            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                thread_local_print_buffer,
+                                "Failed to get entry point at index {} for module {}.\n",
+                                i,
+                                module_name);
+
+                            continue;
+                        }
+
+                        context.ShaderModules[shader_modules_size] = module_entry_point.get();
+
+                        Slang::ComPtr<slang::IComponentType> composed_program;
+
+                        SlangResult module_compose_result =
+                            context.Session->createCompositeComponentType(
+                                context.ShaderModules.data(),
+                                static_cast<SlangInt32>(context.ShaderModules.size()),
+                                composed_program.writeRef(),
+                                diagnostic_blob.writeRef());
+
+                        if (SLANG_FAILED(module_compose_result) || diagnostic_blob)
+                        {
+                            if (diagnostic_blob)
+                            {
+                                HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                    thread_local_print_buffer,
+                                    "Failed to compose module with error: {}\n",
+                                    (const char *)diagnostic_blob->getBufferPointer());
+                            }
+                            continue;
+                        }
+
+                        Slang::ComPtr<slang::IComponentType> linked_program;
+                        SlangResult                          link_result = composed_program->link(
+                            linked_program.writeRef(), diagnostic_blob.writeRef());
+
+                        if (SLANG_FAILED(link_result))
+                        {
+                            // Log diagnostic blob to see if linking/importing failed
+                            if (diagnostic_blob)
+                            {
+                                HelperFunctions::Log(
+                                    "Link Error: {}\n",
+                                    (const char *)diagnostic_blob->getBufferPointer());
+                            }
+                            return;
+                        }
+
+                        const auto *module_entry_point_name =
+                            linked_program->getLayout()->getEntryPointByIndex(j)->getName();
+
+                        SlangInt k = 0; // NOLINT
+                        for (auto &TargetDescription : target_descriptions)
+                        {
+
+                            auto &target_format                  = TargetDescription.format;
+                            auto &target_format_extension_string = TargetDescriptions.at(k).Format;
+
+                            Slang::ComPtr<slang::IBlob> compiled_code_blob;
+
+                            SlangResult target_compilation_result =
+                                composed_program->getEntryPointCode(
+                                    0,
+                                    k,
+                                    compiled_code_blob.writeRef(),
+                                    diagnostic_blob.writeRef());
+
+                            if (SLANG_FAILED(target_compilation_result) || !compiled_code_blob)
+                            {
+                                HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                    thread_local_print_buffer,
+                                    "Failed to compile code for target format {}. Error: {}\n",
+                                    TargetDescriptions.at(k).Format,
+                                    (const char *)diagnostic_blob->getBufferPointer());
+
+                                continue;
+                            }
+
+                            bool is_binary_file = false;
+                            switch (target_format)
+                            {
+                            // INFO:  Text / Source / Assembly Formats
+                            case SLANG_GLSL:
+                            case SLANG_GLSL_VULKAN_DEPRECATED:
+                            case SLANG_GLSL_VULKAN_ONE_DESC_DEPRECATED:
+                            case SLANG_HLSL:
+                            case SLANG_SPIRV_ASM:
+                            case SLANG_DXBC_ASM:
+                            case SLANG_DXIL_ASM:
+                            case SLANG_C_SOURCE:
+                            case SLANG_CPP_SOURCE:
+                            case SLANG_CUDA_SOURCE:
+                            case SLANG_PTX:
+                            case SLANG_HOST_CPP_SOURCE:
+                            case SLANG_CPP_PYTORCH_BINDING:
+                            case SLANG_METAL:
+                            case SLANG_METAL_LIB_ASM:
+                            case SLANG_WGSL:
+                            case SLANG_WGSL_SPIRV_ASM:
+                            case SLANG_CPP_HEADER:
+                            case SLANG_CUDA_HEADER:
+                            case SLANG_HOST_LLVM_IR:
+                            case SLANG_SHADER_LLVM_IR:
+                                is_binary_file = false;
+                                break;
+
+                            // INFO: Binary / Bytecode / Object Formats
+                            case SLANG_TARGET_UNKNOWN:
+                            case SLANG_TARGET_NONE:
+                            case SLANG_SPIRV:
+                            case SLANG_DXBC:
+                            case SLANG_DXIL:
+                            case SLANG_HOST_EXECUTABLE:
+                            case SLANG_SHADER_SHARED_LIBRARY:
+                            case SLANG_SHADER_HOST_CALLABLE:
+                            case SLANG_CUDA_OBJECT_CODE:
+                            case SLANG_OBJECT_CODE:
+                            case SLANG_HOST_HOST_CALLABLE:
+                            case SLANG_METAL_LIB:
+                            case SLANG_HOST_SHARED_LIBRARY:
+                            case SLANG_WGSL_SPIRV:
+                            case SLANG_HOST_VM:
+                            case SLANG_HOST_OBJECT_CODE:
+                            case SLANG_TARGET_COUNT_OF:
+                            default:
+                                is_binary_file = true;
+                                break;
+                            }
+
+                            auto module_name_string =
+                                filesystem::path(module->getName()).stem().string();
+                            auto module_entry_point_name_string =
+                                std::string(module_entry_point_name);
+
+                            filesystem::path output_file_path =
+                                ".jslang/" +
+                                module_name_string.append("_").append(
+                                    module_entry_point_name_string) +
+                                ".temp";
+
+                            std::ios_base::openmode open_mode = std::ios::out;
+                            if (is_binary_file)
+                            {
+                                open_mode |= std::ios::binary;
+                            }
+
+                            std::ofstream output_file(output_file_path, open_mode);
+                            if (!output_file)
+                            {
+                                HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                    thread_local_print_buffer,
+                                    "Failed to open file for extension {}, target entry {},"
+                                    " module "
+                                    "{}.\n",
+                                    target_format_extension_string,
+                                    k,
+                                    module->getName());
+                                continue;
+                            }
+
+                            output_file.write(
+                                static_cast<const char *>(compiled_code_blob->getBufferPointer()),
+                                compiled_code_blob->getBufferSize()); // NOLINT
+                            output_file.close();
+
+                            if (output_file.good())
+                            {
+
+                                std::error_code error_code;
+
+                                auto true_output_path =
+                                    OutputFolder /
+                                    module_name_string.append(target_format_extension_string);
+
+                                filesystem::rename(output_file_path, true_output_path, error_code);
+
+                                if (error_code)
+                                {
+                                    HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                        thread_local_print_buffer,
+                                        "Failed to rename file {} with error: {}\n",
+                                        output_file_path.string(),
+                                        error_code.message());
+                                    continue;
+                                }
+
+                                HelperFunctions::ThreadSafeLog<LogTypes::Success, true, Verbose>(
+                                    thread_local_print_buffer,
+                                    "Shader compiled as {}.\n",
+                                    true_output_path.string());
+                            }
+                            else
+                            {
+                                HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                    thread_local_print_buffer,
+                                    "Failed to write to file {}.\n",
+                                    output_file_path.string());
+                                continue;
+                            }
+
+                            ++k;
+                        }
                     }
                 }
             });
@@ -738,7 +1036,7 @@ struct Build
         {
             if (PrintBuffer.size() > 0)
             {
-                std::cout << PrintBuffer << " | " << PrintBuffer.size() << "\n";
+                std::cout << PrintBuffer;
             }
         }
 
@@ -771,7 +1069,7 @@ struct Build
 
         for (auto &&[FilePath, IRSource] : dependency_ir_blobs)
         {
-            save_ir_blob_file(IRSource, FilePath.filename());
+            save_ir_blob_file<Verbose>(IRSource, FilePath.filename());
         }
 
         merge_into(
@@ -857,11 +1155,27 @@ struct Build
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>("Searching for Slang shaders...\n");
 
-        if (parsed_options->SearchFolders.empty())
+        if (parsed_options->SearchFolders.empty() || parsed_options->OutputFolder.empty())
         {
             HelperFunctions::Log<LogTypes::Error>(
-                "No search path provided ([Build] SearchFolders). Exiting to avoid file "
+                "No search path (or output path) provided "
+                "(e.g., [Build] \nSearchFolders = \"path/to/search/folder\"). Exiting to avoid "
+                "file "
                 "corruption.");
+            return -1;
+        }
+
+        if (!filesystem::exists(parsed_options->OutputFolder))
+        {
+            std::error_code error_code;
+            filesystem::create_directories(parsed_options->OutputFolder);
+
+            if (error_code)
+            {
+                HelperFunctions::Log<LogTypes::Error>(
+                    "Failed to create output directories with error: {}.\n", error_code.message());
+                return -1;
+            }
         }
 
         std::vector<filesystem::path> path_to_shader_files;
@@ -899,10 +1213,11 @@ struct Build
 
         if (parsed_options->DoFileContentIntegrityChecks)
         {
-            HelperFunctions::Log<LogTypes::Warn>(
-                "You have DoFileContentIntegrityChecks set to true. That feature is currently not "
-                "implemented. You can disable this warning by setting it to false, or commenting "
-                "it out.\n");
+            HelperFunctions::Log<LogTypes::Warn>("You have DoFileContentIntegrityChecks set to "
+                                                 "true. That feature is currently not "
+                                                 "implemented. You can disable this warning by "
+                                                 "setting it to false, or commenting "
+                                                 "it out.\n");
         }
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>(
@@ -959,7 +1274,7 @@ struct Build
             "Successfully loaded Slang compiler onto memory. Proceeding to compile Slang "
             "shaders...\n");
 
-        if (compile_shaders(
+        if (compile_shaders<Verbose>(
                 TaskScheduler,
                 parsed_options->SearchFolders,
                 path_to_shader_files,

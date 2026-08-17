@@ -1,4 +1,6 @@
-inline float3 ScalarGradientHash(float3 InputVector, uint Seed)
+module HashingFunctions;
+
+public inline float3 ScalarGradientHash(float3 InputVector, uint Seed)
 {
     uint x = asuint(InputVector.x);
     uint y = asuint(InputVector.y);

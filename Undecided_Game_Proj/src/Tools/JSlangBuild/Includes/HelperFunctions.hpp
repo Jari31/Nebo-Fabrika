@@ -76,20 +76,23 @@ void Log(std::format_string<ArgumentTypes...> FormatString, ArgumentTypes &&...A
         std::print("{}", TTS::RESET);
     }
 }
-template <LogTypes LogType, bool PrintMessages = false, typename... ArgumentTypes>
+template <
+    LogTypes LogType          = LogTypes::Info,
+    bool     LogOnlyIfVerbose = false,
+    bool     Verbose          = false,
+    typename... ArgumentTypes>
 void ThreadSafeLog(
     std::string                         &Buffer,
     std::format_string<ArgumentTypes...> FormatString,
     ArgumentTypes &&...Arguments)
 {
-    if constexpr (!PrintMessages)
+    if (LogOnlyIfVerbose && !Verbose)
     {
-        Buffer.append(FormatLogMessage<LogType>());
-        Buffer.append(std::format(FormatString, std::forward<ArgumentTypes>(Arguments)...));
         return;
     }
 
-    std::print("{}", PrintMessages);
+    Buffer.append(FormatLogMessage<LogType>());
+    Buffer.append(std::format(FormatString, std::forward<ArgumentTypes>(Arguments)...));
 }
 
 constexpr std::string GetDLLExtensionForTargetPlatform()

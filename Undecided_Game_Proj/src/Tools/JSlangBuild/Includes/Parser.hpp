@@ -170,7 +170,7 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
     parsed_options.DoFileContentIntegrityChecks =
         table["Build"]["DoFileContentIntegrityChecks"].value_or(false);
 
-    if (auto *TargetDescriptions = table["Build.Target"].as_array())
+    if (auto *TargetDescriptions = table["Build"]["Target"].as_array())
     {
         for (auto &&Node : *TargetDescriptions)
         {

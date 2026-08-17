@@ -1,3 +1,5 @@
+module Simplex3D;
+
 import HashingFunctions;
 
 inline float CalculateNoiseContributionOfVertex(float3 DistanceToVertex, float3 NoiseGradient)
@@ -16,7 +18,7 @@ inline float CalculateNoiseContributionOfVertex(float3 DistanceToVertex, float3 
     return falloff_power4 * dot_product;
 }
 
-float Simplex3D(
+public float Simplex3D(
     const float3 Origin,
     const uint Seed
 )
