@@ -9,6 +9,7 @@
 #include <format>
 #include <print>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #if defined(_WIN32)
@@ -33,7 +34,7 @@ template <LogTypes LogType> std::string FormatLogMessage()
     namespace TTS = TerminalTextStyling;
     if constexpr (LogType == LogTypes::Info)
     {
-        return std::format("{}[INFO]: ", TTS::Foreground::BLUE);
+        return std::format("{}[INFO]   : ", TTS::Foreground::BLUE);
     }
     else if constexpr (LogType == LogTypes::Success)
     {
@@ -41,15 +42,15 @@ template <LogTypes LogType> std::string FormatLogMessage()
     }
     else if constexpr (LogType == LogTypes::Warn)
     {
-        return std::format("{}[WARN]: ", TTS::Foreground::YELLOW);
+        return std::format("{}[WARN]   : ", TTS::Foreground::YELLOW);
     }
     else if constexpr (LogType == LogTypes::Error)
     {
-        return std::format("{}[ERROR]: ", TTS::Foreground::RED);
+        return std::format("{}[ERROR]  : ", TTS::Foreground::RED);
     }
     else if constexpr (LogType == LogTypes::Debug)
     {
-        return std::format("[DEBUG]: ");
+        return std::format("[DEBUG]    : ");
     }
 }
 /// Verbose has no effect if LogOnlyIfVerbose is set to false.
@@ -129,7 +130,17 @@ std::filesystem::path GetInstallationDirectory()
 
 template <typename Type> Type GetFileLastWriteTimeAsType(const filesystem::path &FilePath)
 {
-    auto file_last_write_time = filesystem::last_write_time(FilePath);
+    std::error_code error_code;
+    auto            file_last_write_time = filesystem::last_write_time(FilePath, error_code);
+
+    if (error_code)
+    {
+        Log<LogTypes::Error>(
+            "Failed to get {}'s last edit time with error: {}\n",
+            FilePath.string(),
+            error_code.message());
+        return 0;
+    }
 
     auto system_time = std::chrono::clock_cast<std::chrono::system_clock>(file_last_write_time);
 
@@ -137,6 +148,23 @@ template <typename Type> Type GetFileLastWriteTimeAsType(const filesystem::path 
         std::chrono::duration_cast<std::chrono::seconds>(system_time.time_since_epoch()).count();
 
     return static_cast<Type>(seconds_since_epoch);
+}
+
+size_t GetSizeOfFile(const filesystem::path &FilePath)
+{
+    std::error_code error_code;
+    size_t          file_size = std::filesystem::file_size(FilePath, error_code);
+
+    if (error_code)
+    {
+        Log<LogTypes::Error>(
+            "Failed to get file size for file {} with error: {}",
+            FilePath.string(),
+            error_code.message());
+        return 0;
+    }
+
+    return file_size;
 }
 
 } // namespace JSlang::HelperFunctions

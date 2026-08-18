@@ -5,7 +5,31 @@ DoFileContentIntegrityChecks = false
 MacroDefines = ["SOMETHING", "0"] # To apply to all targets
 
 [[Build.Target]]
-# Output binary/text format: ".spv", ".dxil", ".dxbc", ".glsl", ".hlsl", ".cu", ".ptx", ".wgsl", ".metal", ".cpp",
+# Output binary/text format:
+    # extension_to_target_map = {
+    #     {".glsl", SLANG_GLSL},
+    #     {".hlsl", SLANG_HLSL},
+    #     {".spv", SLANG_SPIRV},
+    #     {".spvasm", SLANG_SPIRV_ASM},
+    #     {".dxbc", SLANG_DXBC},
+    #     {".dxbcasm", SLANG_DXBC_ASM},
+    #     {".dxil", SLANG_DXIL},
+    #     {".dxilasm", SLANG_DXIL_ASM},
+    #     {".c", SLANG_C_SOURCE},
+    #     {".cpp", SLANG_CPP_SOURCE},
+    #     {".exe", SLANG_HOST_EXECUTABLE},
+    #     {".cu", SLANG_CUDA_SOURCE},
+    #     {".ptx", SLANG_PTX},
+    #     {".metal", SLANG_METAL},
+    #     {".metallib", SLANG_METAL_LIB},
+    #     {".metallibasm", SLANG_METAL_LIB_ASM},
+    #     {".wgsl", SLANG_WGSL},
+    #     {".slangvm", SLANG_HOST_VM},
+    #     {".h", SLANG_CPP_HEADER},
+    #     {".cuh", SLANG_CUDA_HEADER},
+    #     {".ll", SLANG_SHADER_LLVM_IR},
+    #     {".dll", SLANG_SHADER_SHARED_LIBRARY},
+    #     {".o", SLANG_OBJECT_CODE}};
 Format = ".spv"
 
 Profile = "sm_6_6"

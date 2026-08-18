@@ -1,0 +1,9 @@
+.jslang
+/temp/
+.dll
+.obj
+/zig-out/
+/cache/
+/build/
+.xmake
+.zig-cache

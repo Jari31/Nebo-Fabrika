@@ -140,7 +140,7 @@ target("jslang")
     add_rules("cache_dependencies")
 
     on_build( function (target)
-        os.vrunv("zig", { "build" }, {
+        os.vrunv("zig", { "build", "-Doptimize=ReleaseFast" }, {
                     curdir = target:scriptdir(),
                     envs = target:pkgenvs()
                 })

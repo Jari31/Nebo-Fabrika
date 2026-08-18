@@ -219,8 +219,9 @@ struct Build
 
     struct CLIOptions
     {
-        bool     Verbose     = false;
-        uint32_t ThreadCount = 0;
+        bool     Verbose        = false;
+        bool     DoCleanRebuild = false;
+        uint32_t ThreadCount    = 0;
     } ObjectCLIOptions;
 
     struct ThreadLocalBuildContext
@@ -251,6 +252,10 @@ struct Build
             "many as you can spare for SSDs.");
 
         subcommand->add_flag("-v, --verbose", ObjectCLIOptions.Verbose);
+        subcommand->add_flag(
+            "-c, --clean",
+            ObjectCLIOptions.DoCleanRebuild,
+            "Whether to delete cache files and do a clean rebuild.");
 
         subcommand->callback(
             [this]()
@@ -492,7 +497,10 @@ struct Build
         auto file_last_edit_time =
             HelperFunctions::GetFileLastWriteTimeAsType<uint64_t>(filesystem_dependency_path);
 
-        Context.ThreadLocalHashMap->try_emplace(file_path_hash, file_last_edit_time);
+        Context.ThreadLocalHashMap->try_emplace(
+            file_path_hash,
+            file_last_edit_time); // WARN: Might get corrupted because it doesn't track the IR
+                                  // WARN: file's properties. Most likely won't
         Context.ThreadLocalIRBlobBuffer->try_emplace(
             filesystem_dependency_path, std::move(ir_blob_buffer));
 
@@ -502,8 +510,16 @@ struct Build
         Context.ShaderModules.push_back(module);
         return true;
     }
+
+    enum class DependencyCompilationResult : uint8_t
+    {
+        FailedToCompileAndLoadModules,
+        CompiledAndLoadedAllModules,
+        LoadedAllModules,
+    };
+
     template <bool Verbose = false>
-    bool compile_module_dependencies(
+    DependencyCompilationResult compile_module_dependencies(
         ThreadLocalBuildContext &Context,
         slang::IModule          *Module,
         std::string             &PrintBuffer) const
@@ -512,14 +528,14 @@ struct Build
         {
             HelperFunctions::ThreadSafeLog<LogTypes::Error>(
                 PrintBuffer, "Provided module for dependency resolution is null; unusable.\n");
-            return false;
+            return DependencyCompilationResult::FailedToCompileAndLoadModules;
         }
 
         auto dependency_count = Module->getDependencyFileCount();
 
         if (dependency_count == 0)
         {
-            return true;
+            return DependencyCompilationResult::CompiledAndLoadedAllModules;
         }
 
         Context.ShaderModules.reserve(dependency_count);
@@ -530,6 +546,9 @@ struct Build
             "Compiling for {} dependencies for module {}.\n",
             dependency_count,
             Module->getName());
+
+        bool loaded_all_modules = true; // loaded means the main file may not need to be compiled
+                                        // since dependencies stay the same
 
         for (SlangInt32 i = dependency_count - 1; i > 0;
              i--) // dependency 0 is the base shader (i.e., the root file in the DAG that's
@@ -549,6 +568,8 @@ struct Build
                         "Failed to compile dependency module {}\n",
                         dependency_file_path);
                 }
+
+                loaded_all_modules = false;
                 return;
             };
 
@@ -557,7 +578,7 @@ struct Build
                 HelperFunctions::ThreadSafeLog<LogTypes::Error>(
                     PrintBuffer, "Failed to get dependency file for module.\n");
 
-                return false;
+                return DependencyCompilationResult::FailedToCompileAndLoadModules;
             }
 
             while (true)
@@ -608,11 +629,14 @@ struct Build
 
             if (!compiled_all_dependencies)
             {
-                return false;
+                return DependencyCompilationResult::FailedToCompileAndLoadModules;
             }
         }
-
-        return true;
+        if (loaded_all_modules)
+        {
+            return DependencyCompilationResult::LoadedAllModules;
+        }
+        return DependencyCompilationResult::CompiledAndLoadedAllModules;
     }
     template <bool Verbose = false>
     int compile_shaders(
@@ -765,10 +789,18 @@ struct Build
 
                 for (uint32_t i = Range.start; i < Range.end; i++)
                 {
+                    auto &path_to_module = ShaderFilePathsToCheck[i];
+                    auto *module         = context.Session->loadModule(
+                        path_to_module.string().c_str(), diagnostic_blob.writeRef());
 
-                    auto &path   = ShaderFilePathsToCheck[i];
-                    auto *module = context.Session->loadModule(
-                        path.string().c_str(), diagnostic_blob.writeRef());
+                    auto module_last_edit_time =
+                        HelperFunctions::GetFileLastWriteTimeAsType<uint64_t>(path_to_module);
+                    auto module_name_hash = HashMap::HashString(path_to_module.string());
+
+                    auto module_name_string = path_to_module.stem().string();
+
+                    auto build_manifest_file_path =
+                        ".jslang/" + module_name_string + ".jslang-build";
 
                     if (!module || diagnostic_blob)
                     {
@@ -777,14 +809,12 @@ struct Build
                             HelperFunctions::ThreadSafeLog<LogTypes::Error>(
                                 thread_local_print_buffer,
                                 "While loading module {}, ran into error: {}\n",
-                                path.string(),
+                                path_to_module.string(),
                                 static_cast<const char *>(diagnostic_blob->getBufferPointer()));
                         }
 
                         continue;
                     }
-
-                    const auto *module_name = module->getName();
 
                     // auto *module_layout = module->getLayout();
                     auto module_entry_point_count = module->getDefinedEntryPointCount();
@@ -800,22 +830,49 @@ struct Build
                     auto module_compilation_result = compile_module_dependencies<Verbose>(
                         context, module, thread_local_print_buffer);
 
-                    if (!module_compilation_result)
+                    if (module_compilation_result ==
+                        DependencyCompilationResult::FailedToCompileAndLoadModules)
                     {
                         HelperFunctions::ThreadSafeLog<LogTypes::Error>(
                             thread_local_print_buffer,
                             "Failed to compile dependency modules for {}.\n",
-                            path.string());
+                            path_to_module.string());
+                    }
+                    else if (
+                        module_compilation_result == DependencyCompilationResult::LoadedAllModules)
+                    {
+                        auto module_hash_key = HashMap::HashString(path_to_module.string());
+
+                        if (context.ThreadGlobalHashMap->contains(module_hash_key))
+                        {
+                            auto build_manifest_file_last_edit_time =
+                                HelperFunctions::GetFileLastWriteTimeAsType<uint64_t>(
+                                    build_manifest_file_path);
+
+                            if (context.ThreadGlobalHashMap->at(module_hash_key) ==
+                                (module_last_edit_time ^ build_manifest_file_last_edit_time))
+                            {
+                                HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
+                                    thread_local_print_buffer,
+                                    "Cache hit for module {}. Skipping compilation.\n",
+                                    module_name_string);
+                                continue;
+                            }
+                        }
                     }
 
                     HelperFunctions::ThreadSafeLog<LogTypes::Info, true, Verbose>(
                         thread_local_print_buffer,
                         "Compiling for {} entry point(s) in {}.\n",
                         module_entry_point_count,
-                        module_name);
+                        module_name_string);
 
-                    uint32_t shader_modules_size = context.ShaderModules.size();
-                    context.ShaderModules.resize(shader_modules_size + 1);
+                    bool compiled_all_entry_points =
+                        true; // returning here will leave out other shaders from compilation, which
+                              // is unwanted
+
+                    // uint32_t shader_modules_size = context.ShaderModules.size();
+                    context.ShaderModules.reserve(module_entry_point_count);
                     for (SlangInt32 j = 0; j < module_entry_point_count; j++)
                     {
                         Slang::ComPtr<slang::IEntryPoint> module_entry_point;
@@ -827,57 +884,65 @@ struct Build
                                 thread_local_print_buffer,
                                 "Failed to get entry point at index {} for module {}.\n",
                                 i,
-                                module_name);
+                                module_name_string);
 
+                            compiled_all_entry_points = false;
                             continue;
                         }
 
-                        context.ShaderModules[shader_modules_size] = module_entry_point.get();
+                        context.ShaderModules.push_back(module_entry_point.get());
+                    }
+                    Slang::ComPtr<slang::IComponentType> composed_program;
 
-                        Slang::ComPtr<slang::IComponentType> composed_program;
+                    SlangResult module_compose_result =
+                        context.Session->createCompositeComponentType(
+                            context.ShaderModules.data(),
+                            static_cast<SlangInt32>(context.ShaderModules.size()),
+                            composed_program.writeRef(),
+                            diagnostic_blob.writeRef());
 
-                        SlangResult module_compose_result =
-                            context.Session->createCompositeComponentType(
-                                context.ShaderModules.data(),
-                                static_cast<SlangInt32>(context.ShaderModules.size()),
-                                composed_program.writeRef(),
-                                diagnostic_blob.writeRef());
-
-                        if (SLANG_FAILED(module_compose_result) || diagnostic_blob)
+                    if (SLANG_FAILED(module_compose_result) || diagnostic_blob)
+                    {
+                        if (diagnostic_blob)
                         {
-                            if (diagnostic_blob)
-                            {
-                                HelperFunctions::ThreadSafeLog<LogTypes::Error>(
-                                    thread_local_print_buffer,
-                                    "Failed to compose module with error: {}\n",
-                                    (const char *)diagnostic_blob->getBufferPointer());
-                            }
-                            continue;
+                            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                thread_local_print_buffer,
+                                "Failed to compose module with error: {}\n",
+                                (const char *)diagnostic_blob->getBufferPointer());
                         }
 
-                        Slang::ComPtr<slang::IComponentType> linked_program;
-                        SlangResult                          link_result = composed_program->link(
-                            linked_program.writeRef(), diagnostic_blob.writeRef());
+                        compiled_all_entry_points = false;
+                        continue;
+                    }
 
-                        if (SLANG_FAILED(link_result))
+                    Slang::ComPtr<slang::IComponentType> linked_program;
+                    SlangResult                          link_result = composed_program->link(
+                        linked_program.writeRef(), diagnostic_blob.writeRef());
+
+                    if (SLANG_FAILED(link_result))
+                    {
+                        // Log diagnostic blob to see if linking/importing failed
+                        if (diagnostic_blob)
                         {
-                            // Log diagnostic blob to see if linking/importing failed
-                            if (diagnostic_blob)
-                            {
-                                HelperFunctions::Log(
-                                    "Link Error: {}\n",
-                                    (const char *)diagnostic_blob->getBufferPointer());
-                            }
-                            return;
+                            HelperFunctions::Log(
+                                "Link Error: {}\n",
+                                (const char *)diagnostic_blob->getBufferPointer());
                         }
+
+                        compiled_all_entry_points = false;
+                        continue;
+                    }
+
+                    for (SlangInt j = 0; j < module_entry_point_count; j++)
+                    {
+                        auto *linked_program_layout = linked_program->getLayout();
 
                         const auto *module_entry_point_name =
-                            linked_program->getLayout()->getEntryPointByIndex(j)->getName();
+                            linked_program_layout->getEntryPointByIndex(j)->getName();
 
                         SlangInt k = 0; // NOLINT
                         for (auto &TargetDescription : target_descriptions)
                         {
-
                             auto &target_format                  = TargetDescription.format;
                             auto &target_format_extension_string = TargetDescriptions.at(k).Format;
 
@@ -885,7 +950,7 @@ struct Build
 
                             SlangResult target_compilation_result =
                                 composed_program->getEntryPointCode(
-                                    0,
+                                    j,
                                     k,
                                     compiled_code_blob.writeRef(),
                                     diagnostic_blob.writeRef());
@@ -898,6 +963,7 @@ struct Build
                                     TargetDescriptions.at(k).Format,
                                     (const char *)diagnostic_blob->getBufferPointer());
 
+                                compiled_all_entry_points = false;
                                 continue;
                             }
 
@@ -952,16 +1018,11 @@ struct Build
                                 break;
                             }
 
-                            auto module_name_string =
-                                filesystem::path(module->getName()).stem().string();
                             auto module_entry_point_name_string =
-                                std::string(module_entry_point_name);
+                                module_name_string + "_" + std::string(module_entry_point_name);
 
                             filesystem::path output_file_path =
-                                ".jslang/" +
-                                module_name_string.append("_").append(
-                                    module_entry_point_name_string) +
-                                ".temp";
+                                ".jslang/" + module_entry_point_name_string + ".temp";
 
                             std::ios_base::openmode open_mode = std::ios::out;
                             if (is_binary_file)
@@ -980,6 +1041,8 @@ struct Build
                                     target_format_extension_string,
                                     k,
                                     module->getName());
+
+                                compiled_all_entry_points = false;
                                 continue;
                             }
 
@@ -994,8 +1057,8 @@ struct Build
                                 std::error_code error_code;
 
                                 auto true_output_path =
-                                    OutputFolder /
-                                    module_name_string.append(target_format_extension_string);
+                                    OutputFolder / module_entry_point_name_string.append(
+                                                       target_format_extension_string);
 
                                 filesystem::rename(output_file_path, true_output_path, error_code);
 
@@ -1006,6 +1069,8 @@ struct Build
                                         "Failed to rename file {} with error: {}\n",
                                         output_file_path.string(),
                                         error_code.message());
+
+                                    compiled_all_entry_points = false;
                                     continue;
                                 }
 
@@ -1020,11 +1085,45 @@ struct Build
                                     thread_local_print_buffer,
                                     "Failed to write to file {}.\n",
                                     output_file_path.string());
+
+                                compiled_all_entry_points = false;
                                 continue;
                             }
 
                             ++k;
                         }
+                    }
+
+                    if (compiled_all_entry_points)
+                    {
+                        std::ofstream build_manifest_file(build_manifest_file_path);
+
+                        if (!build_manifest_file)
+                        {
+                            HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                                thread_local_print_buffer,
+                                "Failed to open build manifest file for {}.",
+                                build_manifest_file_path);
+
+                            continue;
+                        }
+
+                        build_manifest_file.close();
+                        if (build_manifest_file.good())
+                        {
+                            auto manifest_file_edit_time =
+                                HelperFunctions::GetFileLastWriteTimeAsType<uint64_t>(
+                                    build_manifest_file_path);
+
+                            context.ThreadLocalHashMap->insert_or_assign(
+                                module_name_hash, module_last_edit_time ^ manifest_file_edit_time);
+                            continue;
+                        }
+
+                        HelperFunctions::ThreadSafeLog<LogTypes::Error>(
+                            thread_local_print_buffer,
+                            "Failed to close file for {}.",
+                            build_manifest_file_path);
                     }
                 }
             });
@@ -1083,36 +1182,87 @@ struct Build
         return 0;
     };
 
-    template <bool Verbose = false> int BuildShaders()
+    template <bool Verbose = false>
+    bool create_temporary_directories(
+        const filesystem::path &TemporaryDynamicLibraryFolder,
+        const filesystem::path &TemporaryBuildFolder) const
     {
-        auto temporary_directory = HelperFunctions::GetInstallationDirectory() / "temp";
-        if (!filesystem::exists(temporary_directory))
+        if (!filesystem::exists(TemporaryDynamicLibraryFolder))
         {
             HelperFunctions::Log<LogTypes::Info, true, Verbose>(
                 "Failed to find temporary directory. Creating a new one...\n");
             std::error_code error_code;
-            filesystem::create_directories(temporary_directory, error_code);
+            filesystem::create_directories(TemporaryDynamicLibraryFolder, error_code);
 
             if (error_code)
             {
                 HelperFunctions::Log<LogTypes::Info>(
-                    "Failed to create temporary directory with error: {}\n", error_code.message());
-                return -1;
+                    "Failed to create temporary dynamic library folder {} with error: {}\n",
+                    TemporaryDynamicLibraryFolder.string(),
+                    error_code.message());
+                return false;
+            }
+        }
+        else if (ObjectCLIOptions.DoCleanRebuild)
+        {
+            std::error_code error_code;
+            filesystem::remove_all(TemporaryDynamicLibraryFolder, error_code);
+
+            if (error_code)
+            {
+                HelperFunctions::Log(
+                    "Failed to delete temporary dynamic library folder {} with error: {}\n",
+                    TemporaryDynamicLibraryFolder.string(),
+                    error_code.message());
+                return false;
             }
         }
 
-        if (!filesystem::exists(".jslang"))
+        if (!filesystem::exists(TemporaryBuildFolder))
         {
             std::error_code error_code;
-            filesystem::create_directory(".jslang", error_code);
+            filesystem::create_directories(TemporaryBuildFolder, error_code);
 
             if (error_code)
             {
                 HelperFunctions::Log<LogTypes::Error>(
-                    "Failed to create .jslang directory with error: {}\n", error_code.message());
-                return -1;
+                    "Failed to create .jslang directory {} with error: {}\n",
+                    TemporaryBuildFolder.string(),
+                    error_code.message());
+                return false;
             }
         }
+        else if (ObjectCLIOptions.DoCleanRebuild)
+        {
+            std::error_code error_code;
+            filesystem::remove_all(TemporaryBuildFolder, error_code);
+
+            if (error_code)
+            {
+                HelperFunctions::Log(
+                    "Failed to delete temporary build folder {} with error: {}\n",
+                    TemporaryBuildFolder.string(),
+                    error_code.message());
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    template <bool Verbose = false> int BuildShaders()
+    {
+        auto temporary_dylib_folder = HelperFunctions::GetInstallationDirectory() / "temp";
+        auto temporary_build_folder = filesystem::path(".jslang");
+        if (!create_temporary_directories<Verbose>(temporary_dylib_folder, temporary_build_folder))
+        {
+            return -1;
+        }
+
+        if (!create_temporary_directories<Verbose>(temporary_dylib_folder, temporary_build_folder))
+        {
+            return -1;
+        };
 
         HelperFunctions::Log<LogTypes::Info, true, Verbose>("Initializing TaskScheduler...\n");
 
@@ -1126,7 +1276,7 @@ struct Build
 
         TaskScheduler.Initialize(ObjectCLIOptions.ThreadCount);
 
-        HelperFunctions::Log<LogTypes::Info, true, Verbose>("TaskScheduler initialized.\n");
+        HelperFunctions::Log<LogTypes::Success, true, Verbose>("TaskScheduler initialized.\n");
 
         filesystem::path current_working_directory = filesystem::current_path();
         filesystem::path expected_file             = "jslang.toml";
@@ -1233,7 +1383,7 @@ struct Build
             {"slang-rt" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_RUN_TIME}}};
 
         auto dylib_caching_result = DynamicLibraryLoader::CacheCompanionDynamicLibraries<Verbose>(
-            temporary_directory, EmbeddedDynamicLibraries);
+            temporary_dylib_folder, EmbeddedDynamicLibraries);
 
         if (!dylib_caching_result)
         {
@@ -1242,7 +1392,7 @@ struct Build
         }
 
         auto slang_compiler_dylib =
-            DynamicLibraryLoader::LoadDynamicLibrary(temporary_directory / "slang-compiler");
+            DynamicLibraryLoader::LoadDynamicLibrary(temporary_dylib_folder / "slang-compiler");
 
         if (!slang_compiler_dylib)
         {
