@@ -1,5 +1,5 @@
 [Build]
-SearchFolders = ["../../../../../../"]#"../", "../../../PCG"]
+SearchFolders = ["../", "../../../PCG"]
 OutputFolder = "build"
 DoFileContentIntegrityChecks = false
 MacroDefines = ["SOMETHING", "0"] # To apply to all targets

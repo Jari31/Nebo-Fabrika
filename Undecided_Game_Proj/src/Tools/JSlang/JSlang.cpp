@@ -21,20 +21,20 @@ class PluginJSlang : public IJSlang
         ObjectCompiler.Initialize(Options);
     }
 
-    void CompileFromSource(JSlang::CompileFromSourceRequest CompileRequest) override
+    CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest) override
     {
-        ObjectCompiler.CompileFromSource(CompileRequest);
-    };
+        return ObjectCompiler.CompileFromSource(CompileRequest);
+    }
 };
 } // namespace JSlang
 extern "C"
 {
-    DLL_EXPORT IJSlang *CreateJSlangInterfaceInstance()
+    DLL_EXPORT JSlang::IJSlang *CreateJSlangInterfaceInstance()
     {
         return new JSlang::PluginJSlang();
     }
 
-    DLL_EXPORT void DestroyJSlangInterfaceInstance(IJSlang *IJSlangInstance)
+    DLL_EXPORT void DestroyJSlangInterfaceInstance(JSlang::IJSlang *IJSlangInstance)
     {
         delete IJSlangInstance;
     }

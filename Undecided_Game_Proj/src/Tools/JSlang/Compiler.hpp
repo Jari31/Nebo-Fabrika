@@ -2,6 +2,7 @@
 
 #include "CompilerTypes.hpp"
 #include "Includes/Log.hpp"
+#include "Lexer.hpp"
 #include "cache/Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include <cstdint>
 
@@ -26,21 +27,29 @@ struct Compiler
         ThreadedLogger.Initialize(&TaskScheduler, Options.CompileWithThreads);
     }
 
-    void CompileFromSource(CompileFromSourceRequest CompileRequest)
+    CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
-        enki::TaskSet task(
-            12000,
-            [&](enki::TaskSetPartition Range, uint32_t ThreadIndex)
-            { ThreadedLogger.Log<LogTypes::Info>("minecraft won't add inches to your co\n"); });
+        Lexer lexer;
+        lexer.Source = CompileRequest.SourceCode;
 
-        ThreadedLogger.Log<LogTypes::Info>("Hello, world!\n");
-        ThreadUnsafeLogger::Log<LogTypes::Info>("Hello, world!\n");
+        while (true)
+        {
+            Token current_token = lexer.GetNextToken();
 
-        TaskScheduler.AddTaskSetToPipe(&task);
-        TaskScheduler.WaitforTask(&task);
+            ThreadUnsafeLogger::Log<LogTypes::Info>(
+                "[TOKEN_TYPE: {}, TOKEN_NAME: {}, LINE: {}, COLUMN: {}]\n",
+                uint32_t(current_token.TokenType),
+                current_token.Source,
+                current_token.Line,
+                current_token.Column);
+            if (current_token.TokenType == TokenTypes::Invalid ||
+                current_token.TokenType == TokenTypes::EndOfFile)
+            {
+                break;
+            }
+        }
 
-        ThreadedLogger.PrintLogBuffers();
-        ThreadedLogger.FlushAndClearBuffers();
+        return {};
     };
 };
 } // namespace JSlang

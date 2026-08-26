@@ -4,6 +4,7 @@
 #include "Includes/StringHasher.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <string_view>
 
 namespace JSlang
@@ -59,8 +60,9 @@ struct Lexer
         return (Cursor < Source.length()) ? Source[Cursor] : '\0';
     }
 
-    char peek_and_advance_one_character()
+    char advance_one_character()
     {
+
         char character = peek_character_under_cursor();
         ++Cursor;
         if (character == '\n')
@@ -77,7 +79,7 @@ struct Lexer
 
     bool match_next_character(char ExpectedCharacter)
     {
-        char character = peek_and_advance_one_character();
+        char character = advance_one_character();
         return character == ExpectedCharacter;
     }
 
@@ -127,10 +129,11 @@ struct Lexer
         }
     }
 
-    Token create_token_from_identifier_or_keyword(char Character, size_t CursorStartPosition)
+    Token create_token_from_identifier_or_keyword(size_t CursorStartPosition)
     {
-        while (BitwiseCharacterClassifier::IsIdentifierBody(peek_and_advance_one_character()))
+        while (BitwiseCharacterClassifier::IsIdentifierBody(peek_character_under_cursor()))
         {
+            advance_one_character();
         };
 
         std::string_view string_view =
@@ -140,43 +143,68 @@ struct Lexer
         return make_token(token_type, string_view);
     }
 
+    void skip_whitespaces()
+    {
+        while (BitwiseCharacterClassifier::IsWhitespace(peek_character_under_cursor()))
+        {
+            advance_one_character();
+        }
+    }
+
     Token GetNextToken()
     {
+        skip_whitespaces();
+
+        char character = peek_character_under_cursor();
+
         size_t cursor_start_position = Cursor;
-        char   character             = peek_character_under_cursor();
+
         switch (character)
         {
         case '\0':
         {
+            advance_one_character();
             return make_token(TokenTypes::EndOfFile, cursor_start_position, 1);
         }
         case '@':
         {
+            advance_one_character();
             return make_token(TokenTypes::AtSymbol, cursor_start_position, 1);
         }
         case '=': // could use a macro, but would be annoyingly complex to maintain
         {
+            advance_one_character();
             if (match_next_character('='))
             {
+                advance_one_character();
                 return make_token(TokenTypes::EqualEqual, cursor_start_position, 2);
             }
             return make_token(TokenTypes::Equal, cursor_start_position, 1);
         }
         case '-':
         {
+            advance_one_character();
             if (match_next_character('-'))
             {
+                advance_one_character();
                 return make_token(TokenTypes::MinusMinus, cursor_start_position, 1);
             }
             return make_token(TokenTypes::Minus, cursor_start_position, 1);
         }
         case '+':
         {
+            advance_one_character();
             if (match_next_character('+'))
             {
+                advance_one_character();
                 return make_token(TokenTypes::PlusPlus, cursor_start_position, 1);
             }
             return make_token(TokenTypes::Plus, cursor_start_position, 1);
+        }
+        case '/':
+        {
+            advance_one_character();
+            return make_token(TokenTypes::Slash, cursor_start_position, 1);
         }
         default:
             break;
@@ -184,7 +212,7 @@ struct Lexer
 
         if (BitwiseCharacterClassifier::IsIdentifierStart(character))
         {
-            return create_token_from_identifier_or_keyword(character, cursor_start_position);
+            return create_token_from_identifier_or_keyword(cursor_start_position);
         }
 
         return make_token(TokenTypes::Invalid, cursor_start_position, 1);

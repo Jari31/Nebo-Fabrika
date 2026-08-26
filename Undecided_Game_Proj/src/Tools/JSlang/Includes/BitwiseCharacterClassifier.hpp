@@ -52,4 +52,9 @@ bool IsIdentifierStart(char Character)
     return (ASCII_LUT[Character] & CharacterFlags::IdentifierStart) != 0;
 }
 
+bool IsWhitespace(char Character)
+{
+    return (ASCII_LUT[Character] & CharacterFlags::Whitespace) != 0;
+}
+
 } // namespace JSlang::BitwiseCharacterClassifier

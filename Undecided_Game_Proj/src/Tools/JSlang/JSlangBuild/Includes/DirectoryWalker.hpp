@@ -22,6 +22,7 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
     const filesystem::path         &SearchFolder,
     ThreadSafeLogger               &ThreadedLogger,
     const std::vector<std::string> &WhiteListedExtensions = {},
+    const std::uint32_t             FilePathBufferSize    = 4096,
     void (*FoundEntryCallback)(
         const filesystem::directory_entry &,
         std::vector<filesystem::path> &) = nullptr)
@@ -33,9 +34,6 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
     std::vector<filesystem::path> directories_to_check_in_next_pass;
 
     directories_to_check_in_current_pass.push_back(SearchFolder);
-
-    std::vector<uint64_t> thread_global_parsed_directory_index;
-    thread_global_parsed_directory_index.resize(thread_count);
 
     auto check_if_file_is_whitelisted = [&](const filesystem::path &Path)
     {
@@ -56,6 +54,12 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
         ThreadGlobalPathStorage thread_global_directory_output_buffer(thread_count);
         ThreadGlobalPathStorage thread_global_file_path_output_buffer(thread_count);
 
+        for (uint32_t i = 0; i < thread_count; i++)
+        {
+            thread_global_file_path_output_buffer[i].reserve(FilePathBufferSize);
+            thread_global_directory_output_buffer[i].reserve(FilePathBufferSize);
+        }
+
         enki::TaskSet task(
             static_cast<uint32_t>(directories_to_check_in_current_pass.size()),
             [&](enki::TaskSetPartition Range, uint32_t ThreadIndex) -> void
@@ -64,8 +68,6 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
                     thread_global_directory_output_buffer[ThreadIndex];
                 auto &thread_local_file_path_output_buffer =
                     thread_global_file_path_output_buffer[ThreadIndex];
-                auto &thread_local_parsed_directory_index =
-                    thread_global_parsed_directory_index[ThreadIndex];
 
                 for (uint32_t i = Range.start; i < Range.end; i++)
                 {
@@ -84,7 +86,6 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
 
                     for (const auto &entry : iterator)
                     {
-                        ++thread_local_parsed_directory_index;
                         if (entry.is_directory())
                         {
                             thread_local_directory_output_buffer.push_back(entry.path());
@@ -123,12 +124,6 @@ std::vector<filesystem::path> MultithreadedFileGlobber(
 
         std::swap(directories_to_check_in_current_pass, directories_to_check_in_next_pass);
     }
-    uint64_t parsed_directories = 0;
-    for (const auto &dii : thread_global_parsed_directory_index)
-    {
-        parsed_directories += dii;
-    }
-    ThreadUnsafeLogger::Log<LogTypes::Info>("Parsed {} entries.\n", parsed_directories);
 
     return file_path_output_buffer;
 }
