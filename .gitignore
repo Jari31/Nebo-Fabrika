@@ -53,3 +53,6 @@ diff.txt
 /Undecided_Game_Proj/GDProject/bin/Shaders/Compute Shaders/Compiled
 /Undecided_Game_Proj/src/Tools/JSlangBuild/.xmake
 .jslang
+/Undecided_Game_Proj/src/Tools/JSlang/.zig-cache
+/Undecided_Game_Proj/src/Tools/JSlang/cache
+/Undecided_Game_Proj/src/Tools/JSlang/.xmake

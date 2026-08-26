@@ -1,5 +1,4 @@
-add_requires("toml++ master", "cli11 v2.7.2", "xxhash v0.8.3", "unordered_dense v4.9.0", "enkits v1.12", "dylib v3.0.1", "whereami 2024.08.26")
-add_requires("slang 2026.14.1", { configs = { binary = true } })
+add_requires("unordered_dense v4.9.0", "enkits v1.12")
 add_requires("zig v0.16", { verify = false })
 
 set_runtimes("MD")
@@ -15,30 +14,6 @@ if is_arch("arm64") then
 elseif is_arch("wasm.*") then
     target_arch = "wasm"
 end
-
-package("slang") -- because building from source for C++ is a nightmare
-    set_homepage("https://github.com/shader-slang/slang")
-    set_description("Slang is a shading language and compiler framework.")
-
-    set_urls("https://github.com/shader-slang/slang/releases/download/v$(version)/slang-$(version)-" .. target_platform .. "-" .. target_arch .. ".tar.gz")
-
-    on_install( function (package)
-        if package:is_plat("windows") then
-            os.cp("bin/slangc.exe", package:installdir("bin"))
-            os.cp("bin/*.dll", package:installdir("bin"))
-            os.cp("lib/*.lib", package:installdir("lib"))
-        else
-            os.cp("bin/slangc", package:installdir("bin"))
-            os.cp("lib/*.so", package:installdir("lib"))
-            os.cp("lib/*.dylib", package:installdir("lib"))
-        end
-
-        os.cp("include/*", package:installdir("include"))
-    end)
-
-    on_test( function (package)
-        os.vrun("slangc -v")
-    end)
 
 package("xwin")
     set_kind("binary")
@@ -86,7 +61,7 @@ rule("cache_dependencies")
                 local include_directories = package_instance:get("sysincludedirs") or package_instance:get("includedirs")
                 if include_directories then
                     for _, include_directory in ipairs(include_directories) do
-                        local destination_directory = "cache/Libraries/include"
+                        local destination_directory = "cache/Libraries/include/" .. package_name .. "/"
                         os.vcp(path.join(include_directory, "**"), destination_directory, { rootdir = include_directory })
                     end
                 end
@@ -127,15 +102,9 @@ rule("cache_dependencies")
 
 target("jslang")
     set_kind("binary")
-    add_packages("@zig")
-    add_packages("toml++")
-    add_packages("cli11")
-    add_packages("xxhash")
+    add_packages("zig")
     add_packages("enkits")
     add_packages("unordered_dense")
-    add_packages("dylib")
-    add_packages("whereami")
-    add_packages("slang")
 
     add_rules("cache_dependencies")
 

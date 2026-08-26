@@ -1,8 +1,8 @@
 #pragma once
 
-#include "HelperFunctions.hpp"
-#include "Libraries/include/ankerl/unordered_dense.h"
-#include "Libraries/include/xxhash.h"
+#include "Libraries/include/unordered_dense/ankerl/unordered_dense.h"
+#include "Libraries/include/xxhash/xxhash.h"
+#include "Log.hpp"
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +10,7 @@
 #include <format>
 #include <fstream>
 #include <ios>
+#include <new>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -18,7 +19,7 @@ namespace JSlang::HashMap
 {
 namespace filesystem = std::filesystem;
 using HashMap        = ankerl::unordered_dense::map<uint64_t, uint64_t>;
-using LogTypes       = HelperFunctions::LogTypes;
+using LogTypes       = ThreadUnsafeLogger::LogTypes;
 
 uint64_t HashString(std::string_view String)
 {
@@ -39,7 +40,7 @@ void SaveHashMapToDisk(const filesystem::path &FilePath, const HashMap &Map)
     if (!hash_map_file)
     {
         std::error_code error_code(errno, std::generic_category());
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "Failed to open hash map file to write to at file path: {}. Error: {}\n",
             FilePath.string(),
             error_code.message());
@@ -55,7 +56,7 @@ void SaveHashMapToDisk(const filesystem::path &FilePath, const HashMap &Map)
     if (!hash_map_file)
     {
         std::error_code error_code(errno, std::generic_category());
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "Failed to write hash map values to file {}. Error: {}\n",
             FilePath.string(),
             error_code.message());
@@ -70,13 +71,13 @@ void SaveHashMapToDisk(const filesystem::path &FilePath, const HashMap &Map)
         std::filesystem::rename(temporary_name, FilePath, error_code);
         if (error_code)
         {
-            HelperFunctions::Log<LogTypes::Error>(
+            ThreadUnsafeLogger::Log<LogTypes::Error>(
                 "Failed to rename temporary file. Error: ", error_code.message());
         }
     }
     else
     {
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "The hash map containing file cache info is corrupt. Attempting to remove it to avoid "
             "further corruption...");
 
@@ -85,7 +86,8 @@ void SaveHashMapToDisk(const filesystem::path &FilePath, const HashMap &Map)
 
         if (error_code)
         {
-            HelperFunctions::Log("Failed to remove temporary file. Error: ", error_code.message());
+            ThreadUnsafeLogger::Log<LogTypes::Error>(
+                "Failed to remove temporary file. Error: ", error_code.message());
         }
     }
 }
@@ -97,7 +99,7 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
     if (!hash_map_file)
     {
         std::error_code error_code(errno, std::generic_category());
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "Failed to open hashmap file {}. Error: {}\n", FilePath.string(), error_code.message());
         return {};
     }
@@ -109,7 +111,7 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
 
     if (hash_map_size % entry_size != 0)
     {
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "Corrupted hashmap file {}: file size ({}) is not a multiple of entry size ({}).\n",
             FilePath.string(),
             hash_map_size,
@@ -127,7 +129,7 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
     }
     catch (const std::bad_alloc &e)
     {
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "Failed to allocate memory for hashmap from file {}. Error: {}\n",
             FilePath.string(),
             e.what());
@@ -155,7 +157,7 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
                 reason = "Logical I/O error (formatting/type conversion mismatch)";
             }
 
-            HelperFunctions::Log<LogTypes::Error>(
+            ThreadUnsafeLogger::Log<LogTypes::Error>(
                 "Failed to read key at index {} from hashmap file {}. Reason: {}\n",
                 i,
                 FilePath.string(),
@@ -167,7 +169,7 @@ HashMap LoadHashMapFromDisk(const filesystem::path &FilePath)
         if (!hash_map_file)
         {
             std::error_code error_code(errno, std::generic_category());
-            HelperFunctions::Log<LogTypes::Error>(
+            ThreadUnsafeLogger::Log<LogTypes::Error>(
                 "Failed to read value at index {} from hashmap file {}. Error: {}\n",
                 i,
                 FilePath.string(),

@@ -10,7 +10,8 @@ namespace JSlang::FileIO
 {
 namespace filesystem = std::filesystem;
 
-// NOTE This is awful. It works, but replace it with a memmap implementation when time's on hand
+// NOTE: Refactor this to use Log.hpp logging
+// NOTE: This is awful. It works, but replace it with a memmap implementation when time's on hand
 std::string ReadFileSequential(
     const filesystem::path    &FilePath,
     unsigned int               StartFromLine,

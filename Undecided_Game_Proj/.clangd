@@ -5,7 +5,11 @@ CompileFlags:
     - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gdextension"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/src/cache"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/src/InternalLibraries"
-    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlangBuild/cache"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/cache"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/Includes/"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/JSlangBuild/Includes/"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/JSlangBuild/cache"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/JSlangBuild/cache/Libraries/include/reproc"
     - -std=c++23
     - -Wall
     - -Wno-c23-extensions

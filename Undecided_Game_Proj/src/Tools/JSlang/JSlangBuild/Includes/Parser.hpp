@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Log.hpp"
 #include <algorithm>
 #include <format>
 #include <functional>
@@ -9,7 +10,7 @@
 
 #include "FileIO.hpp"
 #include "HelperFunctions.hpp"
-#include "Libraries/include/toml++/toml.hpp"
+#include "Libraries/include/toml++/toml++/toml.hpp"
 #include "Math.hpp"
 #include "TerminalTextStyling.hpp"
 
@@ -113,7 +114,7 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
             }
         }
         // INFO seems to only err out a single line; so assuming that...
-        HelperFunctions::Log<LogTypes::Error>(
+        ThreadUnsafeLogger::Log<LogTypes::Error>(
             "Failed to parse '{}' with error:\n"
             "BEGIN : LINE {} COLUMN {}\n\n"
             "{}{}|{}{}\n"
@@ -151,7 +152,7 @@ inline std::expected<ParsedOptions, Errors> ParseTOMLFile(const filesystem::path
             }
             else
             {
-                HelperFunctions::Log<LogTypes::Error>("Failed to append to vector.\n");
+                ThreadUnsafeLogger::Log<LogTypes::Error>("Failed to append to vector.\n");
             }
         }
     };
