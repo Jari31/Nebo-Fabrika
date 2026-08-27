@@ -17,6 +17,7 @@ words = [
     "dxbcasm",
     "dxilasm",
     "globbing",
+    "infront",
     "jslang",
     "jslangbuild",
     "metallib",

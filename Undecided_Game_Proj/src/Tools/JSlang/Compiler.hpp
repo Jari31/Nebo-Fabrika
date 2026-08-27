@@ -37,7 +37,7 @@ struct Compiler
             Token current_token = lexer.GetNextToken();
 
             ThreadUnsafeLogger::Log<LogTypes::Info>(
-                "[TOKEN_TYPE: {}, TOKEN_NAME: {}, LINE: {}, COLUMN: {}]\n",
+                "[TOKEN_TYPE: {} | TOKEN_BODY: {} | LINE: {} | COLUMN: {}]\n",
                 uint32_t(current_token.TokenType),
                 current_token.Source,
                 current_token.Line,

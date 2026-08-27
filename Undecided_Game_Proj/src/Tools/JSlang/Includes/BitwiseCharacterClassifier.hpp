@@ -11,6 +11,7 @@ enum CharacterFlags : uint8_t
     Digit      = 1 << 1,
     Underscore = 1 << 2,
     Whitespace = 1 << 3,
+    Dot        = 1 << 4,
 
     IdentifierStart = Alpha | Underscore,
     IdentifierBody  = Alpha | Digit | Underscore
@@ -55,6 +56,11 @@ bool IsIdentifierStart(char Character)
 bool IsWhitespace(char Character)
 {
     return (ASCII_LUT[Character] & CharacterFlags::Whitespace) != 0;
+}
+
+bool IsDigit(char Character)
+{
+    return (ASCII_LUT[Character] & CharacterFlags::Digit) != 0;
 }
 
 } // namespace JSlang::BitwiseCharacterClassifier

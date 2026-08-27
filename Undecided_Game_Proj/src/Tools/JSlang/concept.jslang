@@ -61,9 +61,9 @@ export void Simplex3D( // export is redundant if that attribute is applied
 
     float3 step1 = float3(float(X_over_Y && X_over_Z), float(Y_over_X && Y_over_Z), float(Z_over_X && Z_over_Y)); // implicitly casted to float, but to be explicit
     float3 step2 = float3(float(X_over_Y || X_over_Z), float(Y_over_X || Y_over_Z), float(Z_over_X || Z_over_Y));
-    float3 step3 = float3(1.0f$TP3);
+    float3 step3 = float3(1.0f);
 
-    float3 unskew_factor_vec = float3(unskew_factor$TP3);
+    float3 unskew_factor_vec = float3(unskew_factor);
     float3 distance_to_vertex1 = distance_to_vertex0 - step1 * unskew_factor_vec;
 
     float factor2 = 2.0f * unskew_factor;
@@ -71,7 +71,7 @@ export void Simplex3D( // export is redundant if that attribute is applied
     float3 distance_to_vertex2 = distance_to_vertex0 - step2 * factor2_vec;
 
     float offset3 = 1.0f + 3.0f * unskew_factor;
-    float3 offset3_vec = float3(offset3$TP3);
+    float3 offset3_vec = float3(offset3);
     float3 distance_to_vertex3 = SubtractVector3(distance_to_vertex0, offset3_vec);
 
     float3 grid_origin_step_addition0 = grid_origin + step1;
