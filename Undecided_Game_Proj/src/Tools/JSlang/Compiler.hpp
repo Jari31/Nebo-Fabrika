@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CompilerTypes.hpp"
+#include "Diagnostics.hpp"
 #include "Includes/Log.hpp"
 #include "Lexer.hpp"
 #include "cache/Libraries/include/enkits/enkiTS/TaskScheduler.h"
@@ -29,8 +30,9 @@ struct Compiler
 
     CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
-        Lexer lexer;
-        lexer.Source = CompileRequest.SourceCode;
+        DiagnosticEngine ObjectDiagnosticEngine;
+        Lexer            lexer(
+            ObjectDiagnosticEngine, CompileRequest.SourceCode, CompileRequest.SourceFileName);
 
         while (true)
         {
@@ -39,9 +41,9 @@ struct Compiler
             ThreadUnsafeLogger::Log<LogTypes::Info>(
                 "[TOKEN_TYPE: {} | TOKEN_BODY: {} | LINE: {} | COLUMN: {}]\n",
                 uint32_t(current_token.TokenType),
-                current_token.Source,
-                current_token.Line,
-                current_token.Column);
+                current_token.ObjectSourceLocation.Source,
+                current_token.ObjectSourceLocation.Line,
+                current_token.ObjectSourceLocation.Column);
             if (current_token.TokenType == TokenTypes::Invalid ||
                 current_token.TokenType == TokenTypes::EndOfFile)
             {
