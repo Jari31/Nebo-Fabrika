@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <span>
 #include <vector>
 namespace JSlang
 {
@@ -57,6 +57,39 @@ class ArenaAllocator
         Type *result = reinterpret_cast<Type *>(aligned_pointer);
 
         return new (result) Type(std::forward<ArgumentTypes>(Arguments)...);
+    }
+    template <typename Type> std::span<Type> AllocateArray(size_t Count)
+    {
+        if (Count == 0)
+        {
+            return {};
+        }
+
+        size_t alignment = alignof(Type);
+        size_t size      = sizeof(Type) * Count;
+
+        auto   current_pointer = reinterpret_cast<size_t>(memory_chunks.back() + current_offset);
+        size_t aligned_pointer = (current_pointer + alignment - 1) & ~(alignment - 1);
+        size_t padding         = aligned_pointer - current_pointer;
+
+        if (current_offset + padding + size > memory_chunk_size)
+        {
+            allocate_new_chunk();
+            return AllocateArray<Type>(Count);
+        }
+
+        current_offset += padding + size;
+        auto resulting_array = reinterpret_cast<Type>(aligned_pointer);
+
+        // if constexpr (!std::is_trivially_constructible_v<Type>)
+        // {
+        for (size_t i = 0; i < Count; i++)
+        {
+            new (&resulting_array[i]) Type();
+        }
+        // }
+
+        return std::span<Type>(resulting_array, Count);
     }
 
     void Reset()

@@ -9,8 +9,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
-#include <functional>
-#include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -380,8 +378,8 @@ struct Lexer
                 .Column   = language_identifier.ObjectSourceLocation.Column,
             });
 
-            language_identifier.TokenType = TokenTypes::EmbeddedLanguageCodeblock;
-            return language_identifier;
+            // language_identifier.TokenType = TokenTypes::EmbeddedLanguageCodeblock;
+            return GetNextToken();
         }
 
         return make_token(token_type, string_view);
@@ -425,8 +423,9 @@ struct Lexer
     create_token_from_string_literal(size_t CursorStartPosition, char ExpectedSentinelCharacter)
     {
         advance_one_character();
-        while (peek_character_under_cursor() != ExpectedSentinelCharacter ||
-               peek_character_under_cursor() == '\0')
+        while (peek_character_under_cursor() !=
+                   ExpectedSentinelCharacter and // why not &&? why not!
+               peek_character_under_cursor() != '\0')
         {
             advance_one_character();
         }
@@ -450,6 +449,11 @@ struct Lexer
             return invalid_token;
         }
 
+        if (ExpectedSentinelCharacter == '\'')
+        {
+            return make_token(
+                TokenTypes::CharacterLiteral, CursorStartPosition, Cursor - CursorStartPosition);
+        }
         return make_token(
             TokenTypes::StringLiteral, CursorStartPosition, Cursor - CursorStartPosition);
     }
@@ -655,7 +659,7 @@ struct Lexer
             "Unknown symbol.",
             "Now get your ass and listen to me: what do you think I am, mister? A damned "
             "know-it-all? I ain't got the slightest clue what your petty little symbol here is "
-            "meanin'.")
+            "meanin'.");
     }
 };
 } // namespace JSlang

@@ -1,5 +1,7 @@
 import HashingFunctions/HashingFunctions
 
+// for non-default embedded languages, should do: @Function : Language = "Zig"
+
 inline float CalculateNoiseContributionOfVertex(float3 DistanceToVertex, float3 NoiseGradient)
 {
     uniform const float max_influential_radius_of_vertex = 0.6;

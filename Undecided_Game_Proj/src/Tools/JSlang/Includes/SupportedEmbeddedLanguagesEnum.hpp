@@ -6,13 +6,14 @@
 #include <expected>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace JSlang
 {
 using EmbeddedLanguageCodeblocks = std::vector<std::vector<SourceLocation>>;
 
-enum SupportedEmbeddedLanguages : uint8_t
+enum class SupportedEmbeddedLanguages : uint8_t
 {
     LuaJIT,
 };
@@ -25,7 +26,7 @@ std::expected<uint8_t, std::string> GetEmbeddedLanguageEnumFromSource(std::strin
     case "lua"_hash:
     case "Lua"_hash:
     {
-        return LuaJIT;
+        return std::to_underlying(SupportedEmbeddedLanguages::LuaJIT);
     }
     default:
         return std::unexpected("Unknown embedded language.");

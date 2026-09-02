@@ -4,6 +4,7 @@
 #include "Diagnostics.hpp"
 #include "Includes/Log.hpp"
 #include "Lexer.hpp"
+#include "SupportedEmbeddedLanguagesEnum.hpp"
 #include "cache/Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include <cstdint>
 
@@ -30,9 +31,13 @@ struct Compiler
 
     CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
-        DiagnosticEngine ObjectDiagnosticEngine;
-        Lexer            lexer(
-            ObjectDiagnosticEngine, CompileRequest.SourceCode, CompileRequest.SourceFileName);
+        EmbeddedLanguageCodeblocks embedded_language_codeblocks;
+        DiagnosticEngine           diagnostic_engine;
+        Lexer                      lexer(
+            diagnostic_engine,
+            embedded_language_codeblocks,
+            CompileRequest.SourceCode,
+            CompileRequest.SourceFileName);
 
         while (true)
         {
