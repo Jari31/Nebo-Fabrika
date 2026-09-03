@@ -1,5 +1,12 @@
 import HashingFunctions/HashingFunctions
 
+begin lua
+function AutoDiff(...):
+    ...
+||endlua
+
+@AutoDiff : TargetLanguage="Lua"
+
 // for non-default embedded languages, should do: @Function : Language = "Zig"
 
 inline float CalculateNoiseContributionOfVertex(float3 DistanceToVertex, float3 NoiseGradient)
@@ -21,6 +28,7 @@ inline float CalculateNoiseContributionOfVertex(float3 DistanceToVertex, float3 
 
 // function params are implicitly uniform, but explicitness is appreciated
 // automatically gets exported as a header (and later JSON) file for definitions
+@AutoDiff("_Back")
 @FunctionType(.Compute, 8, 8, 8) // gets downed into 8 lanes for ISPC, or whichever applicable
 export void Simplex3D( // export is redundant if that attribute is applied
     @BufferTypeFor(.PushConstant) // BufferTypeFor applies for all params underneath, until it hits another type annotation

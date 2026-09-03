@@ -65,6 +65,7 @@ enum class TokenTypes : uint8_t
     RightAngleBracket,  // >
 
     Semicolon, // ;
+    Colon,     // :
     Dot,       // .
 
     Not,                  // !
@@ -638,6 +639,10 @@ struct Lexer
         case '\'':
         {
             return create_token_from_string_literal(cursor_start_position, '\'');
+        }
+        case ':':
+        {
+            return make_singular_token(TokenTypes::Colon, cursor_start_position);
         }
         default:
             break;

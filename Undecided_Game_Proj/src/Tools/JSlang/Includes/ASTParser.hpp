@@ -3,7 +3,9 @@
 #include "Diagnostics.hpp"
 #include "ErrorCodes.hpp"
 #include "Lexer.hpp"
+#include <algorithm>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,7 +20,7 @@ enum class NodeTypes : uint8_t
     BinaryExpression,
     CallExpression,
     VectorSwizzleExpression,
-    LanguageEmbeddingExpression,
+    FunctionCallExpression,
 
     VariableDeclarationStatement,
     AliasStatement,
@@ -38,7 +40,7 @@ struct ASTNode
 namespace AST
 {
 
-struct AliasStatement : public ASTNode
+struct AliasStatement : ASTNode
 {
     std::string_view AliasName;
     std::string_view TargetName;
@@ -51,7 +53,7 @@ struct AliasStatement : public ASTNode
     }
 };
 
-struct DiscardAliasStatement : public ASTNode
+struct DiscardAliasStatement : ASTNode
 {
     std::string_view AliasName;
 
@@ -71,11 +73,7 @@ enum class BufferTypes : uint8_t
     UniformBuffer
 };
 
-struct Annotation
-{
-};
-
-struct VariableDeclaration : public ASTNode
+struct VariableDeclaration : ASTNode
 {
     bool IsUniform;
     bool IsConstant;
@@ -91,7 +89,7 @@ struct VariableDeclaration : public ASTNode
     }
 };
 
-struct BinaryExpression : public ASTNode
+struct BinaryExpression : ASTNode
 {
     TokenTypes OperandTokenType;
     ASTNode   *LeftHandSide;
@@ -134,23 +132,42 @@ struct IdentifierExpression : ASTNode
     }
 };
 
-struct LanguageEmbeddingExpression : ASTNode
+struct FunctionCallExpression : ASTNode
 {
-    std::string_view Language;
+    std::string_view     Identifier;
+    std::span<ASTNode *> Arguments;
 
-    LanguageEmbeddingExpression(
-        std::string_view ParameterLanguage,
-        SourceLocation   ParameterSourceLocation)
-        : Language(ParameterLanguage)
+    FunctionCallExpression(
+        std::span<ASTNode *> ParameterArguments,
+        SourceLocation       ParameterSourceLocation,
+        std::string_view     ParameterIdentifier)
+        : Identifier(ParameterIdentifier), Arguments(ParameterArguments)
     {
-        NodeType             = NodeTypes::LanguageEmbeddingExpression;
+        NodeType             = NodeTypes::FunctionCallExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct AnnotationFunctionExpression : ASTNode
+{
+    std::string_view     Identifier;
+    std::span<ASTNode *> Arguments;
+
+    std::span<ASTNode *> Decorations;
+
+    [[nodiscard]] bool IsFunction() const { return !Arguments.empty(); }
+    [[nodiscard]] bool ContainsDecorations() const { return !Decorations.empty(); }
+
+    AnnotationFunctionExpression(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::Annotation;
         ObjectSourceLocation = ParameterSourceLocation;
     }
 };
 
 struct Parser
 {
-    struct Module : public ASTNode
+    struct Module : ASTNode
     {
         std::vector<ASTNode *> TopLevelNodes;
     };
@@ -182,9 +199,14 @@ struct Parser
         return old_token;
     }
 
-    [[nodiscard]] bool check_token_type_of_current_token(TokenTypes TokenType) const
+    [[nodiscard]] bool check_token_type_of_peek_token(TokenTypes ExpectedTokenType) const
     {
-        return CurrentToken.TokenType == TokenType;
+        return PeekToken.TokenType == ExpectedTokenType;
+    }
+
+    [[nodiscard]] bool check_token_type_of_current_token(TokenTypes ExpectedTokenType) const
+    {
+        return CurrentToken.TokenType == ExpectedTokenType;
     }
 
     bool match_with_next_token(TokenTypes TokenType)
@@ -198,8 +220,12 @@ struct Parser
         return false;
     }
 
-    Token
-    expect_token_with_type(TokenTypes TokenType, std::string ErrorMessage, std::string Monologue)
+    Token expect_token_with_type(
+        TokenTypes  TokenType,
+        std::string ErrorMessage,
+        std::string Monologue,
+        std::string Hint      = "",
+        ErrorCodes  ErrorCode = UNEXPECTED_TYPE)
     {
         if (check_token_type_of_current_token(TokenType))
         {
@@ -208,19 +234,22 @@ struct Parser
 
         ObjectDiagnosticEngine.Report(
             Severity::Error,
-            UNEXPECTED_TYPE,
+            ErrorCode,
             CurrentToken.ObjectSourceLocation,
             std::move(ErrorMessage),
-            std::move(Monologue));
-        return CurrentToken;
+            std::move(Monologue),
+            std::move(Hint));
+        return advance_one_token();
     }
 
     void expect_semicolon()
     {
         expect_token_with_type(
             TokenTypes::Semicolon,
-            "Expected ';' after variable declaration.",
-            "Programming language 101: USE YER DAMN SEMI COLONS!");
+            "Expected ';'.",
+            "Programming language 101: USE YER DAMN SEMICOLONS!",
+            "",
+            EXPECTED_SEMICOLON);
     }
 
     static uint32_t get_operator_precedence(TokenTypes TokenType)
@@ -238,6 +267,8 @@ struct Parser
             return 20;
         }
         case TokenTypes::Dot:
+        case TokenTypes::LeftParenthesis:
+        case TokenTypes::LeftBracket:
         {
             return 30;
         }
@@ -247,6 +278,71 @@ struct Parser
         }
         }
     }
+
+    template <TokenTypes ExpectedTerminator, ErrorCodes ErrorCode>
+    std::span<ASTNode *> ParseArgumentativeExpressions(
+        std::string ExpectedTerminatorErrorMessage,
+        std::string ExpectedTerminatorMonologue)
+    {
+        advance_one_token();
+        std::vector<ASTNode *> temporary_ast_node_pointer_vector;
+        while (!check_token_type_of_current_token(ExpectedTerminator) ||
+               !check_token_type_of_current_token(TokenTypes::EndOfFile))
+        {
+            temporary_ast_node_pointer_vector.push_back(ParseExpression());
+
+            // ,)
+            if (!match_with_next_token(TokenTypes::Comma))
+            {
+                break;
+            }
+        }
+
+        expect_token_with_type(
+            ExpectedTerminator,
+            std::move(ExpectedTerminatorErrorMessage),
+            std::move(ExpectedTerminatorMonologue),
+            "",
+            ErrorCode);
+
+        std::span<ASTNode *> ast_node_pointer_slice =
+            ObjectArenaAllocator.AllocateArray<ASTNode *>(temporary_ast_node_pointer_vector.size());
+        std::ranges::copy(temporary_ast_node_pointer_vector, ast_node_pointer_slice.begin());
+
+        return ast_node_pointer_slice;
+    }
+
+    std::span<ASTNode *> ParseFunctionArguments()
+    {
+        return ParseArgumentativeExpressions<
+            TokenTypes::RightParenthesis,
+            EXPECTED_RIGHT_PARENTHESIS>(
+            "Expected ')' after '('.",
+            "Lord... it's a wonder you got so far with your wits, mister. Close your damn '(' with "
+            "a ')'.");
+    }
+
+    ASTNode *ParseFunctionCallExpression()
+    {
+        auto start_location = CurrentToken.ObjectSourceLocation;
+        auto identifier     = expect_token_with_type(
+            TokenTypes::Identifier,
+            "Expected identifier before parenthesis.",
+            "Lord, please save me from this ignorance. How on earth do you think I'm supposed to "
+            "track what the damn function even is if you don't take your damn time to write out "
+            "the identifier?",
+            "",
+            EXPECTED_IDENTIFIER);
+
+        std::span<ASTNode *> function_arguments;
+
+        function_arguments = ParseFunctionArguments();
+
+        return ObjectArenaAllocator.Allocate<FunctionCallExpression>(
+            function_arguments, start_location, identifier.ObjectSourceLocation.Source);
+    };
+
+    ASTNode *ParseMemberAccessExpression();
 
     ASTNode *ParsePrimary()
     {
@@ -272,7 +368,9 @@ struct Parser
                 TokenTypes::RightParenthesis,
                 "Expected ')' after parenthesized expression.",
                 "Mister, you... You ain't the brightest tool in the shed, are ya? Close yer damn "
-                "'(' with a ')'!");
+                "'(' with a ')'!",
+                "Close '(' with ')'.",
+                EXPECTED_RIGHT_PARENTHESIS);
 
             return expression;
         }
@@ -305,17 +403,33 @@ struct Parser
 
             Token operand_token = advance_one_token();
 
-            auto *right_hand_side = ParseExpression(precedence + 1);
+            switch (operand_token.TokenType)
+            {
+            case TokenTypes::LeftParenthesis:
+            {
+                left_hand_side = ParseFunctionCallExpression();
+            }
+            case TokenTypes::Dot:
+            {
+                left_hand_side = ParseMemberAccessExpression();
+            }
+            default:
+            {
+                auto *right_hand_side = ParseExpression(precedence + 1);
 
-            left_hand_side = ObjectArenaAllocator.Allocate<BinaryExpression>(
-                operand_token.TokenType,
-                left_hand_side,
-                right_hand_side,
-                operand_token.ObjectSourceLocation);
+                left_hand_side = ObjectArenaAllocator.Allocate<BinaryExpression>(
+                    operand_token.TokenType,
+                    left_hand_side,
+                    right_hand_side,
+                    operand_token.ObjectSourceLocation);
+            }
+            }
         }
+
+        return left_hand_side;
     };
 
-    ASTNode *ParseVariableDeclaration()
+    ASTNode *ParseVariableDeclarationStatement()
     {
         SourceLocation start_location = CurrentToken.ObjectSourceLocation;
 
@@ -356,8 +470,43 @@ struct Parser
         return variable_declaration_node;
     }
 
-    ASTNode *ParseLanguageEmbedding();
-    ASTNode *ParseAnnotatedNode();
+    // expected input: { decoration1, decor2, decor3 }
+    std::span<ASTNode *> ParseDecorations()
+    {
+        return ParseArgumentativeExpressions<TokenTypes::RightParenthesis, EXPECTED_RIGHT_BRACKET>(
+            "Expected '}' after '{'.",
+            "Lord... it's a wonder you got so far with your wits, mister. Close your damn '{' with "
+            "a ')'.");
+    }
+
+    ASTNode *ParseAnnotatedNode()
+    {
+        auto start_location = CurrentToken.ObjectSourceLocation;
+
+        auto *annotated_node =
+            ObjectArenaAllocator.Allocate<AnnotationFunctionExpression>(start_location);
+        annotated_node->Identifier =
+            expect_token_with_type(
+                TokenTypes::Identifier,
+                "Expected identifier after annotation declarator '@'.",
+                "Mister, I've met idiots left and right in my time, but you might just be the "
+                "winner. "
+                "How do you reckon I'm supposed to track your annotated functions?")
+                .ObjectSourceLocation.Source;
+
+        if (check_token_type_of_current_token(TokenTypes::LeftParenthesis))
+        {
+            annotated_node->Arguments = ParseFunctionArguments();
+        }
+
+        if (check_token_type_of_current_token(TokenTypes::Colon))
+        {
+            advance_one_token(); // consume ':'
+            annotated_node->Decorations = ParseDecorations();
+        }
+
+        return annotated_node;
+    }
     ASTNode *ParseFunctionDeclaration();
 
     Module *ParseModule()
@@ -368,11 +517,6 @@ struct Parser
         {
             switch (CurrentToken.TokenType)
             {
-            case TokenTypes::EmbeddedLanguageCodeblock:
-            {
-                module->TopLevelNodes.push_back(ParseLanguageEmbedding());
-                break;
-            }
             case TokenTypes::AtSymbol:
             {
                 module->TopLevelNodes.push_back(ParseAnnotatedNode());
@@ -392,7 +536,7 @@ struct Parser
                     UNRECOGNIZED_TOP_LEVEL_NODE,
                     CurrentToken.ObjectSourceLocation,
                     "Unrecognized top level node.",
-                    "You sure don't look like you'd get very far on your wits.")
+                    "You sure don't look like you'd get very far on your wits.");
             }
             }
         }
