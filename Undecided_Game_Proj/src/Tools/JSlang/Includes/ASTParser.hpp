@@ -15,20 +15,22 @@ namespace JSlang
 {
 enum class NodeTypes : uint8_t
 {
-    LiteralExpression,
-    IdentifierExpression,
-    BinaryExpression,
-    CallExpression,
-    VectorSwizzleExpression,
-    FunctionCallExpression,
+    LiteralExpression,      // 10
+    IdentifierExpression,   // my_var
+    BinaryExpression,       // 1 + 2
+    FunctionCallExpression, // func()
+    UnaryExpression,        // ++var OR -var
 
-    VariableDeclarationStatement,
-    AliasStatement,
-    DiscardAliasStatement,
-    FunctionDeclarationStatement,
-    BlockStatement,
+    ImplicitMemberAccessExpression, // .Member
+    ExplicitMemberAccessExpression, // Object.Member
 
-    Annotation,
+    VariableDeclarationStatement, // type my_var = 1;
+    AliasStatement,               // alias Something = SomethingElse
+    DiscardAliasStatement,        // discard alias Something
+    FunctionDeclarationStatement, // void func(){ ... }
+    BlockStatement,               // { ... }
+
+    Annotation, // @Annotation
 };
 
 struct ASTNode
@@ -148,7 +150,8 @@ struct FunctionCallExpression : ASTNode
     }
 };
 
-struct AnnotationFunctionExpression : ASTNode
+struct AnnotationFunctionExpression : ASTNode // @Identifier : { Decorations }
+                                              // OR @Identifier() : { Decorations }
 {
     std::string_view     Identifier;
     std::span<ASTNode *> Arguments;
@@ -161,6 +164,86 @@ struct AnnotationFunctionExpression : ASTNode
     AnnotationFunctionExpression(SourceLocation ParameterSourceLocation)
     {
         NodeType             = NodeTypes::Annotation;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct UnaryExpression : ASTNode
+{
+    TokenTypes OperandType;
+    ASTNode   *Operand;
+
+    UnaryExpression(
+        SourceLocation ParameterSourceLocation,
+        TokenTypes     ParameterOperand,
+        ASTNode       *ParameterIdentifier)
+        : OperandType(ParameterOperand), Operand(ParameterIdentifier)
+    {
+        NodeType             = NodeTypes::UnaryExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    };
+};
+
+struct ExplicitMemberAccessExpression : ASTNode
+{
+    ASTNode         *Target;
+    std::string_view TargetMember;
+
+    ExplicitMemberAccessExpression(
+        SourceLocation   ParameterSourceLocation,
+        ASTNode         *ParameterTarget,
+        std::string_view ParameterTargetMember)
+        : Target(ParameterTarget), TargetMember(ParameterTargetMember)
+    {
+        NodeType             = NodeTypes::ExplicitMemberAccessExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct ImplicitMemberAccessExpression : ASTNode
+{
+    std::string_view TargetMember;
+
+    ImplicitMemberAccessExpression(
+        SourceLocation   ParameterSourceLocation,
+        std::string_view ParameterTargetMember)
+        : TargetMember(ParameterTargetMember)
+    {
+        NodeType             = NodeTypes::ImplicitMemberAccessExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct BlockStatement : ASTNode
+{
+    std::span<ASTNode *> Statements;
+    BlockStatement(SourceLocation ParameterSourceLocation, std::span<ASTNode *> ParameterStatements)
+        : Statements(ParameterStatements)
+    {
+        NodeType             = NodeTypes::BlockStatement;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct FunctionDeclarationStatement : ASTNode
+{
+    struct Parameter
+    {
+        std::string_view Type;
+        std::string_view Identifier;
+
+        SourceLocation ObjectSourceLocation;
+    };
+
+    std::string_view     ReturnType;
+    std::string_view     Identifier;
+    std::span<Parameter> Parameters;
+
+    ASTNode *FunctionBody;
+
+    FunctionDeclarationStatement(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::FunctionDeclarationStatement;
         ObjectSourceLocation = ParameterSourceLocation;
     }
 };
@@ -193,8 +276,13 @@ struct Parser
     Token advance_one_token()
     {
         Token old_token = CurrentToken;
-        CurrentToken    = PeekToken;
-        PeekToken       = ObjectLexer.GetNextToken();
+        if (old_token.TokenType == TokenTypes::EndOfFile)
+        {
+            return old_token;
+        }
+
+        CurrentToken = PeekToken;
+        PeekToken    = ObjectLexer.GetNextToken();
 
         return old_token;
     }
@@ -257,7 +345,9 @@ struct Parser
         switch (TokenType)
         {
         case TokenTypes::Plus:
+        case TokenTypes::PlusPlus:
         case TokenTypes::Minus:
+        case TokenTypes::MinusMinus:
         {
             return 10;
         }
@@ -342,8 +432,6 @@ struct Parser
             function_arguments, start_location, identifier.ObjectSourceLocation.Source);
     };
 
-    ASTNode *ParseMemberAccessExpression();
-
     ASTNode *ParsePrimary()
     {
         SourceLocation start_location = CurrentToken.ObjectSourceLocation;
@@ -353,12 +441,14 @@ struct Parser
         case TokenTypes::IntegerLiteral:
         case TokenTypes::FloatLiteral:
         {
-
+            advance_one_token();
             return ObjectArenaAllocator.Allocate<LiteralExpression>(start_location);
         }
 
         case TokenTypes::Identifier:
         {
+
+            advance_one_token();
             return ObjectArenaAllocator.Allocate<IdentifierExpression>(start_location);
         }
         case TokenTypes::LeftParenthesis:
@@ -372,7 +462,22 @@ struct Parser
                 "Close '(' with ')'.",
                 EXPECTED_RIGHT_PARENTHESIS);
 
+            advance_one_token();
             return expression;
+        }
+        case TokenTypes::Minus:
+        case TokenTypes::MinusMinus:
+        case TokenTypes::Plus:
+        case TokenTypes::PlusPlus:
+        case TokenTypes::Not:
+        {
+            auto               operand_token_type = advance_one_token().TokenType;
+            constexpr uint32_t PREFIX_PRECEDENCE  = 40;
+            auto              *identifier         = ParseExpression(PREFIX_PRECEDENCE);
+
+            advance_one_token();
+            return ObjectArenaAllocator.Allocate<UnaryExpression>(
+                start_location, operand_token_type, identifier);
         }
         default:
         {
@@ -386,17 +491,35 @@ struct Parser
             start_location,
             "Unexpected expression token.",
             "Now, I ain't know what you damn wrote, but it's damn idiotic, I tell ya...");
-        advance_one_token();
         return nullptr;
     };
 
+    /*  @brief rough example:
+     *  Given: 1 + 2 * 3
+     *  lhs = 1; consume 1
+     *
+     *  operand = '+'; consume '+' // cursor position = 2 * 3
+     *
+     *  rhs =  --- recurse(1's precedence + 1)
+     *      lhs = 2 : 2's precedence = 0; consume 2 // cursor position * 3
+     *      operand = '*' : precedence = 30 // cursor position 3
+     *
+     *      rhs = --- recurse(precedence + 1)
+     *          lhs = 3 : 3's precedence = 0; consume 3 // cursor position
+     *      ---
+     *      return { '*' '2' '3' }
+     *  ---
+     *
+     *  return {'+' '1' {'*' '2' '3'} }
+     */
     ASTNode *ParseExpression(uint32_t MinimumPrecedence = 0)
     {
         auto *left_hand_side = ParsePrimary();
         while (true)
         {
             uint32_t precedence = get_operator_precedence(CurrentToken.TokenType);
-            if (precedence < MinimumPrecedence)
+            if (precedence < MinimumPrecedence ||
+                check_token_type_of_current_token(TokenTypes::EndOfFile))
             {
                 break;
             }
@@ -411,7 +534,28 @@ struct Parser
             }
             case TokenTypes::Dot:
             {
-                left_hand_side = ParseMemberAccessExpression();
+                auto target_member = expect_token_with_type(
+                    TokenTypes::Identifier,
+                    "Expected identifier after access operator ('.').",
+                    "I've seen things, mister. But never, even from Micah, have I seen such "
+                    "idiocy. PUT A DAMN WORD OR SOMETHIN' AFTER YOUR '.'! Expect me to read your "
+                    "damn mind "
+                    "otherwise?!",
+                    "",
+                    EXPECTED_IDENTIFIER);
+
+                if (left_hand_side != nullptr)
+                {
+                    left_hand_side = ObjectArenaAllocator.Allocate<ExplicitMemberAccessExpression>(
+                        operand_token.ObjectSourceLocation,
+                        left_hand_side,
+                        target_member.ObjectSourceLocation.Source);
+
+                    break;
+                }
+
+                left_hand_side = ObjectArenaAllocator.Allocate<ImplicitMemberAccessExpression>(
+                    operand_token.ObjectSourceLocation, target_member.ObjectSourceLocation.Source);
             }
             default:
             {
@@ -476,7 +620,7 @@ struct Parser
         return ParseArgumentativeExpressions<TokenTypes::RightParenthesis, EXPECTED_RIGHT_BRACKET>(
             "Expected '}' after '{'.",
             "Lord... it's a wonder you got so far with your wits, mister. Close your damn '{' with "
-            "a ')'.");
+            "a '}'.");
     }
 
     ASTNode *ParseAnnotatedNode()
@@ -507,6 +651,7 @@ struct Parser
 
         return annotated_node;
     }
+
     ASTNode *ParseFunctionDeclaration();
 
     Module *ParseModule()
@@ -540,6 +685,8 @@ struct Parser
             }
             }
         }
+
+        return module;
     }
 };
 

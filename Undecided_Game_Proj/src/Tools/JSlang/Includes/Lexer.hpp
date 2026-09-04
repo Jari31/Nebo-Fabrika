@@ -28,6 +28,8 @@ enum class TokenTypes : uint8_t
     KeyWord_Constant,
     KeyWord_Inline,
     KeyWord_Void,
+    KeyWord_If,
+    KeyWord_Else,
 
     Identifier,
     EmbeddedLanguageCodeblock,
@@ -246,6 +248,14 @@ struct Lexer
         {
             return TokenTypes::KeyWord_Void;
         }
+        case "if"_hash:
+        {
+            return TokenTypes::KeyWord_If;
+        }
+        case "else"_hash:
+        {
+            return TokenTypes::KeyWord_Else;
+        }
         default:
         {
             return TokenTypes::Identifier;
@@ -304,7 +314,7 @@ struct Lexer
             auto sentinel_len = std::snprintf( // WARN: stack allocated and small. may cause some headaches to some poor guy later on
                 sentinel_buf,
                 sizeof(sentinel_buf),
-                "end%.*s",
+                "||end%.*s",
                 static_cast<int>(language_identifier.ObjectSourceLocation.Source.size()),
                 language_identifier.ObjectSourceLocation.Source.data());
             std::string_view expected_sentinel(
