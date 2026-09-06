@@ -21,6 +21,7 @@ enum class NodeTypes : uint8_t
     BinaryExpression,       // 1 + 2
     FunctionCallExpression, // func()
     UnaryExpression,        // ++var OR -var
+    FlagExpression,         // Flag
 
     ImplicitMemberAccessExpression, // .Member
     ExplicitMemberAccessExpression, // Object.Member
@@ -84,17 +85,9 @@ struct DiscardAliasStatement : ASTNode
     }
 };
 
-enum class BufferTypes : uint8_t
-{
-    None,
-    PushConstant,
-    SSBO,
-    UniformBuffer
-};
-
 struct VariableDeclaration : ASTNode
 {
-    DeclarationFlags Flags = DeclarationFlags::None;
+    std::span<ASTNode *> Attributes;
 
     std::string_view VariableTypeName;
     std::string_view VariableName;
@@ -128,10 +121,7 @@ struct BinaryExpression : ASTNode
 
 struct LiteralExpression : ASTNode
 {
-    std::string_view Source;
-
     LiteralExpression(SourceLocation ParameterSourceLocation)
-        : Source(ParameterSourceLocation.Source)
     {
         NodeType             = NodeTypes::LiteralExpression;
         ObjectSourceLocation = ParameterSourceLocation;
@@ -140,10 +130,7 @@ struct LiteralExpression : ASTNode
 
 struct IdentifierExpression : ASTNode
 {
-    std::string_view Source;
-
     IdentifierExpression(SourceLocation ParameterSourceLocation)
-        : Source(ParameterSourceLocation.Source)
     {
         NodeType             = NodeTypes::IdentifierExpression;
         ObjectSourceLocation = ParameterSourceLocation;
@@ -265,6 +252,15 @@ struct FunctionDeclarationStatement : ASTNode
     }
 };
 
+struct FlagExpression : ASTNode
+{
+    FlagExpression(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::FlagExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
 struct Parser
 {
     struct Module : ASTNode
@@ -314,7 +310,7 @@ struct Parser
         return CurrentToken.TokenType == ExpectedTokenType;
     }
 
-    bool match_with_next_token(TokenTypes TokenType)
+    bool match_with_current_token(TokenTypes TokenType)
     {
         if (check_token_type_of_current_token(TokenType))
         {
@@ -361,6 +357,10 @@ struct Parser
     {
         switch (TokenType)
         {
+        case TokenTypes::Equal:
+        {
+            return 5;
+        }
         case TokenTypes::Plus:
         case TokenTypes::PlusPlus:
         case TokenTypes::Minus:
@@ -370,6 +370,14 @@ struct Parser
         }
         case TokenTypes::Star:
         case TokenTypes::Slash:
+        case TokenTypes::Not:
+        case TokenTypes::AND:
+        case TokenTypes::XOR:
+        case TokenTypes::OR:
+        case TokenTypes::NotEqual:
+        case TokenTypes::LessThanOrEqualTo:
+        case TokenTypes::GreaterThanOrEqualTo:
+        case TokenTypes::EqualEqual:
         {
             return 20;
         }
@@ -388,31 +396,43 @@ struct Parser
 
     // skipping all the fancy names, it's just parsing blocks like { stuff1, stuff2, stuff3 } or (
     // stuff1, stuff2, stuff3 ) and such
-    template <TokenTypes ExpectedTerminator, ErrorCodes ErrorCode>
-    std::span<ASTNode *> ParseArgumentativeExpressionBlockUntilTerminator(
+    template <ErrorCodes ErrorCode>
+    std::span<ASTNode *> ParseArgumentativeExpressionUntilTerminator(
         std::string ExpectedTerminatorErrorMessage,
-        std::string ExpectedTerminatorMonologue)
+        std::string ExpectedTerminatorMonologue,
+        auto      &&CallbackIsCurrentTokenATerminator)
     {
-        advance_one_token();
-        std::vector<ASTNode *> temporary_ast_node_pointer_vector;
-        while (!check_token_type_of_current_token(ExpectedTerminator) ||
-               !check_token_type_of_current_token(TokenTypes::EndOfFile))
-        {
-            temporary_ast_node_pointer_vector.push_back(ParseExpression());
+        // an expression might be like var value : { arg, arg2 = {arg3, arg4} } = val;
 
-            // ,)
-            if (!match_with_next_token(TokenTypes::Comma))
+        std::vector<ASTNode *> temporary_ast_node_pointer_vector;
+        while (true)
+        {
+            if (CallbackIsCurrentTokenATerminator())
+            {
+                break;
+            }
+
+            auto *ast_node = ParseExpression();
+            if (ast_node != nullptr)
+            {
+                temporary_ast_node_pointer_vector.push_back(ast_node);
+            }
+
+            if (!match_with_current_token(TokenTypes::Comma))
             {
                 break;
             }
         }
 
-        expect_token_with_type(
-            ExpectedTerminator,
-            std::move(ExpectedTerminatorErrorMessage),
-            std::move(ExpectedTerminatorMonologue),
-            "",
-            ErrorCode);
+        if (!CallbackIsCurrentTokenATerminator())
+        {
+            ObjectDiagnosticEngine.Report(
+                Severity::Error,
+                ErrorCode,
+                CurrentToken.ObjectSourceLocation,
+                std::move(ExpectedTerminatorErrorMessage),
+                std::move(ExpectedTerminatorMonologue));
+        }
 
         std::span<ASTNode *> ast_node_pointer_slice =
             ObjectArenaAllocator.AllocateArray<ASTNode *>(temporary_ast_node_pointer_vector.size());
@@ -423,12 +443,15 @@ struct Parser
 
     std::span<ASTNode *> ParseFunctionArguments()
     {
-        return ParseArgumentativeExpressionBlockUntilTerminator<
-            TokenTypes::RightParenthesis,
-            EXPECTED_RIGHT_PARENTHESIS>(
+        // (arg1, arg2, arg3)
+
+        advance_one_token(); // consume '('
+
+        return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_PARENTHESIS>(
             "Expected ')' after '('.",
             "Lord... it's a wonder you got so far with your wits, mister. Close your damn '(' with "
-            "a ')'.");
+            "a ')'.",
+            [this]() { return check_token_type_of_current_token(TokenTypes::LeftParenthesis); });
     }
 
     ASTNode *ParseFunctionCallExpression()
@@ -450,6 +473,8 @@ struct Parser
         return ObjectArenaAllocator.Allocate<FunctionCallExpression>(
             function_arguments, start_location, identifier.ObjectSourceLocation.Source);
     };
+
+    ASTNode *ParseIfElseStatements();
 
     ASTNode *ParsePrimary()
     {
@@ -481,7 +506,19 @@ struct Parser
                 "Close '(' with ')'.",
                 EXPECTED_RIGHT_PARENTHESIS);
 
-            advance_one_token();
+            return expression;
+        }
+        case TokenTypes::LeftBracket:
+        {
+            ASTNode *expression = ParseExpression(0);
+            expect_token_with_type(
+                TokenTypes::RightBracket,
+                "Expected '}' after bracketed expression.",
+                "Mister, you... You ain't the brightest tool in the shed, are ya? Close yer damn "
+                "'{' with a '}'!",
+                "Close '{' with '}'.",
+                EXPECTED_RIGHT_BRACKET);
+
             return expression;
         }
         case TokenTypes::Minus:
@@ -530,9 +567,27 @@ struct Parser
      *  ---
      *
      *  return {'+' '1' {'*' '2' '3'} }
+     *
+     *  Another example:
+     *  a + b * f(c, d)
+     *  lhs = 1
+     *  operand = + : 10
+     *  rhs = (11) {
+     *      lhs = 2
+     *      operand = * : 20
+     *      rhs = (21) {
+     *          return parse function args;
+     * }
+     * }
      */
     ASTNode *ParseExpression(uint32_t MinimumPrecedence = 0)
     {
+        /*
+         *  lhs = inline; precedence 0
+         *  operand = comma; precedence 0
+         *  create singular node and return {inline}
+         */
+
         auto *left_hand_side = ParsePrimary();
         while (true)
         {
@@ -547,9 +602,21 @@ struct Parser
 
             switch (operand_token.TokenType)
             {
+                // var variable = if(condition1 > condition2) value1 else if (condition2 >=
+                // condition1) value2 else value3
+            case TokenTypes::KeyWord_If:
+            {
+                left_hand_side = ParseIfElseStatements();
+                break;
+            }
             case TokenTypes::LeftParenthesis:
             {
-                left_hand_side = ParseFunctionCallExpression();
+                if (left_hand_side != nullptr &&
+                    left_hand_side->NodeType == NodeTypes::IdentifierExpression)
+                {
+                    left_hand_side = ParseFunctionCallExpression();
+                }
+                break;
             }
             case TokenTypes::Dot:
             {
@@ -563,7 +630,8 @@ struct Parser
                     "",
                     EXPECTED_IDENTIFIER);
 
-                if (left_hand_side != nullptr)
+                if (left_hand_side != nullptr &&
+                    left_hand_side->NodeType == NodeTypes::IdentifierExpression)
                 {
                     left_hand_side = ObjectArenaAllocator.Allocate<ExplicitMemberAccessExpression>(
                         operand_token.ObjectSourceLocation,
@@ -575,6 +643,17 @@ struct Parser
 
                 left_hand_side = ObjectArenaAllocator.Allocate<ImplicitMemberAccessExpression>(
                     operand_token.ObjectSourceLocation, target_member.ObjectSourceLocation.Source);
+            }
+            case TokenTypes::Comma:
+            {
+
+                if (left_hand_side != nullptr &&
+                    left_hand_side->NodeType == NodeTypes::IdentifierExpression)
+                {
+                    left_hand_side = ObjectArenaAllocator.Allocate<FlagExpression>();
+                }
+
+                break;
             }
             default:
             {
@@ -592,6 +671,45 @@ struct Parser
         return left_hand_side;
     };
 
+    std::span<ASTNode *> ParseVariableAttributes()
+    {
+        // var identifier: attributes = value;
+        // struct identifier: attributes {};
+
+        switch (CurrentToken.TokenType)
+        {
+        case TokenTypes::LeftBracket:
+        {
+            return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_PARENTHESIS>(
+                "Expected 'End Of File' or ';' after ':'.",
+                "Think I've seen bricks with more wit than you, mister. Place a damn 'End Of "
+                "File' or ';' after ':'!",
+                [this]()
+                {
+                    switch (CurrentToken.TokenType)
+                    {
+                    case TokenTypes::EndOfFile:
+                    case TokenTypes::RightBracket:
+                    {
+                        return true;
+                    }
+                    default:
+                    {
+                        return false;
+                    }
+                    }
+                });
+        }
+        case TokenTypes::Equal:
+        {
+            return {};
+        }
+        case TokenTypes::Identifier:
+        {
+        }
+        }
+    }
+
     template <bool IsImmutableVariable = false> ASTNode *ParseVariableDeclarationStatement()
     {
         SourceLocation start_location = CurrentToken.ObjectSourceLocation;
@@ -607,15 +725,17 @@ struct Parser
         ASTNode *initializer = nullptr;
 
         bool defines_variable_type = 0;
-        if (match_with_next_token(TokenTypes::Colon))
+        if (match_with_current_token(TokenTypes::Colon))
         {
             advance_one_token();
-            if (match_with_next_token(TokenTypes::Identifier))
+            if (match_with_current_token(TokenTypes::Identifier) ||
+                match_with_current_token(TokenTypes::LeftBracket))
             {
+                variable_declaration_node->Attributes = ParseVariableAttributes();
             }
         }
 
-        if (match_with_next_token(TokenTypes::Equal))
+        if (match_with_current_token(TokenTypes::Equal))
         {
             initializer = ParseExpression();
         }
@@ -635,7 +755,7 @@ struct Parser
     {
         if (check_token_type_of_current_token(TokenTypes::LeftBracket))
         {
-            return ParseArgumentativeExpressionBlockUntilTerminator<
+            return ParseArgumentativeExpressionUntilTerminator<
                 TokenTypes::RightParenthesis,
                 EXPECTED_RIGHT_BRACKET>(
                 "Expected '}' after '{'.",
