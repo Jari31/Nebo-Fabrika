@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,22 @@ struct ASTNode
 
 namespace AST
 {
+
+enum class DeclarationFlags : uint32_t // NOLINT
+{
+    None     = 0,      // 00000000 00000000
+    Inline   = 1 << 0, // 00000000 00000001
+    Uniform  = 1 << 1, // 00000000 00000010
+    Constant = 1 << 2, // 00000000 00000100
+    Static   = 1 << 3, // 00000000 00001000
+    Export   = 1 << 4, // 00000000 00010000
+};
+
+DeclarationFlags operator|(DeclarationFlags FlagA, DeclarationFlags FlagB)
+{
+    using Type = std::underlying_type_t<DeclarationFlags>;
+    return static_cast<DeclarationFlags>(static_cast<Type>(FlagA) | static_cast<Type>(FlagB));
+}
 
 struct AliasStatement : ASTNode
 {
@@ -77,12 +94,11 @@ enum class BufferTypes : uint8_t
 
 struct VariableDeclaration : ASTNode
 {
-    bool IsUniform;
-    bool IsConstant;
+    DeclarationFlags Flags = DeclarationFlags::None;
 
     std::string_view VariableTypeName;
     std::string_view VariableName;
-    ASTNode         *Initializer; // RHS; e.g., TypeName VariableName = Initializer;
+    ASTNode *Initializer; // RHS; e.g., var/const VariableName: VariableTypeName = Initializer;
 
     VariableDeclaration(SourceLocation ParameterSourceLocation)
     {
@@ -238,6 +254,7 @@ struct FunctionDeclarationStatement : ASTNode
     std::string_view     ReturnType;
     std::string_view     Identifier;
     std::span<Parameter> Parameters;
+    uint8_t              FunctionFlags;
 
     ASTNode *FunctionBody;
 
@@ -369,8 +386,10 @@ struct Parser
         }
     }
 
+    // skipping all the fancy names, it's just parsing blocks like { stuff1, stuff2, stuff3 } or (
+    // stuff1, stuff2, stuff3 ) and such
     template <TokenTypes ExpectedTerminator, ErrorCodes ErrorCode>
-    std::span<ASTNode *> ParseArgumentativeExpressions(
+    std::span<ASTNode *> ParseArgumentativeExpressionBlockUntilTerminator(
         std::string ExpectedTerminatorErrorMessage,
         std::string ExpectedTerminatorMonologue)
     {
@@ -404,7 +423,7 @@ struct Parser
 
     std::span<ASTNode *> ParseFunctionArguments()
     {
-        return ParseArgumentativeExpressions<
+        return ParseArgumentativeExpressionBlockUntilTerminator<
             TokenTypes::RightParenthesis,
             EXPECTED_RIGHT_PARENTHESIS>(
             "Expected ')' after '('.",
@@ -573,26 +592,28 @@ struct Parser
         return left_hand_side;
     };
 
-    ASTNode *ParseVariableDeclarationStatement()
+    template <bool IsImmutableVariable = false> ASTNode *ParseVariableDeclarationStatement()
     {
         SourceLocation start_location = CurrentToken.ObjectSourceLocation;
 
-        bool is_variable_uniform  = match_with_next_token(TokenTypes::KeyWord_Uniform);
-        bool is_variable_constant = match_with_next_token(TokenTypes::KeyWord_Constant);
+        auto *variable_declaration_node =
+            ObjectArenaAllocator.Allocate<VariableDeclaration>(start_location);
 
-        Token variable_type_name = expect_token_with_type(
-            TokenTypes::Identifier,
-            "Expected a type before variable declaration.",
-            "Again, I ain't a damn magician nor book keeper, mister! Specify your damn type, like "
-            "a 'float' or somethin'!");
-
-        Token variable_name = expect_token_with_type(
-            TokenTypes::Identifier,
-            "Expected a variable name.",
-            "Now, do I gotta explain why this ain't gonna work? There ain't no damned name after "
-            "the type!");
+        if constexpr (IsImmutableVariable)
+        {
+            variable_declaration_node->Flags = DeclarationFlags::Constant;
+        }
 
         ASTNode *initializer = nullptr;
+
+        bool defines_variable_type = 0;
+        if (match_with_next_token(TokenTypes::Colon))
+        {
+            advance_one_token();
+            if (match_with_next_token(TokenTypes::Identifier))
+            {
+            }
+        }
 
         if (match_with_next_token(TokenTypes::Equal))
         {
@@ -601,14 +622,9 @@ struct Parser
 
         expect_semicolon();
 
-        auto *variable_declaration_node =
-            ObjectArenaAllocator.Allocate<VariableDeclaration>(start_location);
-
         variable_declaration_node->VariableName = variable_name.ObjectSourceLocation.Source;
         variable_declaration_node->VariableTypeName =
             variable_type_name.ObjectSourceLocation.Source;
-        variable_declaration_node->IsConstant  = is_variable_constant;
-        variable_declaration_node->IsUniform   = is_variable_uniform;
         variable_declaration_node->Initializer = initializer;
 
         return variable_declaration_node;
@@ -617,10 +633,17 @@ struct Parser
     // expected input: { decoration1, decor2, decor3 }
     std::span<ASTNode *> ParseDecorations()
     {
-        return ParseArgumentativeExpressions<TokenTypes::RightParenthesis, EXPECTED_RIGHT_BRACKET>(
-            "Expected '}' after '{'.",
-            "Lord... it's a wonder you got so far with your wits, mister. Close your damn '{' with "
-            "a '}'.");
+        if (check_token_type_of_current_token(TokenTypes::LeftBracket))
+        {
+            return ParseArgumentativeExpressionBlockUntilTerminator<
+                TokenTypes::RightParenthesis,
+                EXPECTED_RIGHT_BRACKET>(
+                "Expected '}' after '{'.",
+                "Lord... it's a wonder you got so far with your wits, mister. Close your damn '{' "
+                "with "
+                "a '}'.");
+        }
+        return
     }
 
     ASTNode *ParseAnnotatedNode()
@@ -652,7 +675,9 @@ struct Parser
         return annotated_node;
     }
 
-    ASTNode *ParseFunctionDeclaration();
+    ASTNode *ParseFunctionDeclaration() {
+
+    };
 
     Module *ParseModule()
     {

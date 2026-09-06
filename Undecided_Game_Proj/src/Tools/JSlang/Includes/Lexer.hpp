@@ -30,6 +30,8 @@ enum class TokenTypes : uint8_t
     KeyWord_Void,
     KeyWord_If,
     KeyWord_Else,
+    KeyWord_MutableVariable,
+    KeyWord_Function,
 
     Identifier,
     EmbeddedLanguageCodeblock,
@@ -255,6 +257,14 @@ struct Lexer
         case "else"_hash:
         {
             return TokenTypes::KeyWord_Else;
+        }
+        case "var"_hash:
+        {
+            return TokenTypes::KeyWord_MutableVariable;
+        }
+        case "fn"_hash:
+        {
+            return TokenTypes::KeyWord_Function;
         }
         default:
         {
