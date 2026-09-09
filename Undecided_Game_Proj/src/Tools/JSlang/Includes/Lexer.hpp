@@ -31,7 +31,7 @@ enum class TokenTypes : uint8_t
     KeyWord_If,
     KeyWord_Else,
     KeyWord_MutableVariable,
-    KeyWord_Function,
+    KeyWord_FunctionDeclaration,
 
     Identifier,
     EmbeddedLanguageCodeblock,
@@ -67,6 +67,8 @@ enum class TokenTypes : uint8_t
     RightSquareBracket, // ]
     LeftAngleBracket,   // <
     RightAngleBracket,  // >
+
+    RightArrow, // ->
 
     Semicolon, // ;
     Colon,     // :
@@ -264,7 +266,7 @@ struct Lexer
         }
         case "fn"_hash:
         {
-            return TokenTypes::KeyWord_Function;
+            return TokenTypes::KeyWord_FunctionDeclaration;
         }
         default:
         {
@@ -525,6 +527,10 @@ struct Lexer
             case '=':
             {
                 return make_dual_token(TokenTypes::MinusEqual, cursor_start_position);
+            }
+            case '>':
+            {
+                return make_dual_token(TokenTypes::RightArrow, cursor_start_position);
             }
             default:
             {
