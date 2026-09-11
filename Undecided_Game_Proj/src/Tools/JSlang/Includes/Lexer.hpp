@@ -17,21 +17,22 @@ namespace JSlang
 {
 enum class TokenTypes : uint8_t
 {
-    KeyWord_Uniform,
-    KeyWord_Export,
-    KeyWord_Using,
-    KeyWord_Discard,
-    KeyWord_Alias,
-    KeyWord_Begin,
-    KeyWord_Expect,
-    KeyWord_From,
-    KeyWord_Constant,
-    KeyWord_Inline,
-    KeyWord_Void,
-    KeyWord_If,
-    KeyWord_Else,
-    KeyWord_MutableVariable,
-    KeyWord_FunctionDeclaration,
+    Keyword_Uniform,
+    Keyword_Export,
+    Keyword_Using,
+    Keyword_Discard,
+    Keyword_Alias,
+    Keyword_Begin,
+    Keyword_Expect,
+    Keyword_From,
+    Keyword_Constant,
+    Keyword_Inline,
+    Keyword_Void,
+    Keyword_If,
+    Keyword_Else,
+    Keyword_MutableVariable,
+    Keyword_FunctionDeclaration,
+    Keyword_Return,
 
     Identifier,
     EmbeddedLanguageCodeblock,
@@ -60,13 +61,13 @@ enum class TokenTypes : uint8_t
 
     LeftParenthesis,    // (
     RightParenthesis,   // )
-    LeftBracket,        // {
-    RightBracket,       // }
+    LeftBrace,          // {
+    RightBrace,         // }
     Comma,              // ,
     LeftSquareBracket,  // [
     RightSquareBracket, // ]
     LeftAngleBracket,   // <
-    RightAngleBracket,  // >
+    RightAngleBrace,    // >
 
     RightArrow, // ->
 
@@ -214,59 +215,63 @@ struct Lexer
         {
         case "uniform"_hash:
         {
-            return TokenTypes::KeyWord_Uniform;
+            return TokenTypes::Keyword_Uniform;
         }
         case "export"_hash:
         {
-            return TokenTypes::KeyWord_Export;
+            return TokenTypes::Keyword_Export;
         }
         case "using"_hash:
         {
-            return TokenTypes::KeyWord_Using;
+            return TokenTypes::Keyword_Using;
         }
         case "discard"_hash:
         {
-            return TokenTypes::KeyWord_Discard;
+            return TokenTypes::Keyword_Discard;
         }
         case "begin"_hash:
         {
-            return TokenTypes::KeyWord_Begin;
+            return TokenTypes::Keyword_Begin;
         }
         case "expect"_hash:
         {
-            return TokenTypes::KeyWord_Expect;
+            return TokenTypes::Keyword_Expect;
         }
         case "from"_hash:
         {
-            return TokenTypes::KeyWord_From;
+            return TokenTypes::Keyword_From;
         }
         case "const"_hash:
         {
-            return TokenTypes::KeyWord_Constant;
+            return TokenTypes::Keyword_Constant;
         }
         case "inline"_hash:
         {
-            return TokenTypes::KeyWord_Inline;
+            return TokenTypes::Keyword_Inline;
         }
         case "void"_hash:
         {
-            return TokenTypes::KeyWord_Void;
+            return TokenTypes::Keyword_Void;
         }
         case "if"_hash:
         {
-            return TokenTypes::KeyWord_If;
+            return TokenTypes::Keyword_If;
         }
         case "else"_hash:
         {
-            return TokenTypes::KeyWord_Else;
+            return TokenTypes::Keyword_Else;
         }
         case "var"_hash:
         {
-            return TokenTypes::KeyWord_MutableVariable;
+            return TokenTypes::Keyword_MutableVariable;
         }
         case "fn"_hash:
         {
-            return TokenTypes::KeyWord_FunctionDeclaration;
+            return TokenTypes::Keyword_FunctionDeclaration;
+        }
+        case "return"_hash:
+        {
+            return TokenTypes::Keyword_Return;
         }
         default:
         {
@@ -318,7 +323,7 @@ struct Lexer
 
         auto token_type = check_whether_identifier_or_keyword(string_view);
 
-        if (token_type == TokenTypes::KeyWord_Begin)
+        if (token_type == TokenTypes::Keyword_Begin)
         {
             auto language_identifier = GetNextToken(); // begin lua, where "lua" is the identifier
             uint32_t language_identifier_cursor_start_position = Cursor; // now it points after lua
@@ -576,11 +581,11 @@ struct Lexer
         }
         case '{':
         {
-            return make_singular_token(TokenTypes::LeftBracket, cursor_start_position);
+            return make_singular_token(TokenTypes::LeftBrace, cursor_start_position);
         }
         case '}':
         {
-            return make_singular_token(TokenTypes::RightBracket, cursor_start_position);
+            return make_singular_token(TokenTypes::RightBrace, cursor_start_position);
         }
         case ',':
         {
@@ -625,7 +630,7 @@ struct Lexer
             {
                 return make_dual_token(TokenTypes::GreaterThanOrEqualTo, cursor_start_position);
             }
-            return make_singular_token(TokenTypes::RightAngleBracket, cursor_start_position);
+            return make_singular_token(TokenTypes::RightAngleBrace, cursor_start_position);
         }
         case '<':
         {
