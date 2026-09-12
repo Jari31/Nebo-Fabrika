@@ -22,6 +22,9 @@ enum class NodeTypes : uint8_t
     FunctionCallExpression, // func()
     UnaryExpression,        // ++var OR -var
     FlagExpression,         // Flag
+    IfExpression,           // conditional expression; if(){} else {}
+    SwitchExpression,
+    CaseExpression,
 
     ImplicitMemberAccessExpression, // .Member
     ExplicitMemberAccessExpression, // Object.Member
@@ -33,6 +36,10 @@ enum class NodeTypes : uint8_t
     BlockStatement,               // { ... }
     ReturnStatement,
     ExpressionStatement,
+    ForStatement,
+    WhileStatement,
+    BreakStatement,
+    ContinueStatement,
 
     Annotation, // @Annotation
 };
@@ -45,6 +52,15 @@ struct ASTNode
 
 namespace AST
 {
+
+struct GenericStatement : ASTNode
+{
+    GenericStatement(SourceLocation ParameterSourceLocation, NodeTypes ParameterNodeType)
+    {
+        ObjectSourceLocation = ParameterSourceLocation;
+        NodeType             = ParameterNodeType;
+    }
+};
 
 struct AliasStatement : ASTNode
 {
@@ -275,6 +291,68 @@ struct ExpressionStatement : ASTNode
     }
 };
 
+struct IfExpression : ASTNode
+{
+    bool EvaluateAtCompileTime = true;
+
+    ASTNode *Condition;
+    ASTNode *ThenBranch;
+    ASTNode *ElseBranch;
+
+    IfExpression(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::IfExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct SwitchExpression : ASTNode
+{
+    struct Case
+    {
+        std::span<ASTNode *> IfCondition; // if this is empty, then it is a default case
+        ASTNode             *ThenExpression;
+
+        SourceLocation ObjectCaseSourceLocation;
+    };
+
+    bool EvaluatedAtCompileTime = false;
+
+    ASTNode          *Condition;
+    std::span<Case *> Cases;
+
+    SwitchExpression(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::SwitchExpression;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct ForStatement : ASTNode
+{
+    ASTNode             *Condition;
+    std::span<ASTNode *> Captures;
+    ASTNode             *BlockStatement;
+
+    ForStatement(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::ForStatement;
+        ObjectSourceLocation = ParameterSourceLocation;
+    }
+};
+
+struct WhileStatement : ASTNode
+{
+    ASTNode *Condition;
+    ASTNode *BlockStatement;
+
+    WhileStatement(SourceLocation ParameterSourceLocation)
+    {
+        ObjectSourceLocation = ParameterSourceLocation;
+        NodeType             = NodeTypes::WhileStatement;
+    }
+};
+
 struct Parser
 {
     /*
@@ -324,6 +402,30 @@ struct Parser
     {
         advance_one_token();
         advance_one_token();
+    }
+
+    template <ErrorCodes ErrorCode>
+    void
+    report_error_about_current_token(std::string Message, std::string Monologue, std::string Hint)
+    {
+        ObjectDiagnosticEngine.Report(
+            Severity::Error,
+            ErrorCode,
+            CurrentToken.ObjectSourceLocation,
+            std::move(Message),
+            std::move(Monologue),
+            std::move(Hint));
+    }
+
+    template <ErrorCodes ErrorCode>
+    void report_error_about_current_token(std::string Message, std::string Monologue)
+    {
+        ObjectDiagnosticEngine.Report(
+            Severity::Error,
+            ErrorCode,
+            CurrentToken.ObjectSourceLocation,
+            std::move(Message),
+            std::move(Monologue));
     }
 
     Token advance_one_token()
@@ -519,15 +621,59 @@ struct Parser
             function_arguments, start_location, identifier.ObjectSourceLocation.Source);
     };
 
-    ASTNode *ParseIfElseStatements() {
+    ASTNode *ParseIfExpression()
+    {
         /*
          * if() {
          *
          * } else {
          *
          * }
-         *
          */
+
+        auto start_location = CurrentToken.ObjectSourceLocation;
+        advance_one_token(); // consume 'if'
+
+        auto *if_expression_node = ObjectArenaAllocator.Allocate<IfExpression>(start_location);
+
+        if (match_with_current_token(TokenTypes::Colon))
+        {
+            if_expression_node->EvaluateAtCompileTime = true;
+        }
+
+        if_expression_node->Condition = ParseExpression(0);
+
+        if (check_token_type_of_current_token(TokenTypes::LeftBrace))
+        {
+            // if () { ... }
+            if_expression_node->ThenBranch = ParseStatement();
+        }
+        else
+        {
+            // if () expression
+            if_expression_node->ThenBranch = ParseExpression(0);
+        }
+
+        if (match_with_current_token(TokenTypes::Keyword_Else))
+        {
+            if (check_token_type_of_current_token(TokenTypes::Keyword_If))
+            {
+                // else if
+                if_expression_node->ElseBranch = ParseIfExpression();
+            }
+            else if (check_token_type_of_current_token(TokenTypes::LeftBrace))
+            {
+                // else {}
+                if_expression_node->ElseBranch = ParseBlockStatement();
+            }
+            else
+            {
+                // else expression
+                if_expression_node->ElseBranch = ParseExpression(0);
+            }
+        }
+
+        return if_expression_node;
     };
 
     ASTNode *ParsePrimary()
@@ -555,7 +701,7 @@ struct Parser
             expect_token_with_type(
                 TokenTypes::RightParenthesis,
                 "Expected ')' after parenthesized expression.",
-                "Mister, you... You ain't the brightest tool in the shed, are ya? Close yer damn "
+                "Mister, you... You ain't the brightest tool in the shed, are ya? Close your damn "
                 "'(' with a ')'!",
                 "Close '(' with ')'.",
                 EXPECTED_RIGHT_PARENTHESIS);
@@ -588,6 +734,14 @@ struct Parser
             advance_one_token();
             return ObjectArenaAllocator.Allocate<UnaryExpression>(
                 start_location, operand_token_type, identifier);
+        }
+        case TokenTypes::Keyword_If:
+        {
+            return ParseIfExpression();
+        }
+        case TokenTypes::Keyword_Switch:
+        {
+            return ParseSwitchExpression();
         }
         default:
         {
@@ -693,13 +847,6 @@ struct Parser
 
             switch (operator_token.TokenType)
             {
-                // var variable = if(condition1 > condition2) value1 else if (condition2 >=
-                // condition1) value2 else value3
-            case TokenTypes::Keyword_If:
-            {
-                left_hand_side = ParseIfElseStatements();
-                break;
-            }
             case TokenTypes::LeftParenthesis:
             {
                 if (left_hand_side != nullptr &&
@@ -977,7 +1124,7 @@ struct Parser
         }
 
         auto parsed_function_attributes =
-            ParseArgumentativeExpressionUntilTerminator<EXPECTED_LEFT_BRACKET>(
+            ParseArgumentativeExpressionUntilTerminator<EXPECTED_LEFT_BRACE>(
                 "Expected terminator '{' after ':'.",
                 "",
                 [this]()
@@ -1013,6 +1160,15 @@ struct Parser
         return return_statement;
     }
 
+    template <NodeTypes StatementNodeType> ASTNode *ParseGenericSingularStatement()
+    {
+        auto *generic_statement_node = ObjectArenaAllocator.Allocate<GenericStatement>(
+            CurrentToken.ObjectSourceLocation, StatementNodeType);
+        advance_one_token(); // consume the statement
+
+        return generic_statement_node;
+    }
+
     ASTNode *ParseStatement()
     {
         switch (CurrentToken.TokenType)
@@ -1021,11 +1177,15 @@ struct Parser
         case TokenTypes::Keyword_Constant:
             return ParseVariableDeclarationStatement();
         case TokenTypes::Keyword_If:
-            return ParseIfElseStatements();
+            return ParseIfExpression();
         case TokenTypes::Keyword_Return:
             return ParseReturnStatement();
         case TokenTypes::LeftBrace:
             return ParseBlockStatement();
+        case TokenTypes::Keyword_Continue:
+            return ParseGenericSingularStatement<NodeTypes::ContinueStatement>();
+        case TokenTypes::Keyword_Break:
+            return ParseGenericSingularStatement<NodeTypes::BreakStatement>();
         default:
         {
             auto     start_location       = CurrentToken.ObjectSourceLocation;
@@ -1038,16 +1198,10 @@ struct Parser
         }
     }
 
-    ASTNode *Parser::ParseBlockStatement()
+    ASTNode *ParseBlockStatement()
     {
         auto start_location = CurrentToken.ObjectSourceLocation;
-
-        expect_token_with_type(
-            TokenTypes::LeftBrace,
-            "Expected '{' to start block statement (function body).",
-            "Who left this idiot here? Oh, calm down, mister, I’m joking... You’re not an idiot, "
-            "you’re a moron. Because your wit hasn't lead you to figuring out that a function "
-            "starts with a damned '{'.");
+        advance_one_token(); // consume '{'
 
         std::vector<ASTNode *> temporary_statement_pointer_vector;
         while (!check_token_type_of_current_token(TokenTypes::RightBrace) &&
@@ -1059,6 +1213,20 @@ struct Parser
                 temporary_statement_pointer_vector.push_back(statement);
             }
         }
+
+        expect_token_with_type(
+            TokenTypes::RightBrace,
+            "Expected '}' to start block statement.",
+            "Who left this idiot here? Oh, calm down, mister, I’m joking... You’re not an idiot, "
+            "you’re a moron. Because your wit hasn't lead you to figuring out that a function "
+            "ends with a damned '}'.");
+
+        auto statement_pointer_slice = ObjectArenaAllocator.AllocateArray<ASTNode *>(
+            temporary_statement_pointer_vector.size());
+        std::ranges::copy(temporary_statement_pointer_vector, statement_pointer_slice.begin());
+
+        return ObjectArenaAllocator.Allocate<BlockStatement>(
+            start_location, statement_pointer_slice);
     }
 
     ASTNode *ParseFunctionDeclaration()
@@ -1119,8 +1287,216 @@ struct Parser
             return function_declaration_statement;
         };
 
+        if (check_token_type_of_current_token(TokenTypes::LeftBrace))
+        {
+            function_declaration_statement->FunctionBody = ParseBlockStatement();
+            return function_declaration_statement;
+        }
+
+        expect_token_with_type(
+            TokenTypes::LeftBrace,
+            "Expected left brace ('{') or semicolon (';') after function declaration.",
+            "Lord... you're dumber than I thought you would be. That is, dumber than a damn rock. "
+            "Place a damned ';' or '{' after your function declaration.");
+
         return function_declaration_statement;
     };
+
+    std::span<ASTNode *> ParseCaseExpression()
+    {
+        if (check_token_type_of_current_token(TokenTypes::LeftParenthesis))
+        {
+            return ParseArgumentativeExpressionUntilTerminator<EXPECTED_LEFT_PARENTHESIS, true>(
+                "Expected ')' after case expression.",
+                "",
+                [this]()
+                { return check_token_type_of_current_token(TokenTypes::RightParenthesis); });
+        }
+
+        return ParseArgumentativeExpressionUntilTerminator<EXPECTED_LEFT_PARENTHESIS>(
+            "Expected '->' after case expression.",
+            "",
+            [this]() { return check_token_type_of_current_token(TokenTypes::RightArrow); });
+    }
+
+    ASTNode *ParseSwitchExpression()
+    {
+        /*
+         * switch () {
+         *  case cond, cond1 -> expression;
+         * }
+         *
+         * switch () {
+         *  case cond -> {
+         *      statements;
+         *  }
+         * }
+         */
+
+        auto start_location = CurrentToken.ObjectSourceLocation;
+        advance_one_token(); // consume 'switch'
+
+        auto *switch_expression_node =
+            ObjectArenaAllocator.Allocate<SwitchExpression>(start_location);
+
+        switch_expression_node->Condition = ParseExpression(0);
+
+        if (!match_with_current_token(TokenTypes::LeftBrace))
+        {
+            ObjectDiagnosticEngine.Report(
+                Severity::Error,
+                EXPECTED_LEFT_BRACE,
+                CurrentToken.ObjectSourceLocation,
+                "Expected '{' after switch expression.",
+                "");
+            return switch_expression_node;
+        }
+
+        advance_one_token(); // consume '{'
+
+        std::vector<SwitchExpression::Case *> temporary_cases_pointer_vector;
+        while (!check_token_type_of_current_token(TokenTypes::RightBrace) ||
+               check_token_type_of_peek_token(TokenTypes::EndOfFile))
+        {
+            switch (CurrentToken.TokenType)
+            {
+            case TokenTypes::Keyword_Default:
+            case TokenTypes::Keyword_Case:
+            {
+                auto *switch_case_expression =
+                    ObjectArenaAllocator.Allocate<SwitchExpression::Case>();
+                switch_case_expression->ObjectCaseSourceLocation =
+                    CurrentToken.ObjectSourceLocation;
+
+                if (advance_one_token().TokenType == TokenTypes::Keyword_Case)
+                {
+                    switch_case_expression->IfCondition = ParseCaseExpression();
+                }
+
+                if (!check_token_type_of_current_token(TokenTypes::RightArrow))
+                {
+                    ObjectDiagnosticEngine.Report(
+                        Severity::Error,
+                        EXPECTED_RIGHT_ARROW,
+                        CurrentToken.ObjectSourceLocation,
+                        "Expected '->' after switch case expression.",
+                        "");
+                    advance_one_token(); // consume invalid token
+                    continue;
+                }
+
+                advance_one_token(); // consume '->'
+
+                if (check_token_type_of_current_token(TokenTypes::LeftBrace))
+                {
+                    switch_case_expression->ThenExpression = ParseBlockStatement();
+                }
+                else
+                {
+                    switch_case_expression->ThenExpression = ParseExpression(0);
+                }
+
+                temporary_cases_pointer_vector.push_back(switch_case_expression);
+                expect_token_with_type(
+                    TokenTypes::Comma, "Expected ',' after case expression.", "");
+                break;
+            }
+            case TokenTypes::EndOfFile:
+            {
+                report_error_about_current_token<UNEXPECTED_END_OF_FILE>(
+                    "Found unexpected end of file whilst parsing for a switch case expression.",
+                    "");
+                return switch_expression_node;
+            }
+            default:
+            {
+                report_error_about_current_token<UNEXPECTED_EXPRESSION_TOKEN>(
+                    "Unexpected token.", "");
+                advance_one_token();
+                break;
+            }
+            }
+        }
+
+        expect_token_with_type(
+            TokenTypes::RightBrace,
+            "Expected '{' to terminate switch statement.",
+            "Mister, you... You're lucky I'm in a good mood today. Just damn close your switch "
+            "statement with a '{', will you?");
+
+        auto cases_pointer_slice = ObjectArenaAllocator.AllocateArray<SwitchExpression::Case *>(
+            temporary_cases_pointer_vector.size());
+        std::ranges::copy(temporary_cases_pointer_vector, cases_pointer_slice.begin());
+
+        switch_expression_node->Cases = cases_pointer_slice;
+
+        return switch_expression_node;
+    }
+
+    std::span<ASTNode *> ParseForStatementCaptures()
+    {
+        return ParseArgumentativeExpressionUntilTerminator<EXPECTED_PIPE_SYMBOL, true, true>(
+            "Expected '|' after capture initialization.",
+            "",
+            [this]() { return check_token_type_of_current_token(TokenTypes::Pipe); });
+    }
+
+    ASTNode *ParseForStatement()
+    {
+        /*
+         * for () | | {}
+         *
+         */
+
+        auto  start_location     = CurrentToken.ObjectSourceLocation;
+        auto *for_statement_node = ObjectArenaAllocator.Allocate<ForStatement>(start_location);
+
+        advance_one_token(); // consume 'for'
+
+        for_statement_node->Condition = ParseExpression(0);
+
+        if (check_token_type_of_current_token(TokenTypes::Pipe))
+        {
+            for_statement_node->Captures = ParseForStatementCaptures();
+        }
+
+        if (!check_token_type_of_current_token(TokenTypes::RightBrace))
+        {
+            report_error_about_current_token<EXPECTED_RIGHT_BRACE>(
+                "Expected '{' after for loop statement.", "");
+            return for_statement_node;
+        }
+
+        for_statement_node->BlockStatement = ParseBlockStatement();
+
+        return for_statement_node;
+    }
+
+    ASTNode *ParseWhileStatement()
+    {
+        /*
+         * while () | | {}
+         *
+         */
+
+        auto  start_location     = CurrentToken.ObjectSourceLocation;
+        auto *for_statement_node = ObjectArenaAllocator.Allocate<WhileStatement>(start_location);
+
+        advance_one_token(); // consume 'while'
+
+        for_statement_node->Condition = ParseExpression(0);
+
+        if (!check_token_type_of_current_token(TokenTypes::RightBrace))
+        {
+            report_error_about_current_token<EXPECTED_RIGHT_BRACE>(
+                "Expected '{' after while loop statement.", "");
+            return for_statement_node;
+        }
+
+        for_statement_node->BlockStatement = ParseBlockStatement();
+
+        return for_statement_node;
+    }
 
     Module *ParseModule()
     {
@@ -1138,14 +1514,40 @@ struct Parser
             case TokenTypes::Keyword_MutableVariable:
             {
                 module->TopLevelNodes.push_back(ParseVariableDeclarationStatement());
+                break;
             }
             case TokenTypes::Keyword_Constant:
             {
                 module->TopLevelNodes.push_back(ParseVariableDeclarationStatement<true>());
+                break;
+            }
+            case TokenTypes::Keyword_Switch:
+            {
+                module->TopLevelNodes.push_back(ParseSwitchExpression());
+                break;
             }
             case TokenTypes::Keyword_FunctionDeclaration:
             {
                 module->TopLevelNodes.push_back(ParseFunctionDeclaration());
+                break;
+            }
+            case TokenTypes::Keyword_For:
+            {
+                module->TopLevelNodes.push_back(ParseForStatement());
+                break;
+            }
+            case TokenTypes::Keyword_While:
+            {
+                module->TopLevelNodes.push_back(ParseWhileStatement());
+                break;
+            }
+            case TokenTypes::Identifier:
+            {
+                if (check_token_type_of_peek_token(TokenTypes::LeftParenthesis))
+                {
+                    module->TopLevelNodes.push_back(ParseFunctionCallExpression());
+                    break;
+                }
             }
             default:
             {

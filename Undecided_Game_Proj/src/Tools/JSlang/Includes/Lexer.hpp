@@ -30,9 +30,17 @@ enum class TokenTypes : uint8_t
     Keyword_Void,
     Keyword_If,
     Keyword_Else,
-    Keyword_MutableVariable,
-    Keyword_FunctionDeclaration,
+    Keyword_MutableVariable,     // var
+    Keyword_FunctionDeclaration, // fn
     Keyword_Return,
+    Keyword_Switch,
+    Keyword_Case,
+    Keyword_Struct,
+    Keyword_Default,
+    Keyword_For,
+    Keyword_While,
+    Keyword_Break,
+    Keyword_Continue,
 
     Identifier,
     EmbeddedLanguageCodeblock,
@@ -74,6 +82,7 @@ enum class TokenTypes : uint8_t
     Semicolon, // ;
     Colon,     // :
     Dot,       // .
+    Ellipsis,  // ..
 
     Not,                  // !
     NotEqual,             // !=
@@ -272,6 +281,38 @@ struct Lexer
         case "return"_hash:
         {
             return TokenTypes::Keyword_Return;
+        }
+        case "struct"_hash:
+        {
+            return TokenTypes::Keyword_Struct;
+        }
+        case "switch"_hash:
+        {
+            return TokenTypes::Keyword_Switch;
+        }
+        case "case"_hash:
+        {
+            return TokenTypes::Keyword_Case;
+        }
+        case "default"_hash:
+        {
+            return TokenTypes::Keyword_Default;
+        }
+        case "for"_hash:
+        {
+            return TokenTypes::Keyword_For;
+        }
+        case "while"_hash:
+        {
+            return TokenTypes::Keyword_While;
+        }
+        case "break"_hash:
+        {
+            return TokenTypes::Keyword_Break;
+        }
+        case "continue"_hash:
+        {
+            return TokenTypes::Keyword_Continue;
         }
         default:
         {
@@ -613,6 +654,11 @@ struct Lexer
         }
         case '.':
         {
+            if (match_next_character('.'))
+            {
+                return make_dual_token(TokenTypes::Ellipsis, cursor_start_position);
+            }
+
             return make_singular_token(TokenTypes::Dot, cursor_start_position);
         }
         case '!':
