@@ -40,6 +40,7 @@ enum class NodeTypes : uint8_t
     WhileStatement,
     BreakStatement,
     ContinueStatement,
+    ImportStatement,
 
     Annotation, // @Annotation
 };
@@ -350,6 +351,17 @@ struct WhileStatement : ASTNode
     {
         ObjectSourceLocation = ParameterSourceLocation;
         NodeType             = NodeTypes::WhileStatement;
+    }
+};
+
+struct ImportStatement : ASTNode
+{
+    std::span<ASTNode *> Statements;
+
+    ImportStatement(SourceLocation ParameterSourceLocation)
+    {
+        ObjectSourceLocation = ParameterSourceLocation;
+        NodeType             = NodeTypes::ImportStatement;
     }
 };
 
@@ -1499,6 +1511,8 @@ struct Parser
         return for_statement_node;
     }
 
+    ASTNode *ParseImportStatement() {}
+
     Module *ParseModule()
     {
         auto *module = ObjectArenaAllocator.Allocate<Module>();
@@ -1513,6 +1527,11 @@ struct Parser
                 std::to_underlying(PeekToken.TokenType));
             switch (CurrentToken.TokenType)
             {
+            case TokenTypes::Keyword_Import:
+            {
+                module->TopLevelNodes.push_back(ParseImportStatement());
+            }
+
             case TokenTypes::AtSymbol:
             {
                 module->TopLevelNodes.push_back(ParseAnnotatedNode());
