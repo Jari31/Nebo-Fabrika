@@ -5,6 +5,8 @@ namespace JSlang
 {
 enum ErrorCodes : uint8_t
 {
+    UNKNOWN_ERROR,
+
     SOURCE_PROVIDED_IS_EMPTY,
     UNKNOWN_SYMBOL,
     UNEXPECTED_TYPE,

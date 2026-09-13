@@ -5,10 +5,10 @@
 #include "Lexer.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <print>
 #include <span>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -393,12 +393,9 @@ struct Parser
     Token CurrentToken;
     Token PeekToken;
 
-    Parser(
-        Lexer            &ParameterLexer,
-        ArenaAllocator   &ParameterArenaAllocator,
-        DiagnosticEngine &ParameterDiagnosticEngine)
+    Parser(Lexer &ParameterLexer, ArenaAllocator &ParameterArenaAllocator)
         : ObjectLexer(ParameterLexer), ObjectArenaAllocator(ParameterArenaAllocator),
-          ObjectDiagnosticEngine(ParameterDiagnosticEngine)
+          ObjectDiagnosticEngine(ParameterLexer.ObjectDiagnosticEngine)
     {
         advance_one_token();
         advance_one_token();
@@ -545,7 +542,6 @@ struct Parser
         auto      &&CallbackIsCurrentTokenATerminator)
     {
         // an expression might be like var value : { arg, arg2 = {arg3, .arg4 = 41} } = val;
-
         if constexpr (ConsumeInitializer)
         {
             advance_one_token();
@@ -569,6 +565,7 @@ struct Parser
 
         if (!CallbackIsCurrentTokenATerminator())
         {
+
             ObjectDiagnosticEngine.Report(
                 Severity::Error,
                 ErrorCode,
@@ -834,6 +831,7 @@ struct Parser
             case TokenTypes::RightParenthesis:
             case TokenTypes::RightBrace:
             case TokenTypes::Comma:
+            case TokenTypes::Semicolon:
             {
                 return left_hand_side;
             }
@@ -899,6 +897,8 @@ struct Parser
                     left_hand_side,
                     right_hand_side,
                     operator_token.ObjectSourceLocation);
+
+                std::print("Current token: {}\n", CurrentToken.ObjectSourceLocation.Source);
             }
             }
         }
@@ -1051,6 +1051,7 @@ struct Parser
             annotated_node->Arguments = ParseFunctionArguments();
         }
 
+        // std::print("Current token: {}\n", CurrentToken.ObjectSourceLocation.Source);
         if (check_token_type_of_current_token(TokenTypes::Colon))
         {
             advance_one_token(); // consume ':'
@@ -1504,6 +1505,12 @@ struct Parser
 
         while (!check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
+            std::print(
+                "Parsing token: {} | TokenType: {} | PeekToken: {} | PeekTokenType: {}\n",
+                CurrentToken.ObjectSourceLocation.Source,
+                std::to_underlying(CurrentToken.TokenType),
+                PeekToken.ObjectSourceLocation.Source,
+                std::to_underlying(PeekToken.TokenType));
             switch (CurrentToken.TokenType)
             {
             case TokenTypes::AtSymbol:

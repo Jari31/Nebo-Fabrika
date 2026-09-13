@@ -79,7 +79,7 @@ class ArenaAllocator
         }
 
         current_offset += padding + size;
-        auto resulting_array = reinterpret_cast<Type>(aligned_pointer);
+        auto *resulting_array = reinterpret_cast<Type *>(aligned_pointer);
 
         // if constexpr (!std::is_trivially_constructible_v<Type>)
         // {

@@ -1,6 +1,10 @@
 import HashingFunctions/HashingFunctions as unsafe // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
-begin lua // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
+// lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
+
+begin lua
+    ...
+
 function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself. Well, planned to be, at least. I'm gonna force myself to write most of the type analysis et al. in Lua macros to make a good API and LSP for it
     ...
 
@@ -9,8 +13,8 @@ function TestFunction(CallbackFunction)
 ||endlua
 
 // forward declarations
-@RemoveIfTargetIsCPULike : Type.Flag
-@AutoDiff : TargetLanguage = "Lua" // default language is Lua anyways; but just to be explicit
+@RemoveIfTargetIsCPULike : Type.Flag;
+@AutoDiff : TargetLanguage = "Lua"; // default language is Lua anyways; but just to be explicit
 @TestFunction : {
 Type.DebugFunction,
 OnlyIfTargetLanguageLua, OnlyIfREPLEnabled,

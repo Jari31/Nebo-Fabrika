@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
+#include <print>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,6 +19,9 @@ namespace JSlang
 enum class TokenTypes : uint8_t
 {
     Keyword_Uniform,
+    Keyword_Import,
+    Keyword_As,
+    Keyword_Unsafe,
     Keyword_Export,
     Keyword_Using,
     Keyword_Discard,
@@ -79,10 +83,11 @@ enum class TokenTypes : uint8_t
 
     RightArrow, // ->
 
-    Semicolon, // ;
-    Colon,     // :
-    Dot,       // .
-    Ellipsis,  // ..
+    Semicolon,  // ;
+    Colon,      // :
+    ColonColon, // ::
+    Dot,        // .
+    Ellipsis,   // ..
 
     Not,                  // !
     NotEqual,             // !=
@@ -107,6 +112,8 @@ struct Token
 // probably no point in over engineering it
 struct Lexer
 {
+    static constexpr char UNDEFINED_NAME[10] = "Undefined"; // NOLINT
+
     DiagnosticEngine &ObjectDiagnosticEngine;
 
     std::string_view Source;
@@ -122,12 +129,28 @@ struct Lexer
         DiagnosticEngine           &ParameterDiagnosticEngine,
         EmbeddedLanguageCodeblocks &ParameterEmbeddedLanguageCodeblocks,
         std::string_view            ParameterSource,
-        std::string_view            ParameterSourceFilename)
+        std::string_view            ParameterFilename)
         : ObjectDiagnosticEngine(ParameterDiagnosticEngine), //
-          Source(ParameterSource), Filename(ParameterSourceFilename),
           ObjectEmbeddedLanguageCodeblocks(ParameterEmbeddedLanguageCodeblocks)
     {
-        if (Source.length() == 0)
+
+        if (ParameterFilename.empty())
+        {
+            Filename = std::string_view{UNDEFINED_NAME};
+
+            ObjectDiagnosticEngine.Report(
+                Severity::Warning,
+                SOURCE_PROVIDED_IS_EMPTY,
+                {.Filename = Filename},
+                "No filename provided; assuming 'Undefined' as filename.",
+                "Suit yourself.");
+        }
+        else
+        {
+            Filename = ParameterFilename;
+        }
+
+        if (ParameterSource.empty())
         {
             ObjectDiagnosticEngine.Report(
                 Severity::Warning,
@@ -138,6 +161,10 @@ struct Lexer
                 "source file from your thoughts like a cheap chat bot? Take yer thoughts of making "
                 "slop somewhere else! I ain't wastin' my dignity on this shit. Or excuse me, the "
                 "lack thereof.");
+        }
+        else
+        {
+            Source = ParameterSource;
         }
     };
 
@@ -314,6 +341,18 @@ struct Lexer
         {
             return TokenTypes::Keyword_Continue;
         }
+        case "import"_hash:
+        {
+            return TokenTypes::Keyword_Import;
+        }
+        case "unsafe"_hash:
+        {
+            return TokenTypes::Keyword_Unsafe;
+        }
+        case "as"_hash:
+        {
+            return TokenTypes::Keyword_As;
+        }
         default:
         {
             return TokenTypes::Identifier;
@@ -368,19 +407,19 @@ struct Lexer
         {
             auto language_identifier = GetNextToken(); // begin lua, where "lua" is the identifier
             uint32_t language_identifier_cursor_start_position = Cursor; // now it points after lua
-            char     sentinel_buf[64];                                   // NOLINT
-            auto sentinel_len = std::snprintf( // WARN: stack allocated and small. may cause some headaches to some poor guy later on
-                sentinel_buf,
-                sizeof(sentinel_buf),
+            char     sentinel_buffer[64];                                // NOLINT
+            auto sentinel_lenght = std::snprintf( // WARN: stack allocated and small. may cause some headaches to some poor guy later on
+                sentinel_buffer,
+                sizeof(sentinel_buffer),
                 "||end%.*s",
                 static_cast<int>(language_identifier.ObjectSourceLocation.Source.size()),
                 language_identifier.ObjectSourceLocation.Source.data());
             std::string_view expected_sentinel(
-                sentinel_buf, sentinel_len); // endlua    begin blocks are rare enough where
-                                             // dynamic allocation will be a drop in the bucket
-                                             // compared to manually matching and figuring out
-                                             // the proper casing for the sentinel using SIMD
-                                             // optimization. it ain't just a problem we got
+                sentinel_buffer, sentinel_lenght); // endlua    begin blocks are rare enough where
+            // dynamic allocation will be a drop in the bucket
+            // compared to manually matching and figuring out
+            // the proper casing for the sentinel using SIMD
+            // optimization. it ain't just a problem we got
 
             size_t sentinel_position = Source.find(expected_sentinel, Cursor);
             if (sentinel_position == std::string::npos)
@@ -439,6 +478,7 @@ struct Lexer
                                          : 0; // -1 because sentinel_position will be pointing at
                                               // 'e' of "end"; we don't want that. we want the
                                               // whitespace before the 'e'
+
             ObjectEmbeddedLanguageCodeblocks[language_index.value()].push_back({
                 .Source = Source.substr(language_identifier_cursor_start_position, underflow_guard),
 
@@ -488,8 +528,8 @@ struct Lexer
             TokenTypes::IntegerLiteral, CursorStartPosition, Cursor - CursorStartPosition);
     }
 
-    Token
-    create_token_from_string_literal(size_t CursorStartPosition, char ExpectedSentinelCharacter)
+    template <char ExpectedSentinelCharacter>
+    Token create_token_from_string_literal(size_t CursorStartPosition)
     {
         advance_one_character();
         while (peek_character_under_cursor() !=
@@ -518,7 +558,9 @@ struct Lexer
             return invalid_token;
         }
 
-        if (ExpectedSentinelCharacter == '\'')
+        advance_one_character(); // consume the trailing string terminator
+
+        if constexpr (ExpectedSentinelCharacter == '\'')
         {
             return make_token(
                 TokenTypes::CharacterLiteral, CursorStartPosition, Cursor - CursorStartPosition);
@@ -711,14 +753,19 @@ struct Lexer
         }
         case '"':
         {
-            return create_token_from_string_literal(cursor_start_position, '"');
+            return create_token_from_string_literal<'"'>(cursor_start_position);
         }
         case '\'':
         {
-            return create_token_from_string_literal(cursor_start_position, '\'');
+            return create_token_from_string_literal<'\''>(cursor_start_position);
         }
         case ':':
         {
+            if (match_next_character(':'))
+            {
+                return make_dual_token(TokenTypes::ColonColon, cursor_start_position);
+            }
+
             return make_singular_token(TokenTypes::Colon, cursor_start_position);
         }
         default:

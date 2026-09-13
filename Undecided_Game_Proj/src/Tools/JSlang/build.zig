@@ -44,6 +44,7 @@ pub fn build(Build: *std.Build) void {
     });
 
     dynamic_library_module.addIncludePath(Build.path("cache/"));
+    dynamic_library_module.addIncludePath(Build.path("Includes/"));
     // dynamic_library.addIncludePath(Build.path("cache/Libraries/include/reproc/"));
 
     var library_file_paths = std.ArrayList(std.Build.LazyPath).empty;
@@ -60,7 +61,7 @@ pub fn build(Build: *std.Build) void {
     compilation_flags.appendSlice(Build.allocator, &.{
         "-std=c++23",
         "-Wall",
-        "-Wextra",
+        // "-Wextra",
 
         // #embed
         "-Wno-c23-extensions",

@@ -1465,126 +1465,77 @@ struct Build
         jslang_instance->Initialize(
             {.CompileWithThreads = ObjectCLIOptions.ThreadCount, .Verbose = Verbose});
         jslang_instance->CompileFromSource(
-            {.SourceCode = R"(import HashingFunctions/HashingFunctions
+            {.SourceCode =
+                 R"(import HashingFunctions/HashingFunctions as unsafe // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
-                inline float
-                CalculateNoiseContributionOfVertex(float3 DistanceToVertex, float3 NoiseGradient)
-            {
-                uniform const float max_influential_radius_of_vertex = 0.6;
+                 // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
 
-                float3 dot_components = NoiseGradient * DistanceToVertex;
-                float  dot_product    = dot_components.x + dot_components.y + dot_components.z;
+                 begin lua
+                     ...
 
-                float3 dist_squared_components = DistanceToVertex * DistanceToVertex;
-                float  vertex_distance_squared = dist_squared_components.x +
-                                                 dist_squared_components.y +
-                                                 dist_squared_components.z;
+                 function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself. Well, planned to be, at least. I'm gonna force myself to write most of the type analysis et al. in Lua macros to make a good API and LSP for it
+                     ...
 
-                float falloff_intensity =
-                    max(0.0f, max_influential_radius_of_vertex - vertex_distance_squared);
-                // the first input is the type, so it can be specific
-                float falloff_power4 = pow(float, falloff_intensity, 4);
+                 function TestFunction(CallbackFunction)
+                     ...
+                 ||endlua
 
-                return falloff_power4 * dot_product;
-            }
+                 // forward declarations
+                 @RemoveIfTargetIsCPULike : Type.Flag;
+                 @AutoDiff : TargetLanguage = "Lua"; // default language is Lua anyways; but just to be explicit
+                 @TestFunction : {
+                 Type.DebugFunction,
+                 OnlyIfTargetLanguageLua, OnlyIfREPLEnabled,
+                 RunStage.AfterCodegen,
+                 ExpectedInputs = { .TargetLanguageFunction } } // .DebugFunctions get eliminated if not in a debug build
 
-            // function params are implicitly uniform, but explicitness is appreciated
-            // automatically gets exported as a header (and later JSON) file for definitions
-            @FunctionType(.Compute, 8, 8, 8) // gets downed into 8 lanes for ISPC, or whichever applicable
-        export void Simplex3D( // export is redundant if that attribute is applied
-            @BufferTypeFor(.PushConstant) // BufferTypeFor applies for all params underneath, until it hits another type annotation
-            uniform const float Origin[3],
-            uniform const uint32 Seed,
-            uniform const uint32 GridSizeOfASingleAxis,
-            uniform const uint32 StartFromIndex[3],
-            uniform const uint32 WorkUntilIndex[3], // automatically collapses all the parameters until the next one into one push const buffer
-            @BufferType(.SSBO)
-            uniform float OutputTo[]
-        )
-            {
-                float3 input_vector = float3(
-                    Origin[0] + ProgramIndex.x,
-                    Origin[1] + ProgramIndex.y,
-                    Origin[2] + ProgramIndex.z);
-                uniform const float skew_factor =
-                    1.0 / 3.0; // automatically uniform, but to stay explicit
-                uniform const float unskew_factor = 1.0 / 6.0;
+                 struct SomeExportStruct : uint8, export
+                 {
+                     ...
+                 };
 
-                float sum_of_input_vectors = input_vector.x + input_vector.y + input_vector.z;
-                float skew_offset          = sum_of_input_vectors * skew_factor;
+                 const SomeExportVariable: auto, export = 3; // the first member of the decorations is always the type; the rest are just flags
 
-                float3 skew_vec            = float3(skew_offset);
-                float3 offset_input_vector = input_vector + skew_vec;
+                 @AutoDiff("Back") : { // it walks forward and finds the function. Even if a bit ambiguous, it allows for complex macros not limited by the parser or lexer
+                 TargetType.Function = {.OnlyFor=CalculateNoiseContributionOfVertex},
+                 UniqueIdentifier = OverFn
+                 }
+                 fn CalculateNoiseContributionOfVertex(DistanceToVertex: float3, NoiseGradient: float3) : inline // return type is inferred
+                 {
+                     const max_infuential_radius_of_vertex = 0.6;
 
-                float3 grid_origin = floor(offset_input_vector);
+                     var dot_components = NoiseGradient * DistanceToVertex;
+                     var dot_product = dot_components.x + dot_components.y + dot_components.z;
 
-                float sum_of_grid_origin = grid_origin.x + grid_origin.y + grid_origin.z;
-                float unskew_offset      = sum_of_grid_origin * unskew_factor;
+                     var dist_squared_components = DistanceToVertex * DistanceToVertex;
+                     var vertex_distance_squared = dist_squared_components.x + dist_squared_components.y + dist_squared_components.z;
 
-                float3 unskew_vec           = float3(unskew_offset);
-                float3 unskewed_grid_origin = grid_origin - unskew_vec;
+                     var falloff_intensity = max(0.0f, max_influential_radius_of_vertex - vertex_distance_squared);
 
-                float3 distance_to_vertex0 = input_vector - unskewed_grid_origin;
+                     var falloff_power4 = pow(float, falloff_intensity, 4);
 
-                bool X_over_Y = (distance_to_vertex0.x >= distance_to_vertex0.y);
-                bool Y_over_Z = (distance_to_vertex0.y >= distance_to_vertex0.z);
-                bool Z_over_X = (distance_to_vertex0.z >= distance_to_vertex0.x);
+                     return falloff_power4 * dot_product;
+                 }
 
-                bool X_over_Z = !Z_over_X;
-                bool Y_over_X = !X_over_Y;
-                bool Z_over_Y = !Y_over_Z;
+                 @IgnoreTypeAnalysis() : { TargetType.Function };
+                 fn SomeOtherFunction() -> float : inline, static, const {
+                     return 1.0f;
+                 }
 
-                float3 step1 = float3(
-                    float(X_over_Y && X_over_Z),
-                    float(Y_over_X && Y_over_Z),
-                    float(Z_over_X && Z_over_Y)); // implicitly casted to float, but to be explicit
-                float3 step2 = float3(
-                    float(X_over_Y || X_over_Z),
-                    float(Y_over_X || Y_over_Z),
-                    float(Z_over_X || Z_over_Y));
-                float3 step3 = float3(1.0f);
+                 fn ExportOutput(@GPUBufferType(SSBO) OutputBuffer[]: float, RemoveIfTargetCPULike) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
+                     : export // export flag
+                 {
+                     if : TargetIsGPULike // comptime
+                     {
+                         OutputBuffer[ProgramIndex.x] = expect from @AutoDiff::OverFn CalculateNoiseContributionOfVertex::Back;
+                     } else if : TargetIsCPULike {
+                         return expect from @AutoDiff::OverFn CalculateNoiseContributionOfVertex::Back;
+                     }
+                 }
 
-                float3 unskew_factor_vec   = float3(unskew_factor);
-                float3 distance_to_vertex1 = distance_to_vertex0 - step1 * unskew_factor_vec;
-
-                float  factor2             = 2.0f * unskew_factor;
-                float3 factor2_vec         = float3(factor2);
-                float3 distance_to_vertex2 = distance_to_vertex0 - step2 * factor2_vec;
-
-                float  offset3             = 1.0f + 3.0f * unskew_factor;
-                float3 offset3_vec         = float3(offset3);
-                float3 distance_to_vertex3 = SubtractVector3(distance_to_vertex0, offset3_vec);
-
-                float3 grid_origin_step_addition0 = grid_origin + step1;
-                float3 grid_origin_step_addition1 = grid_origin + step2;
-                float3 grid_origin_step_addition2 = grid_origin + step3;
-
-                float3 gradient_vector0 = HashingFunctions.ScalarGradientHash(grid_origin, Seed);
-
-                using HashingFunctions;
-                float3 gradient_vector1 = ScalarGradientHash(grid_origin_step_addition0, Seed);
-                float3 gradient_vector2 = ScalarGradientHash(grid_origin_step_addition1, Seed);
-                float3 gradient_vector3 = ScalarGradientHash(grid_origin_step_addition2, Seed);
-                discard using HashingFunctions;
-
-                float total_noise_contributions =
-                    CalculateNoiseContributionOfVertex(distance_to_vertex0, gradient_vector0);
-
-                alias CalcNoiseContrOfVert = CalculateNoiseContributionOfVertex;
-                total_noise_contributions +=
-                    CalcNoiseContrOfVert(distance_to_vertex1, gradient_vector1);
-                total_noise_contributions +=
-                    CalcNoiseContrOfVert(distance_to_vertex2, gradient_vector2);
-                total_noise_contributions +=
-                    CalcNoiseContrOfVert(distance_to_vertex3, gradient_vector3);
-                discard alias CalcNoiseContrOfVert;
-
-                uint32 write_to_index =
-                    ProgramIndex.x + (ProgramIndex.y * GridSizeOfASingleAxis) +
-                    (ProgramIndex.z * GridSizeOfASingleAxis * GridSizeOfASingleAxis);
-
-                OutputTo[write_to_index] = total_noise_contributions;
-            })"});
+                 // for quick REPL with LuaJIT; you can now just step through your code and debug it
+                 @TestFunction(ExportOutput);)",
+             .SourceFileName = "Undefined"});
 
         DestroyJSlangInterfaceInstance(jslang_instance);
 

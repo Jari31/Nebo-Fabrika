@@ -1,14 +1,9 @@
 #pragma once
-
+#include "ErrorCodes.hpp"
 #include <cstdint>
 namespace JSlang
 {
-enum class ErrorCodes : uint32_t // NOLINT
-{
-    UNKNOWN_ERROR,
-};
-
-struct ErrorCode
+struct CompilerErrorCode
 {
     ErrorCodes  Code    = ErrorCodes::UNKNOWN_ERROR;
     const char *Message = nullptr;
@@ -36,9 +31,9 @@ struct CompileFromSourceRequest
 
 struct CompileResult
 {
-    ErrorCode     *Error                        = nullptr;
-    uint32_t       SizeOfGeneratedSourceInBytes = 0;
-    const uint8_t *GeneratedSource              = nullptr;
+    CompilerErrorCode *Error                        = nullptr;
+    uint32_t           SizeOfGeneratedSourceInBytes = 0;
+    const uint8_t     *GeneratedSource              = nullptr;
 };
 
 struct CompilerInitializationOptions

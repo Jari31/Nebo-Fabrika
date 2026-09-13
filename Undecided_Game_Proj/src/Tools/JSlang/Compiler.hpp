@@ -1,5 +1,8 @@
 #pragma once
 
+// #include "ASTParser.hpp"
+#include "ASTParser.hpp"
+#include "ArenaAllocator.hpp"
 #include "CompilerTypes.hpp"
 #include "Diagnostics.hpp"
 #include "Includes/Log.hpp"
@@ -29,15 +32,19 @@ struct Compiler
         ThreadedLogger.Initialize(&TaskScheduler, Options.CompileWithThreads);
     }
 
-    CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
+    static CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
         EmbeddedLanguageCodeblocks embedded_language_codeblocks;
-        DiagnosticEngine           diagnostic_engine;
-        Lexer                      lexer(
+        embedded_language_codeblocks.resize(1);
+        DiagnosticEngine diagnostic_engine;
+        Lexer            lexer(
             diagnostic_engine,
             embedded_language_codeblocks,
             CompileRequest.SourceCode,
             CompileRequest.SourceFileName);
+
+        ArenaAllocator arena_allocator;
+        AST::Parser    parser(lexer, arena_allocator);
 
         while (true)
         {
@@ -55,6 +62,18 @@ struct Compiler
                 break;
             }
         }
+
+        // auto *module = parser.ParseModule();
+
+        // for (auto *node : module->TopLevelNodes)
+        // {
+        //     ThreadUnsafeLogger::Log<LogTypes::Info>(
+        //         "[SOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]",
+        //         node->ObjectSourceLocation.Source,
+        //         node->ObjectSourceLocation.Filename,
+        //         node->ObjectSourceLocation.Line,
+        //         node->ObjectSourceLocation.Column);
+        // }
 
         return {};
     };
