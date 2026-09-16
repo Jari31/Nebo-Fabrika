@@ -1,15 +1,15 @@
-import HashingFunctions/HashingFunctions as unsafe // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
+import HashingFunctions/HashingFunctions as unsafe; // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
 // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
 
 begin lua
-    ...
+        ...
 
-function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself.
-    ...
+    function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself.
+        ...
 
-function TestFunction(CallbackFunction)
-    ...
+    function TestFunction(CallbackFunction)
+        ...
 ||endlua
 
 // forward declarations

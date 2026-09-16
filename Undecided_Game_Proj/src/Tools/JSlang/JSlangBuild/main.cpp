@@ -1466,18 +1466,18 @@ struct Build
             {.CompileWithThreads = ObjectCLIOptions.ThreadCount, .Verbose = Verbose});
         jslang_instance->CompileFromSource(
             {.SourceCode =
-                 R"(import HashingFunctions/HashingFunctions as unsafe // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
+                 R"(import HashingFunctions/HashingFunctions as unsafe; // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
                  // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
 
                  begin lua
-                     ...
+                         ...
 
-                 function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself. Well, planned to be, at least. I'm gonna force myself to write most of the type analysis et al. in Lua macros to make a good API and LSP for it
-                     ...
+                     function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself.
+                         ...
 
-                 function TestFunction(CallbackFunction)
-                     ...
+                     function TestFunction(CallbackFunction)
+                         ...
                  ||endlua
 
                  // forward declarations
@@ -1502,7 +1502,7 @@ struct Build
                  }
                  fn CalculateNoiseContributionOfVertex(DistanceToVertex: float3, NoiseGradient: float3) : inline // return type is inferred
                  {
-                     const max_infuential_radius_of_vertex = 0.6;
+                     const max_influential_radius_of_vertex = 0.6;
 
                      var dot_components = NoiseGradient * DistanceToVertex;
                      var dot_product = dot_components.x + dot_components.y + dot_components.z;

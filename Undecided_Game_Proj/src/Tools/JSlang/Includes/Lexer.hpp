@@ -373,7 +373,7 @@ struct Lexer
     Token report_invalid_token(
         uint32_t    CursorStartPosition,
         Severity    Severity,
-        uint32_t    ErrorCode,
+        ErrorCodes  ErrorCode,
         std::string ErrorMessage,
         std::string Monologue)
     {
@@ -511,7 +511,6 @@ struct Lexer
 
             while (BitwiseCharacterClassifier::IsDigit(peek_character_under_cursor()))
             {
-
                 advance_one_character();
             }
 

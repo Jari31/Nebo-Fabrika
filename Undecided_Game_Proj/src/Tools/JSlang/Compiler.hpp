@@ -7,9 +7,10 @@
 #include "Diagnostics.hpp"
 #include "Includes/Log.hpp"
 #include "Lexer.hpp"
+#include "Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include "SupportedEmbeddedLanguagesEnum.hpp"
-#include "cache/Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include <cstdint>
+
 
 namespace JSlang
 {
@@ -46,34 +47,34 @@ struct Compiler
         ArenaAllocator arena_allocator;
         AST::Parser    parser(lexer, arena_allocator);
 
-        while (true)
-        {
-            Token current_token = lexer.GetNextToken();
-
-            ThreadUnsafeLogger::Log<LogTypes::Info>(
-                "[TOKEN_TYPE: {} | TOKEN_BODY: {} | LINE: {} | COLUMN: {}]\n",
-                uint32_t(current_token.TokenType),
-                current_token.ObjectSourceLocation.Source,
-                current_token.ObjectSourceLocation.Line,
-                current_token.ObjectSourceLocation.Column);
-            if (current_token.TokenType == TokenTypes::Invalid ||
-                current_token.TokenType == TokenTypes::EndOfFile)
-            {
-                break;
-            }
-        }
-
-        // auto *module = parser.ParseModule();
-
-        // for (auto *node : module->TopLevelNodes)
+        // while (true)
         // {
+        //     Token current_token = lexer.GetNextToken();
+
         //     ThreadUnsafeLogger::Log<LogTypes::Info>(
-        //         "[SOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]",
-        //         node->ObjectSourceLocation.Source,
-        //         node->ObjectSourceLocation.Filename,
-        //         node->ObjectSourceLocation.Line,
-        //         node->ObjectSourceLocation.Column);
+        //         "[TOKEN_TYPE: {} | TOKEN_BODY: {} | LINE: {} | COLUMN: {}]\n",
+        //         uint32_t(current_token.TokenType),
+        //         current_token.ObjectSourceLocation.Source,
+        //         current_token.ObjectSourceLocation.Line,
+        //         current_token.ObjectSourceLocation.Column);
+        //     if (current_token.TokenType == TokenTypes::Invalid ||
+        //         current_token.TokenType == TokenTypes::EndOfFile)
+        //     {
+        //         break;
+        //     }
         // }
+
+        auto *module = parser.ParseModule();
+
+        for (auto *node : module->TopLevelNodes)
+        {
+            ThreadUnsafeLogger::Log<LogTypes::Info>(
+                "[SOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]",
+                node->ObjectSourceLocation.Source,
+                node->ObjectSourceLocation.Filename,
+                node->ObjectSourceLocation.Line,
+                node->ObjectSourceLocation.Column);
+        }
 
         return {};
     };

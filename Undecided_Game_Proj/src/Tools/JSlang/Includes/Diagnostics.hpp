@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ErrorCodes.hpp"
+#include "Libraries/include/magic_enum/magic_enum.hpp"
+#include "Log.hpp"
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -27,7 +30,7 @@ struct SourceLocation
 
 struct Diagnostic
 {
-    uint32_t       ErrorCode;
+    ErrorCodes     ErrorCode;
     Severity       Severity;
     std::string    Message;
     SourceLocation SourceLocation;
@@ -43,7 +46,7 @@ struct DiagnosticEngine
 
     void Report(
         Severity       Severity,
-        uint32_t       ErrorCode,
+        ErrorCodes     ErrorCode,
         SourceLocation SourceLocation,
         std::string    Message,
         std::string    Monologue,
@@ -65,6 +68,21 @@ struct DiagnosticEngine
         {
             ++WarningCount;
         }
+    }
+
+    void PrintBuffer()
+    {
+        for (auto &Diagnostic : DiagnosticBuffer)
+        {
+            ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
+                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}\n",
+                Diagnostic.SourceLocation.Source,
+                magic_enum::enum_name(Diagnostic.Severity),
+                magic_enum::enum_name(Diagnostic.ErrorCode),
+                Diagnostic.Message);
+        }
+
+        DiagnosticBuffer.clear();
     }
 
     [[nodiscard]] bool ContainsErrors() const { return ErrorCount > 0; }

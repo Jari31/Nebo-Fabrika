@@ -4,7 +4,9 @@
 #include "ErrorCodes.hpp"
 #include "Lexer.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <print>
 #include <span>
 #include <string>
@@ -41,6 +43,7 @@ enum class NodeTypes : uint8_t
     BreakStatement,
     ContinueStatement,
     ImportStatement,
+    UnsafeStatement,
 
     Annotation, // @Annotation
 };
@@ -143,14 +146,9 @@ struct IdentifierExpression : ASTNode
 
 struct FunctionCallExpression : ASTNode
 {
-    std::string_view     Identifier;
     std::span<ASTNode *> Arguments;
 
-    FunctionCallExpression(
-        std::span<ASTNode *> ParameterArguments,
-        SourceLocation       ParameterSourceLocation,
-        std::string_view     ParameterIdentifier)
-        : Identifier(ParameterIdentifier), Arguments(ParameterArguments)
+    FunctionCallExpression(SourceLocation ParameterSourceLocation)
     {
         NodeType             = NodeTypes::FunctionCallExpression;
         ObjectSourceLocation = ParameterSourceLocation;
@@ -311,7 +309,7 @@ struct SwitchExpression : ASTNode
 {
     struct Case
     {
-        std::span<ASTNode *> IfCondition; // if this is empty, then it is a default case
+        std::span<ASTNode *> ForCondition; // if this is empty, then it is a default case
         ASTNode             *ThenExpression;
 
         SourceLocation ObjectCaseSourceLocation;
@@ -356,7 +354,8 @@ struct WhileStatement : ASTNode
 
 struct ImportStatement : ASTNode
 {
-    std::span<ASTNode *> Statements;
+    std::string_view ImportFrom; // import From/From From
+    ASTNode         *ImportAs;   // as unsafe ; as something_else
 
     ImportStatement(SourceLocation ParameterSourceLocation)
     {
@@ -479,6 +478,7 @@ struct Parser
         std::string Hint      = "",
         ErrorCodes  ErrorCode = UNEXPECTED_TYPE)
     {
+
         if (check_token_type_of_current_token(TokenType))
         {
             return advance_one_token();
@@ -491,7 +491,7 @@ struct Parser
             std::move(ErrorMessage),
             std::move(Monologue),
             std::move(Hint));
-        return advance_one_token();
+        return {};
     }
 
     void expect_semicolon()
@@ -563,6 +563,8 @@ struct Parser
         while (!CallbackIsCurrentTokenATerminator() &&
                !check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
+            std::cout << CurrentToken.ObjectSourceLocation.Source << "\n";
+
             auto *ast_node = ParseExpression();
             if (ast_node != nullptr)
             {
@@ -612,22 +614,21 @@ struct Parser
 
     ASTNode *ParseFunctionCallExpression()
     {
-        auto start_location = CurrentToken.ObjectSourceLocation;
-        auto identifier     = expect_token_with_type(
-            TokenTypes::Identifier,
-            "Expected identifier before parenthesis.",
-            "Lord, please save me from this ignorance. How on earth do you think I'm supposed to "
-            "track what the damn function even is if you don't take your damn time to write out "
-            "the identifier?",
-            "",
-            EXPECTED_IDENTIFIER);
+        auto *function_call_expression_node = ObjectArenaAllocator.Allocate<FunctionCallExpression>(
+            CurrentToken.ObjectSourceLocation);
 
-        std::span<ASTNode *> function_arguments;
+        function_call_expression_node->Arguments = ParseFunctionArguments();
 
-        function_arguments = ParseFunctionArguments();
+        return function_call_expression_node;
+    };
+    ASTNode *ParseFunctionCallExpression(SourceLocation ParameterSourceLocation)
+    {
+        auto *function_call_expression_node =
+            ObjectArenaAllocator.Allocate<FunctionCallExpression>(ParameterSourceLocation);
 
-        return ObjectArenaAllocator.Allocate<FunctionCallExpression>(
-            function_arguments, start_location, identifier.ObjectSourceLocation.Source);
+        function_call_expression_node->Arguments = ParseFunctionArguments();
+
+        return function_call_expression_node;
     };
 
     ASTNode *ParseIfExpression()
@@ -693,6 +694,8 @@ struct Parser
         {
         case TokenTypes::IntegerLiteral:
         case TokenTypes::FloatLiteral:
+        case TokenTypes::StringLiteral:
+        case TokenTypes::CharacterLiteral:
         {
             advance_one_token();
             return ObjectArenaAllocator.Allocate<LiteralExpression>(start_location);
@@ -862,14 +865,8 @@ struct Parser
                 if (left_hand_side != nullptr &&
                     left_hand_side->NodeType == NodeTypes::IdentifierExpression)
                 {
-                    std::span<ASTNode *> function_arguments;
-
-                    function_arguments = ParseFunctionArguments();
-
-                    left_hand_side = ObjectArenaAllocator.Allocate<FunctionCallExpression>(
-                        function_arguments,
-                        operator_token.ObjectSourceLocation,
-                        left_hand_side->ObjectSourceLocation.Source);
+                    left_hand_side =
+                        ParseFunctionCallExpression(left_hand_side->ObjectSourceLocation);
                 }
                 break;
             }
@@ -909,8 +906,6 @@ struct Parser
                     left_hand_side,
                     right_hand_side,
                     operator_token.ObjectSourceLocation);
-
-                std::print("Current token: {}\n", CurrentToken.ObjectSourceLocation.Source);
             }
             }
         }
@@ -1025,9 +1020,9 @@ struct Parser
     // expected input: { decoration1, decor2, decor3 }
     std::span<ASTNode *> ParseAttributes()
     {
-        if (check_token_type_of_current_token(TokenTypes::LeftBrace))
+        if (match_with_current_token(TokenTypes::LeftBrace))
         {
-            return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_BRACE, true, true>(
+            return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_BRACE, false, true>(
                 "Expected '}' after '{'.",
                 "Lord... it's a wonder you got so far with your wits, mister. Close your damn '{' "
                 "with "
@@ -1035,20 +1030,25 @@ struct Parser
                 [this]() { return check_token_type_of_current_token(TokenTypes::RightBrace); });
         }
 
-        return ParseArgumentativeExpressionUntilTerminator<EXPECTED_SEMICOLON, false, true>(
+        auto expression = ParseArgumentativeExpressionUntilTerminator<
+            EXPECTED_SEMICOLON,
+            false,
+            true>(
             "Expected terminator ';' after annotation (macro) declaration.",
             "How do you think I'm supposed to know when your damn code ends? You thinkin' I'm a "
             "magician, mister? Put a damn semicolon (';') after your statement.",
             [this]() { return check_token_type_of_current_token(TokenTypes::Semicolon); });
+
+        return expression;
     }
 
     ASTNode *ParseAnnotatedNode()
     {
-        auto start_location = CurrentToken.ObjectSourceLocation;
-        advance_one_token(); // consume '@'
+        auto start_location = advance_one_token().ObjectSourceLocation; // consume '@'
 
         auto *annotated_node =
             ObjectArenaAllocator.Allocate<AnnotationFunctionExpression>(start_location);
+
         annotated_node->Identifier =
             expect_token_with_type(
                 TokenTypes::Identifier,
@@ -1058,15 +1058,18 @@ struct Parser
                 "How do you reckon I'm supposed to track your annotated functions?")
                 .ObjectSourceLocation.Source;
 
+        if (annotated_node->Identifier.empty())
+        {
+            return annotated_node;
+        }
+
         if (check_token_type_of_current_token(TokenTypes::LeftParenthesis))
         {
             annotated_node->Arguments = ParseFunctionArguments();
         }
 
-        // std::print("Current token: {}\n", CurrentToken.ObjectSourceLocation.Source);
-        if (check_token_type_of_current_token(TokenTypes::Colon))
+        if (match_with_current_token(TokenTypes::Colon))
         {
-            advance_one_token(); // consume ':'
             annotated_node->Decorations = ParseAttributes();
         }
 
@@ -1346,8 +1349,7 @@ struct Parser
          * }
          */
 
-        auto start_location = CurrentToken.ObjectSourceLocation;
-        advance_one_token(); // consume 'switch'
+        auto start_location = advance_one_token().ObjectSourceLocation; // consume 'switch'
 
         auto *switch_expression_node =
             ObjectArenaAllocator.Allocate<SwitchExpression>(start_location);
@@ -1383,7 +1385,7 @@ struct Parser
 
                 if (advance_one_token().TokenType == TokenTypes::Keyword_Case)
                 {
-                    switch_case_expression->IfCondition = ParseCaseExpression();
+                    switch_case_expression->ForCondition = ParseCaseExpression();
                 }
 
                 if (!check_token_type_of_current_token(TokenTypes::RightArrow))
@@ -1511,7 +1513,101 @@ struct Parser
         return for_statement_node;
     }
 
-    ASTNode *ParseImportStatement() {}
+    ASTNode *ParseImportStatement()
+    {
+        /*
+         * import something/something as something;
+         * import something as unsafe;
+         */
+
+        auto start_location = advance_one_token().ObjectSourceLocation; // consume "import"
+
+        auto *import_statement_node =
+            ObjectArenaAllocator.Allocate<ImportStatement>(start_location);
+
+        if (!check_token_type_of_current_token(TokenTypes::Identifier))
+        {
+            report_error_about_current_token<UNEXPECTED_TOKEN>(
+                "Unexpected token found whilst parsing for import statement.", "");
+            return import_statement_node;
+        }
+
+        std::string_view starting_import_from_identifier =
+            advance_one_token().ObjectSourceLocation.Source;
+
+        std::string_view ending_import_from_identifier;
+
+        auto assign_import_identifier = [&]() -> void
+        {
+            // end - start
+            auto total_merged_slice_length = static_cast<std::size_t>(
+                (ending_import_from_identifier.data() + ending_import_from_identifier.size()) -
+                starting_import_from_identifier.data());
+
+            // from start to length
+            std::string_view full_identifier(
+                starting_import_from_identifier.data(), total_merged_slice_length); // NOLINT
+            import_statement_node->ImportFrom = full_identifier;
+        };
+
+        while (true)
+        {
+            switch (CurrentToken.TokenType)
+            {
+            case TokenTypes::Keyword_As:
+            {
+                goto FoundImportAs;
+            }
+            case TokenTypes::Semicolon:
+            case TokenTypes::EndOfFile:
+            {
+                goto FoundTerminatorForImportStatement;
+            }
+            default:
+                break;
+            }
+
+            ending_import_from_identifier = advance_one_token().ObjectSourceLocation.Source;
+        }
+    FoundTerminatorForImportStatement:
+    {
+        assign_import_identifier();
+        expect_semicolon();
+        return import_statement_node;
+    }
+    FoundImportAs:
+    {
+        assign_import_identifier();
+
+        advance_one_token(); // consume "as"
+
+        if (!check_token_type_of_current_token(TokenTypes::Identifier) &&
+            !check_token_type_of_current_token(TokenTypes::Keyword_Unsafe))
+        {
+            goto ExpectSemicolonAndReturnNode;
+        }
+
+        if (check_token_type_of_current_token(TokenTypes::Identifier))
+        {
+            import_statement_node->ImportAs = ObjectArenaAllocator.Allocate<IdentifierExpression>(
+                CurrentToken.ObjectSourceLocation);
+        }
+        else
+        {
+            import_statement_node->ImportAs = ObjectArenaAllocator.Allocate<GenericStatement>(
+                CurrentToken.ObjectSourceLocation, NodeTypes::UnsafeStatement);
+        }
+
+        advance_one_token();
+
+    ExpectSemicolonAndReturnNode:
+    {
+
+        expect_semicolon();
+        return import_statement_node;
+    }
+    }
+    }
 
     Module *ParseModule()
     {
@@ -1525,6 +1621,8 @@ struct Parser
                 std::to_underlying(CurrentToken.TokenType),
                 PeekToken.ObjectSourceLocation.Source,
                 std::to_underlying(PeekToken.TokenType));
+
+            ObjectDiagnosticEngine.PrintBuffer();
             switch (CurrentToken.TokenType)
             {
             case TokenTypes::Keyword_Import:

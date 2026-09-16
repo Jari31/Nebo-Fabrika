@@ -1,4 +1,4 @@
-add_requires("unordered_dense v4.9.0", "enkits v1.12")
+add_requires("unordered_dense v4.9.0", "enkits v1.12", "magic_enum v0.9.8")
 add_requires("zig v0.16", { verify = false })
 
 set_runtimes("MD")
@@ -105,6 +105,7 @@ target("jslang")
     add_packages("zig")
     add_packages("enkits")
     add_packages("unordered_dense")
+    add_packages("magic_enum")
 
     add_rules("cache_dependencies")
 
