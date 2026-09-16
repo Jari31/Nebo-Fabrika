@@ -1491,7 +1491,7 @@ struct Build
 
                  struct SomeExportStruct : uint8, export
                  {
-                     ...
+
                  };
 
                  const SomeExportVariable: auto, export = 3; // the first member of the decorations is always the type; the rest are just flags

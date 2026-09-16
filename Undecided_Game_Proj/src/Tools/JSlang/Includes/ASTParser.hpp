@@ -18,32 +18,33 @@ namespace JSlang
 {
 enum class NodeTypes : uint8_t
 {
-    LiteralExpression,      // 10
-    IdentifierExpression,   // my_var
-    BinaryExpression,       // 1 + 2
-    FunctionCallExpression, // func()
-    UnaryExpression,        // ++var OR -var
-    FlagExpression,         // Flag
-    IfExpression,           // conditional expression; if(){} else {}
-    SwitchExpression,
-    CaseExpression,
-
+    LiteralExpression,              // 10
+    IdentifierExpression,           // my_var
+    BinaryExpression,               // 1 + 2
+    FunctionCallExpression,         // func()
+    UnaryExpression,                // ++var OR -var
+    FlagExpression,                 // Flag
+    IfExpression,                   // conditional expression; if(){} else {}
+    SwitchExpression,               // switch () {}
+    CaseExpression,                 // case N ->
+                                    //
     ImplicitMemberAccessExpression, // .Member
     ExplicitMemberAccessExpression, // Object.Member
-
-    VariableDeclarationStatement, // type my_var = 1;
-    AliasStatement,               // alias Something = SomethingElse
-    DiscardAliasStatement,        // discard alias Something
-    FunctionDeclarationStatement, // void func(){ ... }
-    BlockStatement,               // { ... }
-    ReturnStatement,
-    ExpressionStatement,
-    ForStatement,
-    WhileStatement,
-    BreakStatement,
-    ContinueStatement,
-    ImportStatement,
-    UnsafeStatement,
+                                    //
+    VariableDeclarationStatement,   // type my_var = 1;
+    AliasStatement,                 // alias Something = SomethingElse
+    DiscardAliasStatement,          // discard alias Something
+    FunctionDeclarationStatement,   // void func(){ ... }
+    BlockStatement,                 // { ... }
+    ReturnStatement,                // return;
+    ExpressionStatement,            //
+    ForStatement,                   // for () | | {}
+    WhileStatement,                 // while () {}
+    BreakStatement,                 // break;
+    ContinueStatement,              // continue;
+    ImportStatement,                // import Path;
+    UnsafeStatement,                // as unsafe
+    StructDeclarationStatement,     // struct Identifier: = {}
 
     Annotation, // @Annotation
 };
@@ -92,7 +93,7 @@ struct DiscardAliasStatement : ASTNode
 };
 
 /// the first node in the attributes list is always the type.
-struct VariableDeclaration : ASTNode
+struct VariableDeclarationStatement : ASTNode
 {
     bool                 IsImmutable = false;
     std::span<ASTNode *> Attributes;
@@ -100,7 +101,7 @@ struct VariableDeclaration : ASTNode
     std::string_view VariableName;
     ASTNode *Initializer; // RHS; e.g., var/const VariableName: VariableTypeName = Initializer;
 
-    VariableDeclaration(SourceLocation ParameterSourceLocation)
+    VariableDeclarationStatement(SourceLocation ParameterSourceLocation)
     {
         NodeType                   = NodeTypes::VariableDeclarationStatement;
         this->ObjectSourceLocation = ParameterSourceLocation;
@@ -364,6 +365,20 @@ struct ImportStatement : ASTNode
     }
 };
 
+struct StructDeclarationStatement : ASTNode
+{
+    std::string_view     Identifier;
+    std::span<ASTNode *> Attributes;
+
+    std::span<ASTNode *> StructImplementation;
+
+    StructDeclarationStatement(SourceLocation ParameterSourceLocation)
+    {
+        ObjectSourceLocation = ParameterSourceLocation;
+        NodeType             = NodeTypes::StructDeclarationStatement;
+    }
+};
+
 struct Parser
 {
     /*
@@ -410,6 +425,22 @@ struct Parser
     {
         advance_one_token();
         advance_one_token();
+    }
+
+    template <typename Type>
+    void copy_vector_to_arena_allocated_span(std::vector<Type> &FromVector, std::span<Type> &ToSpan)
+    {
+        ToSpan = ObjectArenaAllocator.AllocateArray<Type>(FromVector.size());
+
+        std::ranges::copy(FromVector, ToSpan.begin());
+    }
+    template <typename Type>
+    std::span<Type> copy_vector_to_arena_allocated_span(std::vector<Type> &FromVector)
+    {
+        std::span<Type> to_span;
+        copy_vector_to_arena_allocated_span(FromVector, to_span);
+
+        return to_span;
     }
 
     template <ErrorCodes ErrorCode>
@@ -494,6 +525,29 @@ struct Parser
         return {};
     }
 
+    template <TokenTypes TokenType>
+    Token expect_token_with_type(
+        std::string ErrorMessage,
+        std::string Monologue,
+        std::string Hint      = "",
+        ErrorCodes  ErrorCode = UNEXPECTED_TYPE)
+    {
+
+        if (check_token_type_of_current_token(TokenType))
+        {
+            return advance_one_token();
+        }
+
+        ObjectDiagnosticEngine.Report(
+            Severity::Error,
+            ErrorCode,
+            CurrentToken.ObjectSourceLocation,
+            std::move(ErrorMessage),
+            std::move(Monologue),
+            std::move(Hint));
+        return {};
+    }
+
     void expect_semicolon()
     {
         expect_token_with_type(
@@ -502,47 +556,6 @@ struct Parser
             "Programming language 101: USE YER DAMN SEMICOLONS!",
             "",
             EXPECTED_SEMICOLON);
-    }
-
-    static uint32_t get_operator_precedence(TokenTypes TokenType)
-    {
-        switch (TokenType)
-        {
-        case TokenTypes::Equal:
-        {
-            return 5;
-        }
-        case TokenTypes::Plus:
-        case TokenTypes::PlusPlus:
-        case TokenTypes::Minus:
-        case TokenTypes::MinusMinus:
-        {
-            return 10;
-        }
-        case TokenTypes::Star:
-        case TokenTypes::Slash:
-        case TokenTypes::Not:
-        case TokenTypes::AND:
-        case TokenTypes::XOR:
-        case TokenTypes::OR:
-        case TokenTypes::NotEqual:
-        case TokenTypes::LessThanOrEqualTo:
-        case TokenTypes::GreaterThanOrEqualTo:
-        case TokenTypes::EqualEqual:
-        {
-            return 20;
-        }
-        case TokenTypes::Dot:
-        case TokenTypes::LeftParenthesis:
-        case TokenTypes::LeftBrace:
-        {
-            return 30;
-        }
-        default:
-        {
-            return 0;
-        }
-        }
     }
 
     // skipping all the fancy names, it's just parsing blocks like { stuff1, stuff2, stuff3 } or (
@@ -563,13 +576,15 @@ struct Parser
         while (!CallbackIsCurrentTokenATerminator() &&
                !check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
-            std::cout << CurrentToken.ObjectSourceLocation.Source << "\n";
 
-            auto *ast_node = ParseExpression();
+            auto *ast_node = ParseExpression(0);
             if (ast_node != nullptr)
             {
                 temporary_ast_node_pointer_vector.push_back(ast_node);
             }
+
+            std::cout << CurrentToken.ObjectSourceLocation.Source << " >>\n"
+                      << PeekToken.ObjectSourceLocation.Source << " <<\n";
 
             if (!match_with_current_token(TokenTypes::Comma))
             {
@@ -579,7 +594,6 @@ struct Parser
 
         if (!CallbackIsCurrentTokenATerminator())
         {
-
             ObjectDiagnosticEngine.Report(
                 Severity::Error,
                 ErrorCode,
@@ -595,11 +609,7 @@ struct Parser
             }
         }
 
-        std::span<ASTNode *> ast_node_pointer_slice =
-            ObjectArenaAllocator.AllocateArray<ASTNode *>(temporary_ast_node_pointer_vector.size());
-        std::ranges::copy(temporary_ast_node_pointer_vector, ast_node_pointer_slice.begin());
-
-        return ast_node_pointer_slice;
+        return copy_vector_to_arena_allocated_span(temporary_ast_node_pointer_vector);
     }
 
     std::span<ASTNode *> ParseFunctionArguments()
@@ -686,6 +696,55 @@ struct Parser
         return if_expression_node;
     };
 
+    ASTNode *ParseImplicitAccessExpression(
+        SourceLocation   SourceLocationOfDotOperator,
+        std::string_view SourceOfTargetMember)
+    {
+        return ObjectArenaAllocator.Allocate<ImplicitMemberAccessExpression>(
+            SourceLocationOfDotOperator, SourceOfTargetMember);
+    }
+
+    static uint32_t get_operator_precedence(TokenTypes TokenType)
+    {
+        switch (TokenType)
+        {
+        case TokenTypes::Equal:
+        {
+            return 5;
+        }
+        case TokenTypes::Plus:
+        case TokenTypes::PlusPlus:
+        case TokenTypes::Minus:
+        case TokenTypes::MinusMinus:
+        {
+            return 10;
+        }
+        case TokenTypes::Star:
+        case TokenTypes::Slash:
+        case TokenTypes::Not:
+        case TokenTypes::AND:
+        case TokenTypes::XOR:
+        case TokenTypes::OR:
+        case TokenTypes::NotEqual:
+        case TokenTypes::LessThanOrEqualTo:
+        case TokenTypes::GreaterThanOrEqualTo:
+        case TokenTypes::EqualEqual:
+        {
+            return 20;
+        }
+        case TokenTypes::Dot:
+        case TokenTypes::LeftParenthesis:
+        case TokenTypes::LeftBrace:
+        {
+            return 30;
+        }
+        default:
+        {
+            return 0;
+        }
+        }
+    }
+
     ASTNode *ParsePrimary()
     {
         SourceLocation start_location = CurrentToken.ObjectSourceLocation;
@@ -700,15 +759,17 @@ struct Parser
             advance_one_token();
             return ObjectArenaAllocator.Allocate<LiteralExpression>(start_location);
         }
-
         case TokenTypes::Identifier:
         {
-
             advance_one_token();
+
+            // std::cout << CurrentToken.ObjectSourceLocation.Source << "\n"
+            //           << PeekToken.ObjectSourceLocation.Source << " <<\n";
             return ObjectArenaAllocator.Allocate<IdentifierExpression>(start_location);
         }
         case TokenTypes::LeftParenthesis:
         {
+            advance_one_token();
             ASTNode *expression = ParseExpression(0);
             expect_token_with_type(
                 TokenTypes::RightParenthesis,
@@ -722,6 +783,7 @@ struct Parser
         }
         case TokenTypes::LeftBrace:
         {
+            advance_one_token();
             ASTNode *expression = ParseExpression(0);
             expect_token_with_type(
                 TokenTypes::RightBrace,
@@ -754,6 +816,25 @@ struct Parser
         case TokenTypes::Keyword_Switch:
         {
             return ParseSwitchExpression();
+        }
+        case TokenTypes::Dot:
+        {
+            if (!check_token_type_of_peek_token(TokenTypes::Identifier))
+            {
+                advance_one_token();
+                report_error_about_current_token<EXPECTED_IDENTIFIER>(
+                    "Expected an identifier after implicit member access operator '.' (e.g., "
+                    "'.Member').",
+                    "Lord. I don't even have words for this.... Ugh- Place a darn word after your "
+                    "'.', "
+                    "mister.");
+
+                return nullptr;
+            }
+
+            return ParseImplicitAccessExpression(
+                advance_one_token().ObjectSourceLocation,
+                advance_one_token().ObjectSourceLocation.Source);
         }
         default:
         {
@@ -830,6 +911,12 @@ struct Parser
          */
 
         auto *left_hand_side = ParsePrimary();
+
+        if (left_hand_side == nullptr)
+        {
+            return left_hand_side;
+        }
+
         while (true)
         {
             uint32_t precedence = get_operator_precedence(CurrentToken.TokenType);
@@ -872,34 +959,45 @@ struct Parser
             }
             case TokenTypes::Dot:
             {
-                auto target_member = expect_token_with_type(
-                    TokenTypes::Identifier,
-                    "Expected identifier after access operator ('.').",
-                    "I've seen things, mister. But never, even from Micah, have I seen such "
-                    "idiocy. PUT A DAMN WORD OR SOMETHIN' AFTER YOUR '.'! Expect me to read your "
-                    "damn mind "
-                    "otherwise?!",
-                    "",
-                    EXPECTED_IDENTIFIER);
+                auto target_member =
+                    expect_token_with_type(
+                        TokenTypes::Identifier,
+                        "Expected identifier after access operator ('.').",
+                        "I've seen things, mister. But never, even from Micah, have I seen such "
+                        "idiocy. PUT A DAMN WORD OR SOMETHIN' AFTER YOUR '.'! Expect me to read "
+                        "your "
+                        "damn mind "
+                        "otherwise?!",
+                        "",
+                        EXPECTED_IDENTIFIER)
+                        .ObjectSourceLocation.Source;
+
+                if (target_member.empty())
+                {
+                    return left_hand_side;
+                }
 
                 if (left_hand_side != nullptr &&
                     left_hand_side->NodeType == NodeTypes::IdentifierExpression)
                 {
                     left_hand_side = ObjectArenaAllocator.Allocate<ExplicitMemberAccessExpression>(
-                        operator_token.ObjectSourceLocation,
-                        left_hand_side,
-                        target_member.ObjectSourceLocation.Source);
+                        operator_token.ObjectSourceLocation, left_hand_side, target_member);
 
                     break;
                 }
 
                 left_hand_side = ObjectArenaAllocator.Allocate<ImplicitMemberAccessExpression>(
-                    operator_token.ObjectSourceLocation, target_member.ObjectSourceLocation.Source);
+                    operator_token.ObjectSourceLocation, target_member);
                 break;
             }
             default:
             {
                 auto *right_hand_side = ParseExpression(precedence + 1);
+
+                if (right_hand_side == nullptr)
+                {
+                    goto OutputExpressionNode;
+                }
 
                 left_hand_side = ObjectArenaAllocator.Allocate<BinaryExpression>(
                     operator_token.TokenType,
@@ -910,7 +1008,10 @@ struct Parser
             }
         }
 
+    OutputExpressionNode:
+    {
         return left_hand_side;
+    }
     };
 
     std::span<ASTNode *> ParseVariableAttributes()
@@ -973,13 +1074,22 @@ struct Parser
         return parsed_variable_attributes;
     }
 
-    template <bool IsImmutableVariable = false> ASTNode *ParseVariableDeclarationStatement()
+    template <bool IsImmutableVariable = false, bool UseDeclaratorAsStartLocation = true>
+    ASTNode *ParseVariableDeclarationStatement()
     {
-        SourceLocation start_location = CurrentToken.ObjectSourceLocation;
-        advance_one_token(); // consume 'var/const'
+        SourceLocation start_location;
+
+        if constexpr (UseDeclaratorAsStartLocation)
+        {
+            start_location = advance_one_token().ObjectSourceLocation; // consume 'var/const'
+        }
+        else
+        {
+            start_location = CurrentToken.ObjectSourceLocation;
+        }
 
         auto *variable_declaration_node =
-            ObjectArenaAllocator.Allocate<VariableDeclaration>(start_location);
+            ObjectArenaAllocator.Allocate<VariableDeclarationStatement>(start_location);
 
         if constexpr (IsImmutableVariable)
         {
@@ -1119,21 +1229,16 @@ struct Parser
 
         advance_one_token(); // consume ')'
 
-        std::span<Parameter *> parameter_pointer_slice =
-            ObjectArenaAllocator.AllocateArray<Parameter *>(
-                temporary_parameter_pointer_vector.size());
-        std::ranges::copy(temporary_parameter_pointer_vector, parameter_pointer_slice.begin());
-
-        return parameter_pointer_slice;
+        return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
     }
 
     /// doesn't consume trailing semicolons
     /// expected input: { attributes } OR attributes
     std::span<ASTNode *> ParseStructOrFunctionAttributes()
     {
-        if (check_token_type_of_current_token(TokenTypes::LeftBrace))
+        if (match_with_current_token(TokenTypes::LeftBrace))
         {
-            return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_BRACE, true, true>(
+            return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_BRACE, false, true>(
                 "Expected terminator '}' after '{'.",
                 "",
                 [this]() { return check_token_type_of_current_token(TokenTypes::RightBrace); });
@@ -1147,7 +1252,6 @@ struct Parser
                 {
                     switch (CurrentToken.TokenType)
                     {
-                    case TokenTypes::Semicolon:
                     case TokenTypes::LeftBrace:
                     {
                         return true;
@@ -1237,12 +1341,9 @@ struct Parser
             "you’re a moron. Because your wit hasn't lead you to figuring out that a function "
             "ends with a damned '}'.");
 
-        auto statement_pointer_slice = ObjectArenaAllocator.AllocateArray<ASTNode *>(
-            temporary_statement_pointer_vector.size());
-        std::ranges::copy(temporary_statement_pointer_vector, statement_pointer_slice.begin());
-
         return ObjectArenaAllocator.Allocate<BlockStatement>(
-            start_location, statement_pointer_slice);
+            start_location,
+            copy_vector_to_arena_allocated_span(temporary_statement_pointer_vector));
     }
 
     ASTNode *ParseFunctionDeclaration()
@@ -1439,11 +1540,8 @@ struct Parser
             "Mister, you... You're lucky I'm in a good mood today. Just damn close your switch "
             "statement with a '{', will you?");
 
-        auto cases_pointer_slice = ObjectArenaAllocator.AllocateArray<SwitchExpression::Case *>(
-            temporary_cases_pointer_vector.size());
-        std::ranges::copy(temporary_cases_pointer_vector, cases_pointer_slice.begin());
-
-        switch_expression_node->Cases = cases_pointer_slice;
+        switch_expression_node->Cases =
+            copy_vector_to_arena_allocated_span(temporary_cases_pointer_vector);
 
         return switch_expression_node;
     }
@@ -1609,6 +1707,71 @@ struct Parser
     }
     }
 
+    ASTNode *ParseStructDeclarationStatement()
+    {
+        /*
+         * struct Identifier: Type, Attributes = {}
+         *
+         */
+
+        auto *struct_declaration_node = ObjectArenaAllocator.Allocate<StructDeclarationStatement>(
+            advance_one_token().ObjectSourceLocation);
+
+        struct_declaration_node->Identifier =
+            expect_token_with_type<TokenTypes::Identifier>(
+                "Expected identifier after struct declarator.", "")
+                .ObjectSourceLocation.Source;
+
+        if (struct_declaration_node->Identifier.empty())
+        {
+            return struct_declaration_node;
+        }
+
+        if (match_with_current_token(TokenTypes::Colon))
+        {
+            struct_declaration_node->Attributes = ParseStructOrFunctionAttributes();
+        }
+
+        if (!match_with_current_token(TokenTypes::LeftBrace))
+        {
+            report_error_about_current_token<EXPECTED_RIGHT_BRACE>("Expected '{'.", "");
+            return struct_declaration_node;
+        }
+
+        std::vector<ASTNode *> struct_declaration_implementation_vector;
+        while (!check_token_type_of_current_token(TokenTypes::RightBrace) &&
+               !check_token_type_of_current_token(TokenTypes::EndOfFile))
+        {
+            if (!check_token_type_of_current_token(TokenTypes::Identifier))
+            {
+                report_error_about_current_token<UNEXPECTED_TOKEN>(
+                    "Found unexpected token whilst parsing struct implementation ({ ... }).", "");
+                break;
+            }
+
+            struct_declaration_implementation_vector.push_back(
+                ParseVariableDeclarationStatement<false, false>());
+        }
+
+        if (check_token_type_of_current_token(TokenTypes::EndOfFile))
+        {
+            report_error_about_current_token<UNEXPECTED_END_OF_FILE>("Unexpected end of file.", "");
+            return struct_declaration_node;
+        }
+        advance_one_token();
+
+        if (struct_declaration_implementation_vector.empty())
+        {
+            return struct_declaration_node;
+        }
+
+        copy_vector_to_arena_allocated_span(
+            struct_declaration_implementation_vector,
+            struct_declaration_node->StructImplementation);
+
+        return struct_declaration_node;
+    }
+
     Module *ParseModule()
     {
         auto *module = ObjectArenaAllocator.Allocate<Module>();
@@ -1616,11 +1779,13 @@ struct Parser
         while (!check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
             std::print(
-                "Parsing token: {} | TokenType: {} | PeekToken: {} | PeekTokenType: {}\n",
+                "Parsing token: {} | TokenType: {} | PeekToken: {} | PeekTokenType: {} | Line: "
+                "{}\n",
                 CurrentToken.ObjectSourceLocation.Source,
                 std::to_underlying(CurrentToken.TokenType),
                 PeekToken.ObjectSourceLocation.Source,
-                std::to_underlying(PeekToken.TokenType));
+                std::to_underlying(PeekToken.TokenType),
+                CurrentToken.ObjectSourceLocation.Line);
 
             ObjectDiagnosticEngine.PrintBuffer();
             switch (CurrentToken.TokenType)
@@ -1672,8 +1837,21 @@ struct Parser
                     module->TopLevelNodes.push_back(ParseFunctionCallExpression());
                     break;
                 }
+
+                goto UnexpectedTokenFallback;
+            }
+            case TokenTypes::Keyword_Struct:
+            {
+                module->TopLevelNodes.push_back(ParseStructDeclarationStatement());
+                break;
+            }
+            case TokenTypes::Semicolon:
+            {
+                advance_one_token();
             }
             default:
+            {
+            UnexpectedTokenFallback:
             {
                 ObjectDiagnosticEngine.Report(
                     Severity::Error,
@@ -1682,6 +1860,7 @@ struct Parser
                     "Unrecognized top level token.",
                     "You sure don't look like you'd get very far on your wits.");
                 advance_one_token(); // consume unknown token.
+            }
             }
             }
         }

@@ -18,11 +18,12 @@ namespace JSlang
 {
 enum class TokenTypes : uint8_t
 {
+    UNKNOWN,
+
     Keyword_Uniform,
     Keyword_Import,
     Keyword_As,
     Keyword_Unsafe,
-    Keyword_Export,
     Keyword_Using,
     Keyword_Discard,
     Keyword_Alias,
@@ -30,8 +31,6 @@ enum class TokenTypes : uint8_t
     Keyword_Expect,
     Keyword_From,
     Keyword_Constant,
-    Keyword_Inline,
-    Keyword_Void,
     Keyword_If,
     Keyword_Else,
     Keyword_MutableVariable,     // var
@@ -104,7 +103,7 @@ enum class TokenTypes : uint8_t
 
 struct Token
 {
-    TokenTypes     TokenType;
+    TokenTypes     TokenType = TokenTypes::UNKNOWN;
     SourceLocation ObjectSourceLocation;
 };
 
@@ -253,10 +252,7 @@ struct Lexer
         {
             return TokenTypes::Keyword_Uniform;
         }
-        case "export"_hash:
-        {
-            return TokenTypes::Keyword_Export;
-        }
+
         case "using"_hash:
         {
             return TokenTypes::Keyword_Using;
@@ -281,14 +277,7 @@ struct Lexer
         {
             return TokenTypes::Keyword_Constant;
         }
-        case "inline"_hash:
-        {
-            return TokenTypes::Keyword_Inline;
-        }
-        case "void"_hash:
-        {
-            return TokenTypes::Keyword_Void;
-        }
+
         case "if"_hash:
         {
             return TokenTypes::Keyword_If;
