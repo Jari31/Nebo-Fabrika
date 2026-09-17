@@ -177,6 +177,12 @@ struct Lexer
         return (Cursor + 1 < Source.length()) ? Source[Cursor + 1] : '\0';
     }
 
+    void start_new_line()
+    {
+        ++Line;
+        Column = 1;
+    }
+
     char advance_one_character()
     {
 
@@ -351,10 +357,14 @@ struct Lexer
 
     Token skip_comment()
     {
+        std::print("Current line : {}\n", Line);
         while (peek_character_under_cursor() != '\n')
         {
             advance_one_character();
         }
+        advance_one_character();
+
+        std::print("-----Current line : {}\n", Line);
 
         return GetNextToken();
     }

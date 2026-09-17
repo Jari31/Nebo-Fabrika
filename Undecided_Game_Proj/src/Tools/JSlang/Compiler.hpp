@@ -11,7 +11,6 @@
 #include "SupportedEmbeddedLanguagesEnum.hpp"
 #include <cstdint>
 
-
 namespace JSlang
 {
 
@@ -69,7 +68,7 @@ struct Compiler
         for (auto *node : module->TopLevelNodes)
         {
             ThreadUnsafeLogger::Log<LogTypes::Info>(
-                "[SOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]",
+                "[SOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]\n",
                 node->ObjectSourceLocation.Source,
                 node->ObjectSourceLocation.Filename,
                 node->ObjectSourceLocation.Line,

@@ -75,11 +75,12 @@ struct DiagnosticEngine
         for (auto &Diagnostic : DiagnosticBuffer)
         {
             ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
-                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}\n",
+                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}\n",
                 Diagnostic.SourceLocation.Source,
                 magic_enum::enum_name(Diagnostic.Severity),
                 magic_enum::enum_name(Diagnostic.ErrorCode),
-                Diagnostic.Message);
+                Diagnostic.Message,
+                Diagnostic.SourceLocation.Line);
         }
 
         DiagnosticBuffer.clear();

@@ -1,4 +1,5 @@
 #pragma once
+#include "ASTNodes.hpp"
 #include "ArenaAllocator.hpp"
 #include "Diagnostics.hpp"
 #include "ErrorCodes.hpp"
@@ -9,376 +10,14 @@
 #include <iostream>
 #include <print>
 #include <span>
+#include <stacktrace>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-namespace JSlang
+namespace JSlang::AST
 {
-enum class NodeTypes : uint8_t
-{
-    LiteralExpression,              // 10
-    IdentifierExpression,           // my_var
-    BinaryExpression,               // 1 + 2
-    FunctionCallExpression,         // func()
-    UnaryExpression,                // ++var OR -var
-    FlagExpression,                 // Flag
-    IfExpression,                   // conditional expression; if(){} else {}
-    SwitchExpression,               // switch () {}
-    CaseExpression,                 // case N ->
-                                    //
-    ImplicitMemberAccessExpression, // .Member
-    ExplicitMemberAccessExpression, // Object.Member
-                                    //
-    VariableDeclarationStatement,   // type my_var = 1;
-    AliasStatement,                 // alias Something = SomethingElse
-    DiscardAliasStatement,          // discard alias Something
-    FunctionDeclarationStatement,   // void func(){ ... }
-    BlockStatement,                 // { ... }
-    ReturnStatement,                // return;
-    ExpressionStatement,            //
-    ForStatement,                   // for () | | {}
-    WhileStatement,                 // while () {}
-    BreakStatement,                 // break;
-    ContinueStatement,              // continue;
-    ImportStatement,                // import Path;
-    UnsafeStatement,                // as unsafe
-    StructDeclarationStatement,     // struct Identifier: = {}
-
-    Annotation, // @Annotation
-};
-
-struct ASTNode
-{
-    NodeTypes      NodeType;
-    SourceLocation ObjectSourceLocation;
-};
-
-namespace AST
-{
-
-struct GenericStatement : ASTNode
-{
-    GenericStatement(SourceLocation ParameterSourceLocation, NodeTypes ParameterNodeType)
-    {
-        ObjectSourceLocation = ParameterSourceLocation;
-        NodeType             = ParameterNodeType;
-    }
-};
-
-struct AliasStatement : ASTNode
-{
-    std::string_view AliasName;
-    std::string_view TargetName;
-
-    AliasStatement(std::string_view AliasName, std::string_view TargetName, SourceLocation Location)
-        : AliasName(AliasName), TargetName(TargetName)
-    {
-        NodeType                   = NodeTypes::AliasStatement;
-        this->ObjectSourceLocation = Location;
-    }
-};
-
-struct DiscardAliasStatement : ASTNode
-{
-    std::string_view AliasName;
-
-    DiscardAliasStatement(std::string_view AliasName, SourceLocation SourceLocation)
-        : AliasName(AliasName)
-    {
-        NodeType                   = NodeTypes::DiscardAliasStatement;
-        this->ObjectSourceLocation = SourceLocation;
-    }
-};
-
-/// the first node in the attributes list is always the type.
-struct VariableDeclarationStatement : ASTNode
-{
-    bool                 IsImmutable = false;
-    std::span<ASTNode *> Attributes;
-
-    std::string_view VariableName;
-    ASTNode *Initializer; // RHS; e.g., var/const VariableName: VariableTypeName = Initializer;
-
-    VariableDeclarationStatement(SourceLocation ParameterSourceLocation)
-    {
-        NodeType                   = NodeTypes::VariableDeclarationStatement;
-        this->ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct BinaryExpression : ASTNode
-{
-    TokenTypes OperandTokenType;
-    ASTNode   *LeftHandSide;
-    ASTNode   *RightHandSide;
-
-    BinaryExpression(
-        TokenTypes     ParameterTokenType,
-        ASTNode       *ParameterLeftHandSide,
-        ASTNode       *ParameterRightHandSide,
-        SourceLocation ParameterSourceLocation)
-        : OperandTokenType(ParameterTokenType), LeftHandSide(ParameterLeftHandSide),
-          RightHandSide(ParameterRightHandSide)
-    {
-        NodeType             = NodeTypes::BinaryExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct LiteralExpression : ASTNode
-{
-    LiteralExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::LiteralExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct IdentifierExpression : ASTNode
-{
-    IdentifierExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::IdentifierExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct FunctionCallExpression : ASTNode
-{
-    std::span<ASTNode *> Arguments;
-
-    FunctionCallExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::FunctionCallExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct AnnotationFunctionExpression : ASTNode // @Identifier : { Decorations }
-                                              // OR @Identifier() : { Decorations }
-{
-    std::string_view     Identifier;
-    std::span<ASTNode *> Arguments;
-
-    std::span<ASTNode *> Decorations;
-
-    [[nodiscard]] bool IsFunction() const { return !Arguments.empty(); }
-    [[nodiscard]] bool ContainsDecorations() const { return !Decorations.empty(); }
-
-    AnnotationFunctionExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::Annotation;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct UnaryExpression : ASTNode
-{
-    TokenTypes OperandType;
-    ASTNode   *Operand;
-
-    UnaryExpression(
-        SourceLocation ParameterSourceLocation,
-        TokenTypes     ParameterOperand,
-        ASTNode       *ParameterIdentifier)
-        : OperandType(ParameterOperand), Operand(ParameterIdentifier)
-    {
-        NodeType             = NodeTypes::UnaryExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    };
-};
-
-struct ExplicitMemberAccessExpression : ASTNode
-{
-    ASTNode         *Target;
-    std::string_view TargetMember;
-
-    ExplicitMemberAccessExpression(
-        SourceLocation   ParameterSourceLocation,
-        ASTNode         *ParameterTarget,
-        std::string_view ParameterTargetMember)
-        : Target(ParameterTarget), TargetMember(ParameterTargetMember)
-    {
-        NodeType             = NodeTypes::ExplicitMemberAccessExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct ImplicitMemberAccessExpression : ASTNode
-{
-    std::string_view TargetMember;
-
-    ImplicitMemberAccessExpression(
-        SourceLocation   ParameterSourceLocation,
-        std::string_view ParameterTargetMember)
-        : TargetMember(ParameterTargetMember)
-    {
-        NodeType             = NodeTypes::ImplicitMemberAccessExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct BlockStatement : ASTNode
-{
-    std::span<ASTNode *> Statements;
-
-    BlockStatement(SourceLocation ParameterSourceLocation, std::span<ASTNode *> ParameterStatements)
-        : Statements(ParameterStatements)
-    {
-        NodeType             = NodeTypes::BlockStatement;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct FunctionDeclarationStatement : ASTNode
-{
-    /// The source location contains the name of the type. Likewise, the first node within the
-    /// attribute array contains the type.
-    struct Parameter
-    {
-        SourceLocation       ObjectSourceLocation;
-        std::span<ASTNode *> Attributes;
-    };
-
-    // maybe we should make this into a SourceLocation instead of a string view for more accurate
-    // errors
-    std::string_view       ReturnType;
-    std::string_view       Identifier;
-    std::span<Parameter *> Parameters;
-
-    std::span<ASTNode *> Attributes;
-    ASTNode             *FunctionBody;
-
-    FunctionDeclarationStatement(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::FunctionDeclarationStatement;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct FlagExpression : ASTNode
-{
-    FlagExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::FlagExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-// return statement
-struct ReturnStatement : ASTNode
-{
-    ASTNode *Expression;
-
-    ReturnStatement(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::ReturnStatement;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct ExpressionStatement : ASTNode
-{
-    ASTNode *Expression;
-
-    ExpressionStatement(SourceLocation ParameterSourceLocation, ASTNode *ParameterExpression)
-        : Expression(ParameterExpression)
-    {
-        NodeType             = NodeTypes::ExpressionStatement;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct IfExpression : ASTNode
-{
-    bool EvaluateAtCompileTime = true;
-
-    ASTNode *Condition;
-    ASTNode *ThenBranch;
-    ASTNode *ElseBranch;
-
-    IfExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::IfExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct SwitchExpression : ASTNode
-{
-    struct Case
-    {
-        std::span<ASTNode *> ForCondition; // if this is empty, then it is a default case
-        ASTNode             *ThenExpression;
-
-        SourceLocation ObjectCaseSourceLocation;
-    };
-
-    bool EvaluatedAtCompileTime = false;
-
-    ASTNode          *Condition;
-    std::span<Case *> Cases;
-
-    SwitchExpression(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::SwitchExpression;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct ForStatement : ASTNode
-{
-    ASTNode             *Condition;
-    std::span<ASTNode *> Captures;
-    ASTNode             *BlockStatement;
-
-    ForStatement(SourceLocation ParameterSourceLocation)
-    {
-        NodeType             = NodeTypes::ForStatement;
-        ObjectSourceLocation = ParameterSourceLocation;
-    }
-};
-
-struct WhileStatement : ASTNode
-{
-    ASTNode *Condition;
-    ASTNode *BlockStatement;
-
-    WhileStatement(SourceLocation ParameterSourceLocation)
-    {
-        ObjectSourceLocation = ParameterSourceLocation;
-        NodeType             = NodeTypes::WhileStatement;
-    }
-};
-
-struct ImportStatement : ASTNode
-{
-    std::string_view ImportFrom; // import From/From From
-    ASTNode         *ImportAs;   // as unsafe ; as something_else
-
-    ImportStatement(SourceLocation ParameterSourceLocation)
-    {
-        ObjectSourceLocation = ParameterSourceLocation;
-        NodeType             = NodeTypes::ImportStatement;
-    }
-};
-
-struct StructDeclarationStatement : ASTNode
-{
-    std::string_view     Identifier;
-    std::span<ASTNode *> Attributes;
-
-    std::span<ASTNode *> StructImplementation;
-
-    StructDeclarationStatement(SourceLocation ParameterSourceLocation)
-    {
-        ObjectSourceLocation = ParameterSourceLocation;
-        NodeType             = NodeTypes::StructDeclarationStatement;
-    }
-};
-
 struct Parser
 {
     /*
@@ -419,6 +58,10 @@ struct Parser
     Token CurrentToken;
     Token PeekToken;
 
+    Parser(const Parser &)            = default;
+    Parser(Parser &&)                 = default;
+    Parser &operator=(const Parser &) = delete;
+    Parser &operator=(Parser &&)      = delete;
     Parser(Lexer &ParameterLexer, ArenaAllocator &ParameterArenaAllocator)
         : ObjectLexer(ParameterLexer), ObjectArenaAllocator(ParameterArenaAllocator),
           ObjectDiagnosticEngine(ParameterLexer.ObjectDiagnosticEngine)
@@ -560,11 +203,18 @@ struct Parser
 
     // skipping all the fancy names, it's just parsing blocks like { stuff1, stuff2, stuff3 } or (
     // stuff1, stuff2, stuff3 ) and such
-    template <ErrorCodes ErrorCode, bool ConsumeInitializer = false, bool ConsumeTerminator = false>
+    template <
+        ErrorCodes ErrorCode,
+        bool       ConsumeInitializer  = false,
+        bool       ConsumeTerminator   = false,
+        typename CallbackFunctionType1 = bool (*)(),
+        typename CallbackFunctionType2 = bool (*)()>
     std::span<ASTNode *> ParseArgumentativeExpressionUntilTerminator(
-        std::string ExpectedTerminatorErrorMessage,
-        std::string ExpectedTerminatorMonologue,
-        auto      &&CallbackIsCurrentTokenATerminator)
+        std::string             ExpectedTerminatorErrorMessage,
+        std::string             ExpectedTerminatorMonologue,
+        CallbackFunctionType1 &&CallbackIsCurrentTokenTerminator,
+        CallbackFunctionType2 &&CallbackIsCurrentTokenExpressionParserTerminator = []()
+        { return false; })
     {
         // an expression might be like var value : { arg, arg2 = {arg3, .arg4 = 41} } = val;
         if constexpr (ConsumeInitializer)
@@ -572,19 +222,18 @@ struct Parser
             advance_one_token();
         }
 
+        std::print("Token before loop entry {}\n", CurrentToken.ObjectSourceLocation.Source);
+
         std::vector<ASTNode *> temporary_ast_node_pointer_vector;
-        while (!CallbackIsCurrentTokenATerminator() &&
+        while (!CallbackIsCurrentTokenTerminator() &&
                !check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
 
-            auto *ast_node = ParseExpression(0);
+            auto *ast_node = ParseExpression(0, CallbackIsCurrentTokenExpressionParserTerminator);
             if (ast_node != nullptr)
             {
                 temporary_ast_node_pointer_vector.push_back(ast_node);
             }
-
-            std::cout << CurrentToken.ObjectSourceLocation.Source << " >>\n"
-                      << PeekToken.ObjectSourceLocation.Source << " <<\n";
 
             if (!match_with_current_token(TokenTypes::Comma))
             {
@@ -592,7 +241,7 @@ struct Parser
             }
         }
 
-        if (!CallbackIsCurrentTokenATerminator())
+        if (!CallbackIsCurrentTokenTerminator())
         {
             ObjectDiagnosticEngine.Report(
                 Severity::Error,
@@ -851,6 +500,7 @@ struct Parser
         return nullptr;
     };
 
+    template <typename CallbackFunctionType = bool (*)()>
     /*  @brief rough example:
      *  Given: 1 + 2 * 3
      *  lhs = 1; consume 1
@@ -902,7 +552,9 @@ struct Parser
      *
      * final output = {'+' 'a' { '*' 'b' {({'c', {'=' {'.' 'd'} '214'}) 'f' }}
      */
-    ASTNode *ParseExpression(uint32_t MinimumPrecedence = 0)
+    ASTNode *ParseExpression(
+        uint32_t               MinimumPrecedence    = 0,
+        CallbackFunctionType &&CallbackIsTerminator = []() { return false; })
     {
         /*
          *  lhs = inline; precedence 0
@@ -919,13 +571,6 @@ struct Parser
 
         while (true)
         {
-            uint32_t precedence = get_operator_precedence(CurrentToken.TokenType);
-            if (precedence < MinimumPrecedence ||
-                check_token_type_of_current_token(TokenTypes::EndOfFile))
-            {
-                break;
-            }
-
             switch (CurrentToken.TokenType)
             {
             case TokenTypes::RightSquareBracket:
@@ -939,8 +584,20 @@ struct Parser
             }
             default:
             {
+                if (CallbackIsTerminator())
+                {
+                    return left_hand_side;
+                }
+
                 break;
             }
+            }
+
+            uint32_t precedence = get_operator_precedence(CurrentToken.TokenType);
+            if (precedence < MinimumPrecedence ||
+                check_token_type_of_current_token(TokenTypes::EndOfFile))
+            {
+                break;
             }
 
             Token operator_token = advance_one_token();
@@ -1081,6 +738,7 @@ struct Parser
 
         if constexpr (UseDeclaratorAsStartLocation)
         {
+            // std::cout << std::stacktrace::current() << '\n';
             start_location = advance_one_token().ObjectSourceLocation; // consume 'var/const'
         }
         else
@@ -1248,20 +906,9 @@ struct Parser
             ParseArgumentativeExpressionUntilTerminator<EXPECTED_LEFT_BRACE>(
                 "Expected terminator '{' after ':'.",
                 "",
-                [this]()
-                {
-                    switch (CurrentToken.TokenType)
-                    {
-                    case TokenTypes::LeftBrace:
-                    {
-                        return true;
-                    }
-                    default:
-                    {
-                        return false;
-                    }
-                    }
-                });
+                [this]() { return check_token_type_of_current_token(TokenTypes::LeftBrace); },
+                [this]() -> bool
+                { return check_token_type_of_current_token(TokenTypes::LeftBrace); });
 
         return parsed_function_attributes;
     }
@@ -1727,7 +1374,8 @@ struct Parser
 
         if (!match_with_current_token(TokenTypes::LeftBrace))
         {
-            report_error_about_current_token<EXPECTED_RIGHT_BRACE>("Expected '{'.", "");
+            report_error_about_current_token<EXPECTED_RIGHT_BRACE>(
+                "Expected '{' whilst parsing for struct declaration.", "");
             return struct_declaration_node;
         }
 
@@ -1769,6 +1417,17 @@ struct Parser
     {
         auto *module = ObjectArenaAllocator.Allocate<Module>();
 
+        auto report_and_consume_unexpected_token = [this]() -> void
+        {
+            ObjectDiagnosticEngine.Report(
+                Severity::Error,
+                UNRECOGNIZED_TOP_LEVEL_NODE,
+                CurrentToken.ObjectSourceLocation,
+                "Unrecognized top level token.",
+                "You sure don't look like you'd get very far on your wits.");
+            advance_one_token(); // consume unknown token.
+        };
+
         while (!check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
             std::print(
@@ -1786,6 +1445,7 @@ struct Parser
             case TokenTypes::Keyword_Import:
             {
                 module->TopLevelNodes.push_back(ParseImportStatement());
+                break;
             }
 
             case TokenTypes::AtSymbol:
@@ -1831,7 +1491,8 @@ struct Parser
                     break;
                 }
 
-                goto UnexpectedTokenFallback;
+                report_and_consume_unexpected_token();
+                break;
             }
             case TokenTypes::Keyword_Struct:
             {
@@ -1841,26 +1502,17 @@ struct Parser
             case TokenTypes::Semicolon:
             {
                 advance_one_token();
+                break;
             }
             default:
             {
-            UnexpectedTokenFallback:
-            {
-                ObjectDiagnosticEngine.Report(
-                    Severity::Error,
-                    UNRECOGNIZED_TOP_LEVEL_NODE,
-                    CurrentToken.ObjectSourceLocation,
-                    "Unrecognized top level token.",
-                    "You sure don't look like you'd get very far on your wits.");
-                advance_one_token(); // consume unknown token.
-            }
+                report_and_consume_unexpected_token();
+                break;
             }
             }
         }
 
         return module;
-    }
-}; // namespace AST
-
-} // namespace AST
-} // namespace JSlang
+    }; // namespace AST
+};
+} // namespace JSlang::AST
