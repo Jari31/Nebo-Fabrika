@@ -1654,12 +1654,37 @@ struct Parser
             {
             case TokenTypes::Keyword_As:
             {
-                goto FoundImportAs;
+                assign_import_identifier();
+
+                advance_one_token(); // consume "as"
+
+                if (!check_token_type_of_current_token(TokenTypes::Identifier) &&
+                    !check_token_type_of_current_token(TokenTypes::Keyword_Unsafe))
+                {
+                    goto ExpectSemicolonAndReturnNode;
+                }
+
+                if (check_token_type_of_current_token(TokenTypes::Identifier))
+                {
+                    import_statement_node->ImportAs =
+                        ObjectArenaAllocator.Allocate<IdentifierExpression>(
+                            CurrentToken.ObjectSourceLocation);
+                }
+                else
+                {
+                    import_statement_node->ImportAs =
+                        ObjectArenaAllocator.Allocate<GenericStatement>(
+                            CurrentToken.ObjectSourceLocation, NodeTypes::UnsafeStatement);
+                }
+
+                advance_one_token();
+                goto ExpectSemicolonAndReturnNode;
             }
             case TokenTypes::Semicolon:
             case TokenTypes::EndOfFile:
             {
-                goto FoundTerminatorForImportStatement;
+                assign_import_identifier();
+                goto ExpectSemicolonAndReturnNode;
             }
             default:
                 break;
@@ -1667,43 +1692,11 @@ struct Parser
 
             ending_import_from_identifier = advance_one_token().ObjectSourceLocation.Source;
         }
-    FoundTerminatorForImportStatement:
-    {
-        assign_import_identifier();
-        expect_semicolon();
-        return import_statement_node;
-    }
-    FoundImportAs:
-    {
-        assign_import_identifier();
-
-        advance_one_token(); // consume "as"
-
-        if (!check_token_type_of_current_token(TokenTypes::Identifier) &&
-            !check_token_type_of_current_token(TokenTypes::Keyword_Unsafe))
-        {
-            goto ExpectSemicolonAndReturnNode;
-        }
-
-        if (check_token_type_of_current_token(TokenTypes::Identifier))
-        {
-            import_statement_node->ImportAs = ObjectArenaAllocator.Allocate<IdentifierExpression>(
-                CurrentToken.ObjectSourceLocation);
-        }
-        else
-        {
-            import_statement_node->ImportAs = ObjectArenaAllocator.Allocate<GenericStatement>(
-                CurrentToken.ObjectSourceLocation, NodeTypes::UnsafeStatement);
-        }
-
-        advance_one_token();
 
     ExpectSemicolonAndReturnNode:
     {
-
         expect_semicolon();
         return import_statement_node;
-    }
     }
     }
 
