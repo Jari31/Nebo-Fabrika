@@ -225,19 +225,11 @@ struct BlockStatement : ASTNode
 
 struct FunctionDeclarationStatement : ASTNode
 {
-    /// The source location contains the name of the type. Likewise, the first node within the
-    /// attribute array contains the type.
-    struct Parameter
-    {
-        SourceLocation       ObjectSourceLocation;
-        std::span<ASTNode *> Attributes;
-    };
-
     // maybe we should make this into a SourceLocation instead of a string view for more accurate
     // errors
-    std::string_view       ReturnType;
-    std::string_view       Identifier;
-    std::span<Parameter *> Parameters;
+    std::string_view     ReturnType;
+    std::string_view     Identifier;
+    std::span<ASTNode *> Parameters;
 
     std::span<ASTNode *> Attributes;
     ASTNode             *FunctionBody;
