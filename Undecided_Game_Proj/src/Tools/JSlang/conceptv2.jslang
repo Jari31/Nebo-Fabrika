@@ -1,7 +1,7 @@
 import HashingFunctions/HashingFunctions as unsafe; // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
 // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
-
+const something = 20;
 begin lua
         ...
 
@@ -24,7 +24,7 @@ ExpectedInputs = { .TargetLanguageFunction } } // .DebugFunctions get eliminated
 struct SomeExportStruct : uint8, export
 {
 
-};
+}
 
 const SomeExportVariable: auto, export = 3; // the first member of the decorations is always the type; the rest are just flags
 

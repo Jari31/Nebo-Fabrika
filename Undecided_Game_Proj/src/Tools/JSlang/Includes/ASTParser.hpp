@@ -222,8 +222,6 @@ struct Parser
             advance_one_token();
         }
 
-        std::print("Token before loop entry {}\n", CurrentToken.ObjectSourceLocation.Source);
-
         std::vector<ASTNode *> temporary_ast_node_pointer_vector;
         while (!CallbackIsCurrentTokenTerminator() &&
                !check_token_type_of_current_token(TokenTypes::EndOfFile))

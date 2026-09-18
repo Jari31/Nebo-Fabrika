@@ -52,6 +52,9 @@ struct DiagnosticEngine
         std::string    Monologue,
         std::string    Hint = "")
     {
+        SourceLocation.Line += 1;
+        SourceLocation.Column += 1;
+
         DiagnosticBuffer.push_back(
             {.ErrorCode      = ErrorCode,
              .Severity       = Severity,
@@ -75,12 +78,13 @@ struct DiagnosticEngine
         for (auto &Diagnostic : DiagnosticBuffer)
         {
             ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
-                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}\n",
+                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, COLUMN: {}\n",
                 Diagnostic.SourceLocation.Source,
                 magic_enum::enum_name(Diagnostic.Severity),
                 magic_enum::enum_name(Diagnostic.ErrorCode),
                 Diagnostic.Message,
-                Diagnostic.SourceLocation.Line);
+                Diagnostic.SourceLocation.Line,
+                Diagnostic.SourceLocation.Column);
         }
 
         DiagnosticBuffer.clear();

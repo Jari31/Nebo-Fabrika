@@ -162,7 +162,7 @@ LoadDynamicLibrary(const filesystem::path &PathToDynamicLibrary)
 
 #ifdef __clangd__
 // Feed clangd a single dummy byte so it doesn't try to parse 100MB of DLLs
-constexpr uint8_t DYNAMIC_LIBRARY_SLANG_COMPILER[] = {0x00};
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_COMPILER[] = {0x00}; // NOLINT
 #else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_COMPILER[] = {
 #embed PATH_TO_SLANG_COMPILER_DYNAMIC_LIBRARY // NOLINT
@@ -170,7 +170,7 @@ constexpr uint8_t DYNAMIC_LIBRARY_SLANG_COMPILER[] = {
 #endif
 
 #ifdef __clangd__
-constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GLSL_MODULE[] = {0x00};
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GLSL_MODULE[] = {0x00}; // NOLINT
 #else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GLSL_MODULE[] = {
 #embed PATH_TO_SLANG_GLSL_MODULE_DYNAMIC_LIBRARY // NOLINT
@@ -178,7 +178,7 @@ constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GLSL_MODULE[] = {
 #endif
 
 #ifdef __clangd__
-constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GL_SLANG[] = {0x00};
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GL_SLANG[] = {0x00}; // NOLINT
 #else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GL_SLANG[] = {
 #embed PATH_TO_SLANG_GL_SLANG_DYNAMIC_LIBRARY // NOLINT
@@ -186,7 +186,7 @@ constexpr uint8_t DYNAMIC_LIBRARY_SLANG_GL_SLANG[] = {
 #endif
 
 #ifdef __clangd__
-constexpr uint8_t DYNAMIC_LIBRARY_SLANG_LLVM[] = {0x00};
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_LLVM[] = {0x00}; // NOLINT
 #else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_LLVM[] = {
 #embed PATH_TO_SLANG_LLVM_DYNAMIC_LIBRARY // NOLINT
@@ -194,7 +194,7 @@ constexpr uint8_t DYNAMIC_LIBRARY_SLANG_LLVM[] = {
 #endif
 
 #ifdef __clangd__
-constexpr uint8_t DYNAMIC_LIBRARY_SLANG_RUN_TIME[] = {0x00};
+constexpr uint8_t DYNAMIC_LIBRARY_SLANG_RUN_TIME[] = {0x00}; // NOLINT
 #else
 constexpr uint8_t DYNAMIC_LIBRARY_SLANG_RUN_TIME[] = {
 #embed PATH_TO_SLANG_RUN_TIME_DYNAMIC_LIBRARY // NOLINT
@@ -202,10 +202,10 @@ constexpr uint8_t DYNAMIC_LIBRARY_SLANG_RUN_TIME[] = {
 #endif
 
 #ifdef __clangd__
-constexpr uint8_t DYNAMIC_LIBRARY_JSLANG[] = {0x00};
+constexpr uint8_t DYNAMIC_LIBRARY_JSLANG[] = {0x00}; // NOLINT
 #else
 constexpr uint8_t DYNAMIC_LIBRARY_JSLANG[] = {
-#embed "../jslang.dll"
+#embed "../jslang-compiler.dll"
 };
 #endif
 
@@ -1436,7 +1436,7 @@ struct Build
             {"slang-glslang" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_GL_SLANG}},
             {"slang-llvm" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_LLVM}},
             {"slang-rt" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_SLANG_RUN_TIME}},
-            {"jslang" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_JSLANG}}};
+            {"jslang-compiler" + dylib_file_extension, std::span{DYNAMIC_LIBRARY_JSLANG}}};
 
         auto dylib_caching_result = DynamicLibraryLoader::CacheCompanionDynamicLibraries<Verbose>(
             temporary_dylib_folder, EmbeddedDynamicLibraries);
@@ -1448,10 +1448,10 @@ struct Build
         }
 
         auto jslang_compiler_dylib =
-            DynamicLibraryLoader::LoadDynamicLibrary(temporary_dylib_folder / "jslang");
+            DynamicLibraryLoader::LoadDynamicLibrary(temporary_dylib_folder / "jslang-compiler");
         if (!jslang_compiler_dylib)
         {
-            ThreadUnsafeLogger::Log<LogTypes::Error>("Failed to load JSlang dynamic library.");
+            ThreadUnsafeLogger::Log<LogTypes::Error>("Failed to load JSlang dynamic library.\n");
             return -1;
         }
 
@@ -1469,7 +1469,7 @@ struct Build
                  R"(import HashingFunctions/HashingFunctions as unsafe; // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
                  // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
-
+                 const something = 20;
                  begin lua
                          ...
 
@@ -1492,7 +1492,7 @@ struct Build
                  struct SomeExportStruct : uint8, export
                  {
 
-                 };
+                 }
 
                  const SomeExportVariable: auto, export = 3; // the first member of the decorations is always the type; the rest are just flags
 

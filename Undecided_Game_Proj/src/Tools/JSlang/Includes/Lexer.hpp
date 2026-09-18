@@ -357,14 +357,10 @@ struct Lexer
 
     Token skip_comment()
     {
-        std::print("Current line : {}\n", Line);
         while (peek_character_under_cursor() != '\n')
         {
             advance_one_character();
         }
-        advance_one_character();
-
-        std::print("-----Current line : {}\n", Line);
 
         return GetNextToken();
     }
@@ -500,8 +496,9 @@ struct Lexer
             advance_one_character();
         }
 
-        if (advance_one_character() == '.')
+        if (peek_character_infront_cursor() == '.')
         {
+            advance_one_character();
             if (!BitwiseCharacterClassifier::IsDigit(peek_character_under_cursor()))
             {
                 return make_token(

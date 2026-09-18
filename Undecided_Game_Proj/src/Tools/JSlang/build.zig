@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const PROGRAM_NAME = "jslang";
+const PROGRAM_NAME = "jslang-compiler";
 
 /// IMPORTANT: *the external cache location for lib and win sdk files. change this to internal cache when made into a standalone repo
 const EXTERNAL_CACHE_FOLDER_LOCATION = "../../cache/";
@@ -67,9 +67,15 @@ pub fn build(Build: *std.Build) void {
         "-Wno-c23-extensions",
     }) catch {};
 
+    if (optimize == .Debug) {
+        compilation_flags.appendSlice(Build.allocator, &.{ "-lc++stacktrace", "-lbacktrace" }) catch @panic("OOM");
+    }
+
     if (is_msvc_abi) {
         compilation_flags.appendSlice(Build.allocator, &.{
             "-fms-runtime-lib=dll",
+            "-gcodeview",
+            "-g3",
         }) catch @panic("OOM");
     }
 
@@ -139,6 +145,9 @@ pub fn build(Build: *std.Build) void {
         dynamic_library.root_module.linkSystemLibrary("user32", .{});
         dynamic_library.root_module.linkSystemLibrary("ntdll", .{});
         dynamic_library.root_module.linkSystemLibrary("dbghelp", .{});
+        dynamic_library.root_module.linkSystemLibrary("dbghelp", .{});
+        dynamic_library.root_module.linkSystemLibrary("dbgeng", .{});
+        dynamic_library.root_module.linkSystemLibrary("rpcrt4", .{});
 
         dynamic_library.linker_allow_undefined_version = true;
         dynamic_library.subsystem = .Console;
