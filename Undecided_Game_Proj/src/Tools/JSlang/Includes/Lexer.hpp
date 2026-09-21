@@ -279,6 +279,7 @@ struct Lexer
         {
             return TokenTypes::Keyword_From;
         }
+
         case "const"_hash:
         {
             return TokenTypes::Keyword_Constant;
@@ -496,7 +497,7 @@ struct Lexer
             advance_one_character();
         }
 
-        if (peek_character_infront_cursor() == '.')
+        if (peek_character_under_cursor() == '.')
         {
             advance_one_character();
             if (!BitwiseCharacterClassifier::IsDigit(peek_character_under_cursor()))

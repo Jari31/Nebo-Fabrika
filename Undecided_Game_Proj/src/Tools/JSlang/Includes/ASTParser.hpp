@@ -1,16 +1,18 @@
 #pragma once
 #include "ASTNodes.hpp"
 #include "ArenaAllocator.hpp"
+#include "DebugHelpers.hpp"
 #include "Diagnostics.hpp"
 #include "ErrorCodes.hpp"
 #include "Lexer.hpp"
+#include "Libraries/include/magic_enum/magic_enum.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <print>
 #include <span>
-#include <stacktrace>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -71,17 +73,16 @@ struct Parser
     }
 
     template <typename Type>
-    void copy_vector_to_arena_allocated_span(std::vector<Type> &FromVector, std::span<Type> &ToSpan)
-    {
-        ToSpan = ObjectArenaAllocator.AllocateArray<Type>(FromVector.size());
-
-        std::ranges::copy(FromVector, ToSpan.begin());
-    }
-    template <typename Type>
     std::span<Type> copy_vector_to_arena_allocated_span(std::vector<Type> &FromVector)
     {
-        std::span<Type> to_span;
-        copy_vector_to_arena_allocated_span(FromVector, to_span);
+        auto to_span = ObjectArenaAllocator.AllocateArray<Type>(FromVector.size());
+
+        if (FromVector.empty())
+        {
+            return {};
+        }
+
+        std::ranges::uninitialized_copy(FromVector, to_span);
 
         return to_span;
     }
@@ -216,7 +217,7 @@ struct Parser
         CallbackFunctionType2 &&CallbackIsCurrentTokenExpressionParserTerminator = []()
         { return false; })
     {
-        // an expression might be like var value : { arg, arg2 = {arg3, .arg4 = 41} } = val;
+        // an expression might be like var value : { arg[], arg2 = {arg3, .arg4 = 41} } = val;
         if constexpr (ConsumeInitializer)
         {
             advance_one_token();
@@ -259,10 +260,13 @@ struct Parser
         return copy_vector_to_arena_allocated_span(temporary_ast_node_pointer_vector);
     }
 
-    std::span<ASTNode *> ParseFunctionArguments()
+    template <bool ExpectInitializer = true> std::span<ASTNode *> ParseFunctionArguments()
     {
         // (arg1, arg2, arg3)
-        return ParseArgumentativeExpressionUntilTerminator<EXPECTED_RIGHT_PARENTHESIS, true, true>(
+        return ParseArgumentativeExpressionUntilTerminator<
+            EXPECTED_RIGHT_PARENTHESIS,
+            ExpectInitializer,
+            true>(
             "Expected ')' after '('.",
             "Lord... it's a wonder you got so far with your wits, mister. Close your damn '(' with "
             "a ')'.",
@@ -278,12 +282,15 @@ struct Parser
 
         return function_call_expression_node;
     };
+
+    /// assuming the initializer got consumed
+    /// i.e. something, something)
     ASTNode *ParseFunctionCallExpression(SourceLocation ParameterSourceLocation)
     {
         auto *function_call_expression_node =
             ObjectArenaAllocator.Allocate<FunctionCallExpression>(ParameterSourceLocation);
 
-        function_call_expression_node->Arguments = ParseFunctionArguments();
+        function_call_expression_node->Arguments = ParseFunctionArguments<false>();
 
         return function_call_expression_node;
     };
@@ -406,6 +413,7 @@ struct Parser
             advance_one_token();
             return ObjectArenaAllocator.Allocate<LiteralExpression>(start_location);
         }
+        case TokenTypes::Keyword_Constant:
         case TokenTypes::Identifier:
         {
             advance_one_token();
@@ -430,8 +438,16 @@ struct Parser
         }
         case TokenTypes::LeftBrace:
         {
+            std::print(
+                "Before parsing left brace: {}\n",
+                std::string_view(
+                    CurrentToken.ObjectSourceLocation.Source.data(),
+                    CurrentToken.ObjectSourceLocation.Source.size() + 4));
             advance_one_token();
             ASTNode *expression = ParseExpression(0);
+            std::print(
+                "Current token after parsing left braced expression: {}\n",
+                CurrentToken.ObjectSourceLocation.Source);
             expect_token_with_type(
                 TokenTypes::RightBrace,
                 "Expected '}' after braced expression.",
@@ -439,7 +455,6 @@ struct Parser
                 "'{' with a '}'!",
                 "Close '{' with '}'.",
                 EXPECTED_RIGHT_BRACE);
-
             return expression;
         }
         case TokenTypes::Minus:
@@ -466,9 +481,9 @@ struct Parser
         }
         case TokenTypes::Dot:
         {
-            if (!check_token_type_of_peek_token(TokenTypes::Identifier))
+            advance_one_token();
+            if (!check_token_type_of_current_token(TokenTypes::Identifier))
             {
-                advance_one_token();
                 report_error_about_current_token<EXPECTED_IDENTIFIER>(
                     "Expected an identifier after implicit member access operator '.' (e.g., "
                     "'.Member').",
@@ -480,8 +495,11 @@ struct Parser
             }
 
             return ParseImplicitAccessExpression(
-                advance_one_token().ObjectSourceLocation,
-                advance_one_token().ObjectSourceLocation.Source);
+                start_location, advance_one_token().ObjectSourceLocation.Source);
+        }
+        case TokenTypes::Keyword_Expect:
+        {
+            return ParseExpectFromExpression();
         }
         default:
         {
@@ -489,14 +507,105 @@ struct Parser
         }
         }
 
+        std::print(
+            "Before hitting null: {}\n",
+            std::string_view(
+                CurrentToken.ObjectSourceLocation.Source.data() - 10,
+                CurrentToken.ObjectSourceLocation.Source.size() + 10));
+
         ObjectDiagnosticEngine.Report(
             Severity::Error,
             UNEXPECTED_EXPRESSION_TOKEN,
             start_location,
             "Unexpected expression token.",
             "Now, I ain't know what you damn wrote, but it's damn idiotic, I tell ya...");
+        DebugHelpers::BuiltinTrap();
         return nullptr;
     };
+
+    template <bool CurrentTokenIsIdentifier = true, bool ConsumeInitializer = true>
+    ASTNode *ParseArrayAccessExpression(SourceLocation IdentifierSourceLocation = {})
+    {
+        ArrayAccessExpression *array_access_expression_node;
+        if constexpr (CurrentTokenIsIdentifier)
+        {
+            array_access_expression_node = ObjectArenaAllocator.Allocate<ArrayAccessExpression>(
+                advance_one_token().ObjectSourceLocation);
+        }
+        {
+            array_access_expression_node =
+                ObjectArenaAllocator.Allocate<ArrayAccessExpression>(IdentifierSourceLocation);
+        }
+
+        if constexpr (ConsumeInitializer)
+        {
+            advance_one_token();
+        }
+
+        if (match_with_current_token(TokenTypes::RightSquareBracket))
+        {
+            return array_access_expression_node;
+        }
+
+        array_access_expression_node->Expression = ParseExpression(0);
+
+        advance_one_token(); // consume ']'
+
+        return array_access_expression_node;
+    }
+
+    template <bool CurrentTokenIsStartLocation = true>
+    ASTNode *ParseExpectFromExpression(SourceLocation ExpectKeywordSourceLocation = {})
+    {
+        ExpectFromExpression *expect_from_expression_node;
+        if constexpr (CurrentTokenIsStartLocation)
+        {
+            expect_from_expression_node = ObjectArenaAllocator.Allocate<ExpectFromExpression>(
+                advance_one_token().ObjectSourceLocation);
+        }
+        else
+        {
+            expect_from_expression_node =
+                ObjectArenaAllocator.Allocate<ExpectFromExpression>(ExpectKeywordSourceLocation);
+        }
+
+        if (!check_token_type_of_current_token(TokenTypes::Identifier))
+        {
+            report_error_about_current_token<EXPECTED_IDENTIFIER>(
+                "Expected identifier of expected node after expect expression.", "");
+            return expect_from_expression_node;
+        }
+
+        expect_from_expression_node->ExpectedNode = ParseExpression(0);
+
+        if (!match_with_current_token(TokenTypes::Keyword_From))
+        {
+            report_error_about_current_token<EXPECTED_FROM_KEYWORD>(
+                "Expected 'from' after expected node identifier.", "");
+            return expect_from_expression_node;
+        }
+
+        if (!match_with_current_token(TokenTypes::AtSymbol))
+        {
+            report_error_about_current_token<EXPECTED_IDENTIFIER>(
+                "Expected annotation of target node after expect expression.", "");
+            return expect_from_expression_node;
+        }
+
+        if (!check_token_type_of_current_token(TokenTypes::Identifier))
+        {
+            report_error_about_current_token<EXPECTED_IDENTIFIER>(
+                "Expected identifier of target node after '@'.", "");
+            return expect_from_expression_node;
+        }
+
+        expect_from_expression_node->TargetNode = ParseExpression(0);
+
+        expect_token_with_type<TokenTypes::Semicolon>(
+            "Expected semicolon after 'expect-a-from-@b' expression.", "");
+
+        return expect_from_expression_node;
+    }
 
     template <typename CallbackFunctionType = bool (*)()>
     /*  @brief rough example:
@@ -577,6 +686,7 @@ struct Parser
             case TokenTypes::RightBrace:
             case TokenTypes::Comma:
             case TokenTypes::Semicolon:
+            case TokenTypes::Keyword_From:
             {
                 return left_hand_side;
             }
@@ -604,11 +714,19 @@ struct Parser
             {
             case TokenTypes::LeftParenthesis:
             {
-                if (left_hand_side != nullptr &&
-                    left_hand_side->NodeType == NodeTypes::IdentifierExpression)
+                if (left_hand_side->NodeType == NodeTypes::IdentifierExpression)
                 {
                     left_hand_side =
                         ParseFunctionCallExpression(left_hand_side->ObjectSourceLocation);
+                }
+                break;
+            }
+            case TokenTypes::LeftSquareBracket:
+            {
+                if (left_hand_side->NodeType == NodeTypes::IdentifierExpression)
+                {
+                    left_hand_side = ParseArrayAccessExpression<false, false>(
+                        left_hand_side->ObjectSourceLocation);
                 }
                 break;
             }
@@ -643,6 +761,12 @@ struct Parser
 
                 left_hand_side = ObjectArenaAllocator.Allocate<ImplicitMemberAccessExpression>(
                     operator_token.ObjectSourceLocation, target_member);
+                break;
+            }
+            case TokenTypes::Keyword_Expect:
+            {
+                left_hand_side =
+                    ParseExpectFromExpression<false>(operator_token.ObjectSourceLocation);
                 break;
             }
             default:
@@ -728,10 +852,10 @@ struct Parser
             return {};
         }
 
-        auto  singular_attribute_span = ObjectArenaAllocator.AllocateArray<ASTNode *>(1);
-        auto *singular_attribute      = ParseExpression();
+        auto singular_attribute_span = ObjectArenaAllocator.AllocateArray<ASTNode *>(1);
+        singular_attribute_span[0]   = ParseExpression();
 
-        return std::move(singular_attribute, singular_attribute_span);
+        return singular_attribute_span;
     }
 
     template <
@@ -871,27 +995,16 @@ struct Parser
         return annotated_node;
     }
 
-    /// single parameter
-    ASTNode *ParseFunctionDeclarationParameter()
-    {
-        /*
-         * (param Something: Type, Flags)
-         * (param Something: { Type, Flags } )
-         * (param Something: Type, Flags = DefaultValue )
-         * (param Something: Type, )
-         */
-    }
-
+    /// Expect to parse (Param1: Attributes, Param2: Attributes)
     template <bool ConsumeInitializer = true, bool ConsumeTerminator = true>
     std::span<ASTNode *> ParseFunctionDeclarationParameters()
     {
-        // Expect to parse (Param1: Attributes, Param2: Attributes)
         if constexpr (ConsumeInitializer)
         {
             advance_one_token();
         }
 
-        if (CurrentToken.TokenType == TokenTypes::RightParenthesis)
+        if (match_with_current_token(TokenTypes::RightParenthesis))
         {
             return {};
         }
@@ -900,19 +1013,31 @@ struct Parser
         while (!check_token_type_of_current_token(TokenTypes::RightParenthesis) &&
                !check_token_type_of_peek_token(TokenTypes::EndOfFile))
         {
-            if (!check_token_type_of_current_token(TokenTypes::Identifier))
+
+            ASTNode *parameter = nullptr;
+            switch (CurrentToken.TokenType)
+            {
+            case TokenTypes::Identifier:
+            {
+                // is not immutable, does not have a declarator, and doesn't expect a semicolon as a
+                // terminator
+                parameter = ParseVariableDeclarationStatement<false, false, false>();
+                break;
+            }
+            case TokenTypes::AtSymbol:
+            {
+                parameter = ParseAnnotatedNode();
+                break;
+            }
+            default:
             {
                 report_error_about_current_token<EXPECTED_IDENTIFIER>(
                     "Whilst parsing for function parameters, found unexpected token.", "");
-                break;
+                return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
+            }
             }
 
-            // is not immutable, does not have a declarator, and doesn't expect a semicolon as a
-            // terminator
-            auto *parameter = ParseVariableDeclarationStatement<false, false, false>();
-
             temporary_parameter_pointer_vector.push_back(parameter);
-            advance_one_token();
 
             if (!match_with_current_token(TokenTypes::Comma))
             {
@@ -924,6 +1049,7 @@ struct Parser
         {
             advance_one_token(); // consume ')'
         }
+
         return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
     }
 
@@ -944,8 +1070,7 @@ struct Parser
                 "Expected terminator '{' after ':'.",
                 "",
                 [this]() { return check_token_type_of_current_token(TokenTypes::LeftBrace); },
-                [this]() -> bool
-                { return check_token_type_of_current_token(TokenTypes::LeftBrace); });
+                [this]() { return check_token_type_of_current_token(TokenTypes::LeftBrace); });
 
         return parsed_function_attributes;
     }
@@ -1017,6 +1142,10 @@ struct Parser
             {
                 temporary_statement_pointer_vector.push_back(statement);
             }
+            // std::print(
+            //     "Current token whilst parsing block statement: {} - Peek token: {}\n",
+            //     CurrentToken.ObjectSourceLocation.Source,
+            //     PeekToken.ObjectSourceLocation.Source);
         }
 
         expect_token_with_type(
@@ -1071,8 +1200,14 @@ struct Parser
 
         if (match_with_current_token(TokenTypes::LeftParenthesis))
         {
+
             function_declaration_statement->Parameters =
                 ParseFunctionDeclarationParameters<false>();
+        }
+        else
+        {
+            report_error_about_current_token<EXPECTED_LEFT_PARENTHESIS>(
+                "Expected left parenthesis to define function signature.", "");
         }
 
         if (match_with_current_token(TokenTypes::RightArrow))
@@ -1090,11 +1225,6 @@ struct Parser
             function_declaration_statement->Attributes = ParseStructOrFunctionAttributes();
         }
 
-        if (match_with_current_token(TokenTypes::Semicolon)) // forward decl probably
-        {
-            return function_declaration_statement;
-        };
-
         if (check_token_type_of_current_token(TokenTypes::LeftBrace))
         {
             function_declaration_statement->FunctionBody = ParseBlockStatement();
@@ -1104,7 +1234,7 @@ struct Parser
         expect_token_with_type(
             TokenTypes::LeftBrace,
             "Expected '{' after function declaration.",
-            "Lord... you're dumber than I thought you would be. That is, dumber than a damn rock. "
+            "Lord... you're dumber than I thought you would be. That is, dumber than a damn rock."
             "Place a damned ';' or '{' after your function declaration.");
 
         return function_declaration_statement;
@@ -1443,16 +1573,15 @@ struct Parser
             report_error_about_current_token<UNEXPECTED_END_OF_FILE>("Unexpected end of file.", "");
             return struct_declaration_node;
         }
-        advance_one_token();
+        advance_one_token(); // ? what the hell does this do? consume the terminator?
 
         if (struct_declaration_implementation_vector.empty())
         {
             return struct_declaration_node;
         }
 
-        copy_vector_to_arena_allocated_span(
-            struct_declaration_implementation_vector,
-            struct_declaration_node->StructImplementation);
+        struct_declaration_node->StructImplementation =
+            copy_vector_to_arena_allocated_span(struct_declaration_implementation_vector);
 
         return struct_declaration_node;
     }

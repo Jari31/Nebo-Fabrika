@@ -54,14 +54,14 @@ fn SomeOtherFunction() -> float : inline, static, const {
     return 1.0f;
 }
 
-fn ExportOutput(@GPUBufferType(SSBO) OutputBuffer[]: float, RemoveIfTargetCPULike) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
+fn ExportOutput(@GPUBufferType(SSBO), OutputBuffer: { float[], RemoveIfTargetCPULike }) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
     : export // export flag
 {
     if : TargetIsGPULike // comptime
     {
-        OutputBuffer[ProgramIndex.x] = expect from @AutoDiff::OverFn CalculateNoiseContributionOfVertex::Back;
+        OutputBuffer[ProgramIndex.x] = expect CalculateNoiseContributionOfVertex::Back from @AutoDiff::OverFn;
     } else if : TargetIsCPULike {
-        return expect from @AutoDiff::OverFn CalculateNoiseContributionOfVertex::Back;
+        return expect CalculateNoiseContributionOfVertex::Back from @AutoDiff::OverFn;
     }
 }
 

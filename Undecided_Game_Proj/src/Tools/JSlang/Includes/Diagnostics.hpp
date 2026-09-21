@@ -79,7 +79,9 @@ struct DiagnosticEngine
         {
             ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
                 "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, COLUMN: {}\n",
-                Diagnostic.SourceLocation.Source,
+                std::string_view(
+                    Diagnostic.SourceLocation.Source.data() - 6,
+                    Diagnostic.SourceLocation.Source.size() + 6),
                 magic_enum::enum_name(Diagnostic.Severity),
                 magic_enum::enum_name(Diagnostic.ErrorCode),
                 Diagnostic.Message,

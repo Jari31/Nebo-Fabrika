@@ -9,16 +9,18 @@ namespace JSlang
 {
 enum class NodeTypes : uint8_t
 {
-    LiteralExpression,              // 10
-    IdentifierExpression,           // my_var
-    BinaryExpression,               // 1 + 2
-    FunctionCallExpression,         // func()
-    UnaryExpression,                // ++var OR -var
-    FlagExpression,                 // Flag
-    IfExpression,                   // conditional expression; if(){} else {}
-    SwitchExpression,               // switch () {}
-    CaseExpression,                 // case N ->
-                                    //
+    LiteralExpression,      // 10
+    IdentifierExpression,   // my_var
+    BinaryExpression,       // 1 + 2
+    FunctionCallExpression, // func()
+    UnaryExpression,        // ++var OR -var
+    FlagExpression,         // Flag
+    IfExpression,           // conditional expression; if(){} else {}
+    SwitchExpression,       // switch () {}
+    CaseExpression,         // case N ->
+    ArrayAccessExpression,  // Something[]
+    ExpectFromExpression,   // expect_from A  B
+
     ImplicitMemberAccessExpression, // .Member
     ExplicitMemberAccessExpression, // Object.Member
                                     //
@@ -359,6 +361,30 @@ struct StructDeclarationStatement : ASTNode
     {
         ObjectSourceLocation = ParameterSourceLocation;
         NodeType             = NodeTypes::StructDeclarationStatement;
+    }
+};
+
+/// the source location contains the identifier of the array being accessed
+struct ArrayAccessExpression : ASTNode
+{
+    ASTNode *Expression;
+
+    ArrayAccessExpression(SourceLocation ParameterSourceLocation)
+    {
+        ObjectSourceLocation = ParameterSourceLocation;
+        NodeType             = NodeTypes::ArrayAccessExpression;
+    }
+};
+
+struct ExpectFromExpression : ASTNode
+{
+    ASTNode *ExpectedNode;
+    ASTNode *TargetNode;
+
+    ExpectFromExpression(SourceLocation ParameterSourceLocation)
+    {
+        ObjectSourceLocation = ParameterSourceLocation;
+        NodeType             = NodeTypes::ExpectFromExpression;
     }
 };
 } // namespace AST
