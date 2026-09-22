@@ -5,11 +5,8 @@
 #include "Diagnostics.hpp"
 #include "ErrorCodes.hpp"
 #include "Lexer.hpp"
-#include "Libraries/include/magic_enum/magic_enum.hpp"
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
 #include <print>
 #include <span>
@@ -57,6 +54,7 @@ struct Parser
     ArenaAllocator   &ObjectArenaAllocator;
     DiagnosticEngine &ObjectDiagnosticEngine;
 
+    Token PreviousToken;
     Token CurrentToken;
     Token PeekToken;
 
@@ -70,6 +68,34 @@ struct Parser
     {
         advance_one_token();
         advance_one_token();
+    }
+
+    void SynchronizeParser()
+    {
+        while (!check_token_type_of_current_token(TokenTypes::EndOfFile))
+        {
+            switch (CurrentToken.TokenType)
+            {
+            case TokenTypes::Keyword_MutableVariable:
+            case TokenTypes::Keyword_Constant:
+            case TokenTypes::Keyword_Return:
+            case TokenTypes::Keyword_Continue:
+            case TokenTypes::Keyword_Break:
+            case TokenTypes::LeftBrace:
+            case TokenTypes::Keyword_FunctionDeclaration:
+            case TokenTypes::Keyword_Struct:
+            case TokenTypes::AtSymbol:
+            case TokenTypes::Keyword_Import:
+                return;
+            default:
+                break;
+            }
+
+            if (advance_one_token().TokenType == TokenTypes::Semicolon)
+            {
+                return;
+            }
+        }
     }
 
     template <typename Type>
@@ -113,16 +139,16 @@ struct Parser
 
     Token advance_one_token()
     {
-        Token old_token = CurrentToken;
-        if (old_token.TokenType == TokenTypes::EndOfFile)
+        PreviousToken = CurrentToken;
+        if (PreviousToken.TokenType == TokenTypes::EndOfFile)
         {
-            return old_token;
+            return PreviousToken;
         }
 
         CurrentToken = PeekToken;
         PeekToken    = ObjectLexer.GetNextToken();
 
-        return old_token;
+        return PreviousToken;
     }
 
     [[nodiscard]] bool check_token_type_of_peek_token(TokenTypes ExpectedTokenType) const
@@ -146,6 +172,7 @@ struct Parser
         return false;
     }
 
+    template <bool Synchronize = false>
     Token expect_token_with_type(
         TokenTypes  TokenType,
         std::string ErrorMessage,
@@ -166,35 +193,17 @@ struct Parser
             std::move(ErrorMessage),
             std::move(Monologue),
             std::move(Hint));
-        return {};
-    }
 
-    template <TokenTypes TokenType>
-    Token expect_token_with_type(
-        std::string ErrorMessage,
-        std::string Monologue,
-        std::string Hint      = "",
-        ErrorCodes  ErrorCode = UNEXPECTED_TYPE)
-    {
-
-        if (check_token_type_of_current_token(TokenType))
+        if constexpr (Synchronize)
         {
-            return advance_one_token();
+            SynchronizeParser();
         }
-
-        ObjectDiagnosticEngine.Report(
-            Severity::Error,
-            ErrorCode,
-            CurrentToken.ObjectSourceLocation,
-            std::move(ErrorMessage),
-            std::move(Monologue),
-            std::move(Hint));
         return {};
     }
 
     void expect_semicolon()
     {
-        expect_token_with_type(
+        expect_token_with_type<true>(
             TokenTypes::Semicolon,
             "Expected ';'.",
             "Programming language 101: USE YER DAMN SEMICOLONS!",
@@ -305,8 +314,7 @@ struct Parser
          * }
          */
 
-        auto start_location = CurrentToken.ObjectSourceLocation;
-        advance_one_token(); // consume 'if'
+        auto start_location = advance_one_token().ObjectSourceLocation; // consume 'if'
 
         auto *if_expression_node = ObjectArenaAllocator.Allocate<IfExpression>(start_location);
 
@@ -315,7 +323,23 @@ struct Parser
             if_expression_node->EvaluateAtCompileTime = true;
         }
 
+        if (!match_with_current_token(TokenTypes::LeftParenthesis))
+        {
+            report_error_about_current_token<EXPECTED_LEFT_PARENTHESIS>(
+                "Expected '(' to start condition after if expression.", "");
+            SynchronizeParser();
+            return if_expression_node;
+        }
+
         if_expression_node->Condition = ParseExpression(0);
+
+        if (!match_with_current_token(TokenTypes::RightParenthesis))
+        {
+            report_error_about_current_token<EXPECTED_RIGHT_PARENTHESIS>(
+                "Expected ')' to terminate end condition af ter if expression.", "");
+            SynchronizeParser();
+            return if_expression_node;
+        }
 
         if (check_token_type_of_current_token(TokenTypes::LeftBrace))
         {
@@ -418,15 +442,13 @@ struct Parser
         {
             advance_one_token();
 
-            // std::cout << CurrentToken.ObjectSourceLocation.Source << "\n"
-            //           << PeekToken.ObjectSourceLocation.Source << " <<\n";
             return ObjectArenaAllocator.Allocate<IdentifierExpression>(start_location);
         }
         case TokenTypes::LeftParenthesis:
         {
             advance_one_token();
             ASTNode *expression = ParseExpression(0);
-            expect_token_with_type(
+            expect_token_with_type<true>(
                 TokenTypes::RightParenthesis,
                 "Expected ')' after parenthesized expression.",
                 "Mister, you... You ain't the brightest tool in the shed, are ya? Close your damn "
@@ -438,17 +460,9 @@ struct Parser
         }
         case TokenTypes::LeftBrace:
         {
-            std::print(
-                "Before parsing left brace: {}\n",
-                std::string_view(
-                    CurrentToken.ObjectSourceLocation.Source.data(),
-                    CurrentToken.ObjectSourceLocation.Source.size() + 4));
             advance_one_token();
             ASTNode *expression = ParseExpression(0);
-            std::print(
-                "Current token after parsing left braced expression: {}\n",
-                CurrentToken.ObjectSourceLocation.Source);
-            expect_token_with_type(
+            expect_token_with_type<true>(
                 TokenTypes::RightBrace,
                 "Expected '}' after braced expression.",
                 "Mister, you... You ain't the brightest tool in the shed, are ya? Close yer damn "
@@ -490,7 +504,7 @@ struct Parser
                     "Lord. I don't even have words for this.... Ugh- Place a darn word after your "
                     "'.', "
                     "mister.");
-
+                SynchronizeParser();
                 return nullptr;
             }
 
@@ -507,19 +521,17 @@ struct Parser
         }
         }
 
-        std::print(
-            "Before hitting null: {}\n",
-            std::string_view(
-                CurrentToken.ObjectSourceLocation.Source.data() - 10,
-                CurrentToken.ObjectSourceLocation.Source.size() + 10));
-
         ObjectDiagnosticEngine.Report(
             Severity::Error,
             UNEXPECTED_EXPRESSION_TOKEN,
             start_location,
             "Unexpected expression token.",
             "Now, I ain't know what you damn wrote, but it's damn idiotic, I tell ya...");
+
         DebugHelpers::BuiltinTrap();
+
+        SynchronizeParser();
+
         return nullptr;
     };
 
@@ -550,7 +562,6 @@ struct Parser
         array_access_expression_node->Expression = ParseExpression(0);
 
         advance_one_token(); // consume ']'
-
         return array_access_expression_node;
     }
 
@@ -573,6 +584,7 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_IDENTIFIER>(
                 "Expected identifier of expected node after expect expression.", "");
+            SynchronizeParser();
             return expect_from_expression_node;
         }
 
@@ -582,6 +594,7 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_FROM_KEYWORD>(
                 "Expected 'from' after expected node identifier.", "");
+            SynchronizeParser();
             return expect_from_expression_node;
         }
 
@@ -589,6 +602,7 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_IDENTIFIER>(
                 "Expected annotation of target node after expect expression.", "");
+            SynchronizeParser();
             return expect_from_expression_node;
         }
 
@@ -596,13 +610,11 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_IDENTIFIER>(
                 "Expected identifier of target node after '@'.", "");
+            SynchronizeParser();
             return expect_from_expression_node;
         }
 
         expect_from_expression_node->TargetNode = ParseExpression(0);
-
-        expect_token_with_type<TokenTypes::Semicolon>(
-            "Expected semicolon after 'expect-a-from-@b' expression.", "");
 
         return expect_from_expression_node;
     }
@@ -904,12 +916,17 @@ struct Parser
         }
 
         variable_declaration_node->VariableName =
-            expect_token_with_type(
+            expect_token_with_type<true>(
                 TokenTypes::Identifier,
                 "Expected identifier after variable declaration statement.",
                 "I've seen morons, mister. But I don't think none of em are as dull as you are. "
                 "Put a damned word or somethin' after your 'var' or 'const'!")
                 .ObjectSourceLocation.Source;
+
+        if (variable_declaration_node->VariableName.empty())
+        {
+            return variable_declaration_node;
+        }
 
         ASTNode *initializer = nullptr;
 
@@ -1033,6 +1050,7 @@ struct Parser
             {
                 report_error_about_current_token<EXPECTED_IDENTIFIER>(
                     "Whilst parsing for function parameters, found unexpected token.", "");
+                SynchronizeParser();
                 return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
             }
             }
@@ -1120,6 +1138,11 @@ struct Parser
             auto     start_location       = CurrentToken.ObjectSourceLocation;
             ASTNode *expression_statement = ParseExpression(0);
 
+            if (expression_statement == nullptr)
+            {
+                return expression_statement;
+            }
+
             expect_semicolon();
             return ObjectArenaAllocator.Allocate<ExpressionStatement>(
                 start_location, expression_statement);
@@ -1140,17 +1163,15 @@ struct Parser
             auto *statement = ParseStatement();
             if (statement != nullptr)
             {
-                temporary_statement_pointer_vector.push_back(statement);
+                continue;
             }
-            // std::print(
-            //     "Current token whilst parsing block statement: {} - Peek token: {}\n",
-            //     CurrentToken.ObjectSourceLocation.Source,
-            //     PeekToken.ObjectSourceLocation.Source);
+
+            temporary_statement_pointer_vector.push_back(statement);
         }
 
         expect_token_with_type(
             TokenTypes::RightBrace,
-            "Expected '}' to start block statement.",
+            "Expected '}' to terminate block statement.",
             "Who left this idiot here? Oh, calm down, mister, I’m joking... You’re not an idiot, "
             "you’re a moron. Because your wit hasn't lead you to figuring out that a function "
             "ends with a damned '}'.");
@@ -1208,12 +1229,14 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_LEFT_PARENTHESIS>(
                 "Expected left parenthesis to define function signature.", "");
+            SynchronizeParser();
+            return function_declaration_statement;
         }
 
         if (match_with_current_token(TokenTypes::RightArrow))
         {
             function_declaration_statement->ReturnType =
-                expect_token_with_type(
+                expect_token_with_type<true>(
                     TokenTypes::Identifier,
                     "Expected identifier after return type declarator (->).",
                     "")
@@ -1231,7 +1254,7 @@ struct Parser
             return function_declaration_statement;
         }
 
-        expect_token_with_type(
+        expect_token_with_type<true>(
             TokenTypes::LeftBrace,
             "Expected '{' after function declaration.",
             "Lord... you're dumber than I thought you would be. That is, dumber than a damn rock."
@@ -1278,14 +1301,10 @@ struct Parser
 
         switch_expression_node->Condition = ParseExpression(0);
 
-        if (!match_with_current_token(TokenTypes::LeftBrace))
+        if (expect_token_with_type<true>(
+                TokenTypes::LeftBrace, "Expected '{' after switch expression.", "")
+                .ObjectSourceLocation.Source.empty())
         {
-            ObjectDiagnosticEngine.Report(
-                Severity::Error,
-                EXPECTED_LEFT_BRACE,
-                CurrentToken.ObjectSourceLocation,
-                "Expected '{' after switch expression.",
-                "");
             return switch_expression_node;
         }
 
@@ -1318,7 +1337,7 @@ struct Parser
                         CurrentToken.ObjectSourceLocation,
                         "Expected '->' after switch case expression.",
                         "");
-                    advance_one_token(); // consume invalid token
+                    SynchronizeParser();
                     continue;
                 }
 
@@ -1343,19 +1362,20 @@ struct Parser
                 report_error_about_current_token<UNEXPECTED_END_OF_FILE>(
                     "Found unexpected end of file whilst parsing for a switch case expression.",
                     "");
+                SynchronizeParser();
                 return switch_expression_node;
             }
             default:
             {
                 report_error_about_current_token<UNEXPECTED_EXPRESSION_TOKEN>(
                     "Unexpected token.", "");
-                advance_one_token();
+                SynchronizeParser();
                 break;
             }
             }
         }
 
-        expect_token_with_type(
+        expect_token_with_type<true>(
             TokenTypes::RightBrace,
             "Expected '{' to terminate switch statement.",
             "Mister, you... You're lucky I'm in a good mood today. Just damn close your switch "
@@ -1398,6 +1418,7 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_RIGHT_BRACE>(
                 "Expected '{' after for loop statement.", "");
+            SynchronizeParser();
             return for_statement_node;
         }
 
@@ -1424,6 +1445,7 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_RIGHT_BRACE>(
                 "Expected '{' after while loop statement.", "");
+            SynchronizeParser();
             return for_statement_node;
         }
 
@@ -1448,6 +1470,7 @@ struct Parser
         {
             report_error_about_current_token<UNEXPECTED_TOKEN>(
                 "Unexpected token found whilst parsing for import statement.", "");
+            SynchronizeParser();
             return import_statement_node;
         }
 
@@ -1532,8 +1555,8 @@ struct Parser
             advance_one_token().ObjectSourceLocation);
 
         struct_declaration_node->Identifier =
-            expect_token_with_type<TokenTypes::Identifier>(
-                "Expected identifier after struct declarator.", "")
+            expect_token_with_type<true>(
+                TokenTypes::Identifier, "Expected identifier after struct declarator.", "")
                 .ObjectSourceLocation.Source;
 
         if (struct_declaration_node->Identifier.empty())
@@ -1550,6 +1573,7 @@ struct Parser
         {
             report_error_about_current_token<EXPECTED_RIGHT_BRACE>(
                 "Expected '{' whilst parsing for struct declaration.", "");
+            SynchronizeParser();
             return struct_declaration_node;
         }
 
@@ -1573,7 +1597,7 @@ struct Parser
             report_error_about_current_token<UNEXPECTED_END_OF_FILE>("Unexpected end of file.", "");
             return struct_declaration_node;
         }
-        advance_one_token(); // ? what the hell does this do? consume the terminator?
+        advance_one_token(); // consume '}'
 
         if (struct_declaration_implementation_vector.empty())
         {

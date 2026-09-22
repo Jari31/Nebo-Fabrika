@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
-#include <print>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -585,8 +584,7 @@ struct Lexer
         {
         case '\0':
         {
-            return make_singular_token(TokenTypes::EndOfFile, cursor_start_position);
-            ;
+            return make_token(TokenTypes::EndOfFile, cursor_start_position, 1);
         }
         case '@':
         {

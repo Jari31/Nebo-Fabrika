@@ -1525,10 +1525,10 @@ struct Build
                  fn ExportOutput(@GPUBufferType(SSBO), OutputBuffer: { float[], RemoveIfTargetCPULike }) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
                      : export // export flag
                  {
-                     if : TargetIsGPULike // comptime
+                     if :  (TargetIsGPULike) // comptime
                      {
                          OutputBuffer[ProgramIndex.x] = expect CalculateNoiseContributionOfVertex::Back from @AutoDiff::OverFn;
-                     } else if : TargetIsCPULike {
+                     } else if : (TargetIsCPULike) {
                          return expect CalculateNoiseContributionOfVertex::Back from @AutoDiff::OverFn;
                      }
                  }

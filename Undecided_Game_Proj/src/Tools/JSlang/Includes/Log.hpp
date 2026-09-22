@@ -67,6 +67,8 @@ struct ThreadUnsafeLogger
 
         Log<LogType>(FormatString, std::forward<ArgumentTypes>(Arguments)...);
     }
+
+    static void Flush() { std::fflush(stdout); }
 };
 
 struct ThreadSafeLogger

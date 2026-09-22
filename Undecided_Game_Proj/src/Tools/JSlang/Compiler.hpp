@@ -9,11 +9,9 @@
 #include "Lexer.hpp"
 #include "Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include "SupportedEmbeddedLanguagesEnum.hpp"
-#include <cstdint>
 
 namespace JSlang
 {
-
 struct Compiler
 {
     using LogTypes = ThreadSafeLogger::LogTypes;
@@ -31,6 +29,8 @@ struct Compiler
 
         ThreadedLogger.Initialize(&TaskScheduler, Options.CompileWithThreads);
     }
+
+    void crash_handler(int Signal) {}
 
     static CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
@@ -78,4 +78,5 @@ struct Compiler
         return {};
     };
 };
+
 } // namespace JSlang

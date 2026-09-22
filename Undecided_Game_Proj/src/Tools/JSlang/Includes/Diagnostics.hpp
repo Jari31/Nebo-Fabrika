@@ -1,9 +1,11 @@
 #pragma once
 
+#include "DebugHelpers.hpp"
 #include "ErrorCodes.hpp"
 #include "Libraries/include/magic_enum/magic_enum.hpp"
 #include "Log.hpp"
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -63,25 +65,32 @@ struct DiagnosticEngine
              .Monologue      = std::move(Monologue),
              .Hint           = std::move(Hint)});
 
-        if (Severity == Severity::Error || Severity == Severity::Fatal)
+        if (Severity == Severity::Error)
         {
+            PrintBuffer<true, true>();
             ++ErrorCount;
         }
         else if (Severity == Severity::Warning || Severity == Severity::PerformanceWarning)
         {
             ++WarningCount;
         }
+
+        if (Severity == Severity::Fatal)
+        {
+            DebugHelpers::BuiltinTrap();
+            std::exit(EXIT_FAILURE);
+        }
     }
 
-    void PrintBuffer()
+    template <bool ClearBuffer = true, bool FlushAfterWrite = false> void PrintBuffer()
     {
         for (auto &Diagnostic : DiagnosticBuffer)
         {
             ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
                 "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, COLUMN: {}\n",
                 std::string_view(
-                    Diagnostic.SourceLocation.Source.data() - 6,
-                    Diagnostic.SourceLocation.Source.size() + 6),
+                    Diagnostic.SourceLocation.Source.data(),
+                    Diagnostic.SourceLocation.Source.size()),
                 magic_enum::enum_name(Diagnostic.Severity),
                 magic_enum::enum_name(Diagnostic.ErrorCode),
                 Diagnostic.Message,
@@ -89,7 +98,12 @@ struct DiagnosticEngine
                 Diagnostic.SourceLocation.Column);
         }
 
-        DiagnosticBuffer.clear();
+        ThreadUnsafeLogger::Flush();
+
+        if constexpr (ClearBuffer)
+        {
+            DiagnosticBuffer.clear();
+        }
     }
 
     [[nodiscard]] bool ContainsErrors() const { return ErrorCount > 0; }
