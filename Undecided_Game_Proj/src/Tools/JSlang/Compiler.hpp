@@ -34,14 +34,8 @@ struct Compiler
 
     static CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
-        EmbeddedLanguageCodeblocks embedded_language_codeblocks;
-        embedded_language_codeblocks.resize(1);
         DiagnosticEngine diagnostic_engine;
-        Lexer            lexer(
-            diagnostic_engine,
-            embedded_language_codeblocks,
-            CompileRequest.SourceCode,
-            CompileRequest.SourceFileName);
+        Lexer lexer(diagnostic_engine, CompileRequest.SourceCode, CompileRequest.SourceFileName);
 
         ArenaAllocator arena_allocator;
         AST::Parser    parser(lexer, arena_allocator);
@@ -68,7 +62,7 @@ struct Compiler
         for (auto *node : module->TopLevelNodes)
         {
             ThreadUnsafeLogger::Log<LogTypes::Info>(
-                "[SOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]\n",
+                "[sSOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]\n",
                 node->ObjectSourceLocation.Source,
                 node->ObjectSourceLocation.Filename,
                 node->ObjectSourceLocation.Line,

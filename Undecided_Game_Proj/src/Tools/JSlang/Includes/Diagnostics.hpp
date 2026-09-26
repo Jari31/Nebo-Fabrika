@@ -25,6 +25,8 @@ enum class Severity : uint8_t
 struct SourceLocation
 {
     std::string_view Source;
+    uint64_t         SourceHash;
+
     std::string_view Filename;
     uint32_t         Line   = 0;
     uint32_t         Column = 0;

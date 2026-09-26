@@ -3,8 +3,8 @@
 #include "BitwiseCharacterClassifier.hpp"
 #include "Diagnostics.hpp"
 #include "ErrorCodes.hpp"
+#include "Libraries/include/xxhash/xxhash.h"
 #include "StringHasher.hpp"
-#include "SupportedEmbeddedLanguagesEnum.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -26,7 +26,6 @@ enum class TokenTypes : uint8_t
     Keyword_Using,
     Keyword_Discard,
     Keyword_Alias,
-    Keyword_Begin,
     Keyword_Expect,
     Keyword_From,
     Keyword_Constant,
@@ -43,9 +42,10 @@ enum class TokenTypes : uint8_t
     Keyword_While,
     Keyword_Break,
     Keyword_Continue,
+    Keyword_CompileTime,
+    Keyword_DefineMacro,
 
     Identifier,
-    EmbeddedLanguageCodeblock,
 
     FloatLiteral,   // 0.0
     IntegerLiteral, // 1
@@ -96,6 +96,8 @@ enum class TokenTypes : uint8_t
     OR,  // ||
     XOR, // ^
 
+    EmbeddedCodeblock,
+
     EndOfFile,
     Invalid
 };
@@ -120,18 +122,13 @@ struct Lexer
     uint32_t         Line   = 0;
     uint32_t         Column = 0;
 
-    EmbeddedLanguageCodeblocks &ObjectEmbeddedLanguageCodeblocks;
-
     // oh god. this gives me enterprise java flashbacks
     Lexer(
-        DiagnosticEngine           &ParameterDiagnosticEngine,
-        EmbeddedLanguageCodeblocks &ParameterEmbeddedLanguageCodeblocks,
-        std::string_view            ParameterSource,
-        std::string_view            ParameterFilename)
-        : ObjectDiagnosticEngine(ParameterDiagnosticEngine), //
-          ObjectEmbeddedLanguageCodeblocks(ParameterEmbeddedLanguageCodeblocks)
+        DiagnosticEngine &ParameterDiagnosticEngine,
+        std::string_view  ParameterSource,
+        std::string_view  ParameterFilename)
+        : ObjectDiagnosticEngine(ParameterDiagnosticEngine)
     {
-
         if (ParameterFilename.empty())
         {
             Filename = std::string_view{UNDEFINED_NAME};
@@ -226,6 +223,17 @@ struct Lexer
     {
         return make_token(TokenType, CursorStartPosition, 1);
     }
+    Token make_token(TokenTypes TokenType, std::string_view StringView, uint64_t StringViewHash)
+    {
+        return {
+            .TokenType            = TokenType,
+            .ObjectSourceLocation = {
+                .Source     = StringView,
+                .SourceHash = StringViewHash,
+                .Filename   = Filename,
+                .Line       = Line,
+                .Column     = Column}};
+    }
 
     /// increments the cursor by one
     Token make_singular_token(TokenTypes TokenType, size_t CursorStartPosition)
@@ -257,7 +265,6 @@ struct Lexer
         {
             return TokenTypes::Keyword_Uniform;
         }
-
         case "using"_hash:
         {
             return TokenTypes::Keyword_Using;
@@ -265,10 +272,6 @@ struct Lexer
         case "discard"_hash:
         {
             return TokenTypes::Keyword_Discard;
-        }
-        case "begin"_hash:
-        {
-            return TokenTypes::Keyword_Begin;
         }
         case "expect"_hash:
         {
@@ -348,6 +351,18 @@ struct Lexer
         {
             return TokenTypes::Keyword_As;
         }
+        case "alias"_hash:
+        {
+            return TokenTypes::Keyword_Alias;
+        }
+        case "comptime"_hash:
+        {
+            return TokenTypes::Keyword_CompileTime;
+        }
+        case "define_macro"_hash:
+        {
+            return TokenTypes::Keyword_DefineMacro;
+        }
         default:
         {
             return TokenTypes::Identifier;
@@ -398,95 +413,13 @@ struct Lexer
 
         auto token_type = check_whether_identifier_or_keyword(string_view);
 
-        if (token_type == TokenTypes::Keyword_Begin)
+        if (token_type != TokenTypes::Identifier)
         {
-            auto language_identifier = GetNextToken(); // begin lua, where "lua" is the identifier
-            uint32_t language_identifier_cursor_start_position = Cursor; // now it points after lua
-            char     sentinel_buffer[64];                                // NOLINT
-            auto sentinel_lenght = std::snprintf( // WARN: stack allocated and small. may cause some headaches to some poor guy later on
-                sentinel_buffer,
-                sizeof(sentinel_buffer),
-                "||end%.*s",
-                static_cast<int>(language_identifier.ObjectSourceLocation.Source.size()),
-                language_identifier.ObjectSourceLocation.Source.data());
-            std::string_view expected_sentinel(
-                sentinel_buffer, sentinel_lenght); // endlua    begin blocks are rare enough where
-            // dynamic allocation will be a drop in the bucket
-            // compared to manually matching and figuring out
-            // the proper casing for the sentinel using SIMD
-            // optimization. it ain't just a problem we got
-
-            size_t sentinel_position = Source.find(expected_sentinel, Cursor);
-            if (sentinel_position == std::string::npos)
-            {
-                return report_invalid_token(
-                    CursorStartPosition,
-                    Severity::Fatal,
-                    EMBEDDED_CODEBLOCK_NOT_TERMINATED,
-                    "Embedded codeblock not terminated.",
-                    std::format(
-                        "Terminate yer god damn embedded codeblock with {}. You're the latest in a "
-                        "string of idiots I've encountered.",
-                        expected_sentinel));
-            }
-
-            auto language_index =
-                GetEmbeddedLanguageEnumFromSource(language_identifier.ObjectSourceLocation.Source);
-
-            if (!language_index.has_value())
-            {
-                return report_invalid_token(
-                    language_identifier_cursor_start_position,
-                    Severity::Fatal,
-                    UNKNOWN_EMBEDDED_LANGUAGE,
-                    language_index.error(),
-                    std::format(
-                        "Now, I've met some snake oil salesmen in my time. But, mister, you "
-                        "take "
-                        "the crown for the most delusional of them all. The hell is '{}'?!",
-                        language_identifier.ObjectSourceLocation.Source));
-            }
-
-            if (language_index.value() > ObjectEmbeddedLanguageCodeblocks.size())
-            {
-                return report_invalid_token(
-                    language_identifier_cursor_start_position,
-                    Severity::Fatal,
-                    UNKNOWN_EMBEDDED_LANGUAGE,
-                    "Invalid embedded language.",
-                    std::format(
-                        "Now, some moron decided to add a language called '{}' that don't even "
-                        "exist in terms "
-                        "of implementation! Could ya believe it?",
-                        language_identifier.ObjectSourceLocation.Source));
-            }
-
-            uint32_t advance_cursor_times = sentinel_position + expected_sentinel.size() - Cursor;
-            for (uint32_t i = 0; i < advance_cursor_times; i++)
-            {
-                advance_one_character();
-            }
-
-            size_t substring_size  = sentinel_position - language_identifier_cursor_start_position;
-            size_t underflow_guard = (substring_size > 0)
-                                         ? substring_size - 1
-                                         : 0; // -1 because sentinel_position will be pointing at
-                                              // 'e' of "end"; we don't want that. we want the
-                                              // whitespace before the 'e'
-
-            ObjectEmbeddedLanguageCodeblocks[language_index.value()].push_back({
-                .Source = Source.substr(language_identifier_cursor_start_position, underflow_guard),
-
-                .Filename = language_identifier.ObjectSourceLocation.Filename,
-                .Line     = language_identifier.ObjectSourceLocation.Line,
-                .Column   = language_identifier.ObjectSourceLocation.Column,
-            });
-
-            // language_identifier.TokenType = TokenTypes::EmbeddedLanguageCodeblock;
-            return GetNextToken();
+            return make_token(token_type, string_view);
         }
 
-        return make_token(token_type, string_view);
+        return make_token(
+            token_type, string_view, XXH64(string_view.data(), string_view.size(), 0));
     }
 
     Token create_token_from_digits(size_t CursorStartPosition)
@@ -540,7 +473,7 @@ struct Lexer
                 make_token(TokenTypes::Invalid, CursorStartPosition, Cursor - CursorStartPosition);
 
             ObjectDiagnosticEngine.Report(
-                Severity::Fatal,
+                Severity::Error,
                 UNTERMINATED_STRING,
                 invalid_token.ObjectSourceLocation,
                 "Unterminated string.",

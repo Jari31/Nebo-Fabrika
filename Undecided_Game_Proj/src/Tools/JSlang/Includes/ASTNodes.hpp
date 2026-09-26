@@ -21,23 +21,25 @@ enum class NodeTypes : uint8_t
     ArrayAccessExpression,  // Something[]
     ExpectFromExpression,   // expect_from A  B
 
-    ImplicitMemberAccessExpression, // .Member
-    ExplicitMemberAccessExpression, // Object.Member
-                                    //
-    VariableDeclarationStatement,   // type my_var = 1;
-    AliasStatement,                 // alias Something = SomethingElse
-    DiscardAliasStatement,          // discard alias Something
-    FunctionDeclarationStatement,   // void func(){ ... }
-    BlockStatement,                 // { ... }
-    ReturnStatement,                // return;
-    ExpressionStatement,            //
-    ForStatement,                   // for () | | {}
-    WhileStatement,                 // while () {}
-    BreakStatement,                 // break;
-    ContinueStatement,              // continue;
-    ImportStatement,                // import Path;
-    UnsafeStatement,                // as unsafe
-    StructDeclarationStatement,     // struct Identifier: = {}
+    ImplicitMemberAccessExpression,        // .Member
+    ExplicitMemberAccessExpression,        // Object.Member
+                                           //
+    VariableDeclarationStatement,          // type my_var = 1;
+    AliasStatement,                        // alias Something = SomethingElse
+    DiscardAliasStatement,                 // discard alias Something
+    FunctionDeclarationStatement,          // void func(){ ... }
+    BlockStatement,                        // { ... }
+    ReturnStatement,                       // return;
+    ExpressionStatement,                   //
+    ForStatement,                          // for () | | {}
+    WhileStatement,                        // while () {}
+    BreakStatement,                        // break;
+    ContinueStatement,                     // continue;
+    ImportStatement,                       // import Path;
+    UnsafeStatement,                       // as unsafe
+    StructDeclarationStatement,            // struct Identifier: = {}
+    EmbeddedCodeblockDeclarationStatement, // begin X ... ||endX
+    DefineMacroStatement,                  // define_macro A(Value: Type);
 
     Annotation, // @Annotation
 };
@@ -62,14 +64,13 @@ struct GenericStatement : ASTNode
 
 struct AliasStatement : ASTNode
 {
-    std::string_view AliasName;
-    std::string_view TargetName;
+    std::string_view From;
+    std::string_view As;
 
-    AliasStatement(std::string_view AliasName, std::string_view TargetName, SourceLocation Location)
-        : AliasName(AliasName), TargetName(TargetName)
+    AliasStatement(SourceLocation ParameterSourceLocation)
     {
         NodeType                   = NodeTypes::AliasStatement;
-        this->ObjectSourceLocation = Location;
+        this->ObjectSourceLocation = ParameterSourceLocation;
     }
 };
 
@@ -77,11 +78,10 @@ struct DiscardAliasStatement : ASTNode
 {
     std::string_view AliasName;
 
-    DiscardAliasStatement(std::string_view AliasName, SourceLocation SourceLocation)
-        : AliasName(AliasName)
+    DiscardAliasStatement(SourceLocation ParameterSourceLocation)
     {
         NodeType                   = NodeTypes::DiscardAliasStatement;
-        this->ObjectSourceLocation = SourceLocation;
+        this->ObjectSourceLocation = ParameterSourceLocation;
     }
 };
 
@@ -385,6 +385,19 @@ struct ExpectFromExpression : ASTNode
     {
         ObjectSourceLocation = ParameterSourceLocation;
         NodeType             = NodeTypes::ExpectFromExpression;
+    }
+};
+
+struct DefineMacroStatement : ASTNode
+{
+    std::string_view     Identifier;
+    std::span<ASTNode *> Parameters;
+    std::span<ASTNode *> Decorations;
+
+    DefineMacroStatement(SourceLocation ParameterSourceLocation)
+    {
+        NodeType             = NodeTypes::DefineMacroStatement;
+        ObjectSourceLocation = ParameterSourceLocation;
     }
 };
 } // namespace AST

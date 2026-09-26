@@ -34,13 +34,19 @@ UniqueIdentifier = OverFn
 }
 fn CalculateNoiseContributionOfVertex(DistanceToVertex: float3, NoiseGradient: float3) : inline // return type is inferred
 {
-    const max_influential_radius_of_vertex = 0.6;
+    const max_influential_radius_of_vertex: float, uniform = 0.6;
 
     var dot_components = NoiseGradient * DistanceToVertex;
-    var dot_product = dot_components.x + dot_components.y + dot_components.z;
+
+    alias dot_components as dcmp;
+
+    var dot_product = dcmp.x + dcmp.y + dcmp.z;
+
+    discard dcmp;
 
     var dist_squared_components = DistanceToVertex * DistanceToVertex;
     var vertex_distance_squared = dist_squared_components.x + dist_squared_components.y + dist_squared_components.z;
+
 
     var falloff_intensity = max(0.0f, max_influential_radius_of_vertex - vertex_distance_squared);
 

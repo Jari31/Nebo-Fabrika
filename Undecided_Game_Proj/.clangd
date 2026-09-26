@@ -1,6 +1,6 @@
 CompileFlags:
   Add:
-    - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/include" # Change these to actually match your host directories (relative file paths are broken for some reason)
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/include" # Change these to actually match your host directories (relative file paths are broken for some reason and Zig in its infinite wisdom doesn't support compile_commands)
     - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gen/include"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/godot-cpp/gdextension"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/src/cache"
@@ -10,6 +10,8 @@ CompileFlags:
     - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/JSlangBuild/Includes/"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/JSlangBuild/cache"
     - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/JSlangBuild/cache/Libraries/include/reproc"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/cache/Libraries/include/sol2"
+    - "-IF:/Openworld_Game/Undecided_Game_Proj/src/Tools/JSlang/cache/Libraries/include/luajit"
     - -std=c++23
     - -Wall
     - -Wno-c23-extensions

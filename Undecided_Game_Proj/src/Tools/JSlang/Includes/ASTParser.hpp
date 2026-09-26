@@ -79,6 +79,8 @@ struct Parser
             case TokenTypes::Keyword_MutableVariable:
             case TokenTypes::Keyword_Constant:
             case TokenTypes::Keyword_Return:
+            case TokenTypes::Keyword_Case:
+            case TokenTypes::Keyword_Default:
             case TokenTypes::Keyword_Continue:
             case TokenTypes::Keyword_Break:
             case TokenTypes::LeftBrace:
@@ -86,6 +88,8 @@ struct Parser
             case TokenTypes::Keyword_Struct:
             case TokenTypes::AtSymbol:
             case TokenTypes::Keyword_Import:
+            case TokenTypes::Keyword_Discard:
+            case TokenTypes::Keyword_Alias:
                 return;
             default:
                 break;
@@ -172,7 +176,6 @@ struct Parser
         return false;
     }
 
-    template <bool Synchronize = false>
     Token expect_token_with_type(
         TokenTypes  TokenType,
         std::string ErrorMessage,
@@ -194,16 +197,14 @@ struct Parser
             std::move(Monologue),
             std::move(Hint));
 
-        if constexpr (Synchronize)
-        {
-            SynchronizeParser();
-        }
+        SynchronizeParser();
+
         return {};
     }
 
     void expect_semicolon()
     {
-        expect_token_with_type<true>(
+        expect_token_with_type(
             TokenTypes::Semicolon,
             "Expected ';'.",
             "Programming language 101: USE YER DAMN SEMICOLONS!",
@@ -318,7 +319,7 @@ struct Parser
 
         auto *if_expression_node = ObjectArenaAllocator.Allocate<IfExpression>(start_location);
 
-        if (match_with_current_token(TokenTypes::Colon))
+        if (match_with_current_token(TokenTypes::Keyword_CompileTime))
         {
             if_expression_node->EvaluateAtCompileTime = true;
         }
@@ -448,7 +449,7 @@ struct Parser
         {
             advance_one_token();
             ASTNode *expression = ParseExpression(0);
-            expect_token_with_type<true>(
+            expect_token_with_type(
                 TokenTypes::RightParenthesis,
                 "Expected ')' after parenthesized expression.",
                 "Mister, you... You ain't the brightest tool in the shed, are ya? Close your damn "
@@ -462,7 +463,7 @@ struct Parser
         {
             advance_one_token();
             ASTNode *expression = ParseExpression(0);
-            expect_token_with_type<true>(
+            expect_token_with_type(
                 TokenTypes::RightBrace,
                 "Expected '}' after braced expression.",
                 "Mister, you... You ain't the brightest tool in the shed, are ya? Close yer damn "
@@ -527,8 +528,6 @@ struct Parser
             start_location,
             "Unexpected expression token.",
             "Now, I ain't know what you damn wrote, but it's damn idiotic, I tell ya...");
-
-        DebugHelpers::BuiltinTrap();
 
         SynchronizeParser();
 
@@ -916,7 +915,7 @@ struct Parser
         }
 
         variable_declaration_node->VariableName =
-            expect_token_with_type<true>(
+            expect_token_with_type(
                 TokenTypes::Identifier,
                 "Expected identifier after variable declaration statement.",
                 "I've seen morons, mister. But I don't think none of em are as dull as you are. "
@@ -1004,10 +1003,10 @@ struct Parser
             annotated_node->Arguments = ParseFunctionArguments();
         }
 
-        if (match_with_current_token(TokenTypes::Colon))
-        {
-            annotated_node->Decorations = ParseAttributes();
-        }
+        // if (match_with_current_token(TokenTypes::Colon))
+        // {
+        //     annotated_node->Decorations = ParseAttributes();
+        // }
 
         return annotated_node;
     }
@@ -1018,7 +1017,7 @@ struct Parser
     {
         if constexpr (ConsumeInitializer)
         {
-            advance_one_token();
+            advance_one_token(); // consume '('
         }
 
         if (match_with_current_token(TokenTypes::RightParenthesis))
@@ -1065,7 +1064,8 @@ struct Parser
 
         if constexpr (ConsumeTerminator)
         {
-            advance_one_token(); // consume ')'
+            expect_token_with_type(
+                TokenTypes::RightParenthesis, "Expected ')'.", ""); // consume ')'
         }
 
         return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
@@ -1110,8 +1110,8 @@ struct Parser
     template <NodeTypes StatementNodeType> ASTNode *ParseGenericSingularStatement()
     {
         auto *generic_statement_node = ObjectArenaAllocator.Allocate<GenericStatement>(
-            CurrentToken.ObjectSourceLocation, StatementNodeType);
-        advance_one_token(); // consume the statement
+            advance_one_token().ObjectSourceLocation, StatementNodeType); // consume the statement
+        expect_semicolon();
 
         return generic_statement_node;
     }
@@ -1133,6 +1133,16 @@ struct Parser
             return ParseGenericSingularStatement<NodeTypes::ContinueStatement>();
         case TokenTypes::Keyword_Break:
             return ParseGenericSingularStatement<NodeTypes::BreakStatement>();
+        case TokenTypes::Keyword_Alias:
+            return ParseAliasStatement();
+        case TokenTypes::Keyword_Discard:
+            return ParseDiscardAliasStatement();
+        case TokenTypes::Keyword_For:
+            return ParseForStatement();
+        case TokenTypes::Keyword_While:
+            return ParseWhileStatement();
+        case TokenTypes::Keyword_Switch:
+            return ParseStatement();
         default:
         {
             auto     start_location       = CurrentToken.ObjectSourceLocation;
@@ -1236,7 +1246,7 @@ struct Parser
         if (match_with_current_token(TokenTypes::RightArrow))
         {
             function_declaration_statement->ReturnType =
-                expect_token_with_type<true>(
+                expect_token_with_type(
                     TokenTypes::Identifier,
                     "Expected identifier after return type declarator (->).",
                     "")
@@ -1254,12 +1264,11 @@ struct Parser
             return function_declaration_statement;
         }
 
-        expect_token_with_type<true>(
-            TokenTypes::LeftBrace,
+        report_error_about_current_token<EXPECTED_LEFT_BRACE>(
             "Expected '{' after function declaration.",
             "Lord... you're dumber than I thought you would be. That is, dumber than a damn rock."
             "Place a damned ';' or '{' after your function declaration.");
-
+        SynchronizeParser();
         return function_declaration_statement;
     };
 
@@ -1301,14 +1310,12 @@ struct Parser
 
         switch_expression_node->Condition = ParseExpression(0);
 
-        if (expect_token_with_type<true>(
+        if (expect_token_with_type(
                 TokenTypes::LeftBrace, "Expected '{' after switch expression.", "")
                 .ObjectSourceLocation.Source.empty())
         {
             return switch_expression_node;
         }
-
-        advance_one_token(); // consume '{'
 
         std::vector<SwitchExpression::Case *> temporary_cases_pointer_vector;
         while (!check_token_type_of_current_token(TokenTypes::RightBrace) ||
@@ -1375,7 +1382,7 @@ struct Parser
             }
         }
 
-        expect_token_with_type<true>(
+        expect_token_with_type(
             TokenTypes::RightBrace,
             "Expected '{' to terminate switch statement.",
             "Mister, you... You're lucky I'm in a good mood today. Just damn close your switch "
@@ -1434,10 +1441,8 @@ struct Parser
          *
          */
 
-        auto  start_location     = CurrentToken.ObjectSourceLocation;
+        auto  start_location     = advance_one_token().ObjectSourceLocation; // consume 'while'
         auto *for_statement_node = ObjectArenaAllocator.Allocate<WhileStatement>(start_location);
-
-        advance_one_token(); // consume 'while'
 
         for_statement_node->Condition = ParseExpression(0);
 
@@ -1505,6 +1510,9 @@ struct Parser
                 if (!check_token_type_of_current_token(TokenTypes::Identifier) &&
                     !check_token_type_of_current_token(TokenTypes::Keyword_Unsafe))
                 {
+                    report_error_about_current_token<AMBIGUOUS_ERROR>(
+                        "Expected identifier or 'unsafe'.", "");
+                    SynchronizeParser();
                     goto ExpectSemicolonAndReturnNode;
                 }
 
@@ -1555,7 +1563,7 @@ struct Parser
             advance_one_token().ObjectSourceLocation);
 
         struct_declaration_node->Identifier =
-            expect_token_with_type<true>(
+            expect_token_with_type(
                 TokenTypes::Identifier, "Expected identifier after struct declarator.", "")
                 .ObjectSourceLocation.Source;
 
@@ -1597,7 +1605,7 @@ struct Parser
             report_error_about_current_token<UNEXPECTED_END_OF_FILE>("Unexpected end of file.", "");
             return struct_declaration_node;
         }
-        advance_one_token(); // consume '}'
+        advance_one_token(); // consume '}' can't be any other token than it
 
         if (struct_declaration_implementation_vector.empty())
         {
@@ -1608,6 +1616,103 @@ struct Parser
             copy_vector_to_arena_allocated_span(struct_declaration_implementation_vector);
 
         return struct_declaration_node;
+    }
+
+    ASTNode *ParseAliasStatement()
+    {
+        /*
+         * alias X as Y;
+         */
+
+        auto  start_location       = advance_one_token().ObjectSourceLocation; // consume "alias"
+        auto *alias_statement_node = ObjectArenaAllocator.Allocate<AliasStatement>(start_location);
+
+        alias_statement_node->From =
+            expect_token_with_type(TokenTypes::Identifier, "Expected identifier.", "")
+                .ObjectSourceLocation.Source;
+
+        if (alias_statement_node->From.empty())
+        {
+            return alias_statement_node;
+        }
+
+        if (!match_with_current_token(TokenTypes::Keyword_As))
+        {
+            report_error_about_current_token<EXPECTED_AS_STATEMENT>("Expected 'as'.", "");
+            SynchronizeParser();
+            return alias_statement_node;
+        }
+
+        alias_statement_node->As =
+            expect_token_with_type(TokenTypes::Identifier, "Expected identifier.", "")
+                .ObjectSourceLocation.Source;
+
+        if (alias_statement_node->As.empty())
+        {
+            return alias_statement_node;
+        }
+
+        expect_semicolon();
+
+        return alias_statement_node;
+    }
+
+    ASTNode *ParseDiscardAliasStatement()
+    {
+        // discard alias_identifier;
+
+        auto  start_location = advance_one_token().ObjectSourceLocation; // consume 'discard'
+        auto *discard_alias_statement_node =
+            ObjectArenaAllocator.Allocate<DiscardAliasStatement>(start_location);
+
+        discard_alias_statement_node->AliasName =
+            expect_token_with_type(TokenTypes::Identifier, "Expected identifier.", "")
+                .ObjectSourceLocation.Source;
+
+        if (discard_alias_statement_node->AliasName.empty())
+        {
+            return discard_alias_statement_node;
+        }
+
+        expect_semicolon();
+
+        return discard_alias_statement_node;
+    }
+
+    ASTNode *ParseDefineMacroStatement()
+    {
+        // define_macro A(Value: Type) : Flags;
+
+        auto *define_macro_statement_node = ObjectArenaAllocator.Allocate<DefineMacroStatement>(
+            advance_one_token().ObjectSourceLocation); // consume "define_macro"
+
+        define_macro_statement_node->Identifier =
+            expect_token_with_type(
+                TokenTypes::Identifier, "Expected identifier after 'define_macro'.", "")
+                .ObjectSourceLocation.Source;
+
+        if (define_macro_statement_node->Identifier.empty())
+        {
+            return define_macro_statement_node;
+        }
+
+        if (!match_with_current_token(TokenTypes::LeftParenthesis))
+        {
+            report_error_about_current_token<EXPECTED_LEFT_PARENTHESIS>("Expected '('.", "");
+            SynchronizeParser();
+            return define_macro_statement_node;
+        }
+
+        define_macro_statement_node->Parameters = ParseFunctionDeclarationParameters<false>();
+
+        if (match_with_current_token(TokenTypes::Colon))
+        {
+            define_macro_statement_node->Decorations = ParseAttributes();
+        }
+
+        expect_semicolon();
+
+        return define_macro_statement_node;
     }
 
     Module *ParseModule()
@@ -1627,16 +1732,6 @@ struct Parser
 
         while (!check_token_type_of_current_token(TokenTypes::EndOfFile))
         {
-            std::print(
-                "Parsing token: {} | TokenType: {} | PeekToken: {} | PeekTokenType: {} | Line: "
-                "{}\n",
-                CurrentToken.ObjectSourceLocation.Source,
-                std::to_underlying(CurrentToken.TokenType),
-                PeekToken.ObjectSourceLocation.Source,
-                std::to_underlying(PeekToken.TokenType),
-                CurrentToken.ObjectSourceLocation.Line);
-
-            ObjectDiagnosticEngine.PrintBuffer();
             switch (CurrentToken.TokenType)
             {
             case TokenTypes::Keyword_Import:
@@ -1660,35 +1755,9 @@ struct Parser
                 module->TopLevelNodes.push_back(ParseVariableDeclarationStatement<true>());
                 break;
             }
-            case TokenTypes::Keyword_Switch:
-            {
-                module->TopLevelNodes.push_back(ParseSwitchExpression());
-                break;
-            }
             case TokenTypes::Keyword_FunctionDeclaration:
             {
                 module->TopLevelNodes.push_back(ParseFunctionDeclaration());
-                break;
-            }
-            case TokenTypes::Keyword_For:
-            {
-                module->TopLevelNodes.push_back(ParseForStatement());
-                break;
-            }
-            case TokenTypes::Keyword_While:
-            {
-                module->TopLevelNodes.push_back(ParseWhileStatement());
-                break;
-            }
-            case TokenTypes::Identifier:
-            {
-                if (check_token_type_of_peek_token(TokenTypes::LeftParenthesis))
-                {
-                    module->TopLevelNodes.push_back(ParseFunctionCallExpression());
-                    break;
-                }
-
-                report_and_consume_unexpected_token();
                 break;
             }
             case TokenTypes::Keyword_Struct:
@@ -1701,9 +1770,26 @@ struct Parser
                 advance_one_token();
                 break;
             }
+            case TokenTypes::Keyword_Alias:
+            {
+                module->TopLevelNodes.push_back(ParseAliasStatement());
+                break;
+            }
+            case TokenTypes::Keyword_Discard:
+            {
+                module->TopLevelNodes.push_back(ParseDiscardAliasStatement());
+                break;
+            }
+            case TokenTypes::Keyword_DefineMacro:
+            {
+                module->TopLevelNodes.push_back(ParseDefineMacroStatement());
+                break;
+            }
             default:
             {
-                report_and_consume_unexpected_token();
+                report_error_about_current_token<UNEXPECTED_TOKEN>(
+                    "Unexpected token found whilst parsing module.", "");
+                SynchronizeParser();
                 break;
             }
             }

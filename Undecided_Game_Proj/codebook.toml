@@ -1,6 +1,8 @@
 words = [
+    "ASTNODE",
     "CLI",
     "CUDA",
+    "DASTNODE",
     "DXIL",
     "GLSL",
     "GPGPU",
@@ -20,6 +22,7 @@ words = [
     "dxbcasm",
     "dxilasm",
     "endlua",
+    "fatalized",
     "findin",
     "globbing",
     "infront",

@@ -1,0 +1,61 @@
+import HashingFunctions/HashingFunctions as unsafe; // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
+
+// now macros run off of .dlls compiled from a C++ source plugin; Lua was just a bit too complex to setup, and a bit too clunky to work with. Embedded a LSP inside another is, as it turns out, quite annoying
+// And also, we can just define the macros inside the C++ compiler base without having to write seperate macros in another language. It stays fully native
+
+@Embed("Prelude.ispc"): { As = ISPC_Prelude}; // fields are now context dependent
+@EmitEmbeddedBlock(ISPC_Prelude);
+
+// forward declarations
+// was initially @define, but the state machine behind that ruined LL(1), so got rid of it
+define_macro AutoDiff(ASTNode: ASTNodePointer) : {ExecutionStage = PostTypedASTConstruction};
+
+struct SomeExportStruct : uint8, export
+{
+
+}
+
+const SomeExportVariable: auto, export = 3; // the first member of the decorations is always the type; the rest are just flags
+
+@AutoDiff(CalculateNoiseContributionOfVertex, "Back");
+fn CalculateNoiseContributionOfVertex(DistanceToVertex: float3, NoiseGradient: float3) : inline // return type is inferred
+{
+    const max_influential_radius_of_vertex: float, uniform = 0.6;
+
+    var dot_components = NoiseGradient * DistanceToVertex;
+
+    alias dot_components as dcmp;
+
+    var dot_product = dcmp.x + dcmp.y + dcmp.z;
+
+    discard dcmp;
+
+    var dist_squared_components = DistanceToVertex * DistanceToVertex;
+    var vertex_distance_squared = dist_squared_components.x + dist_squared_components.y + dist_squared_components.z;
+
+    var falloff_intensity = max(0.0f, max_influential_radius_of_vertex - vertex_distance_squared);
+
+    var falloff_power4 = pow(falloff_intensity, 4);
+
+    return falloff_power4 * dot_product;
+}
+
+@IgnoreTypeAnalysis(SomeOtherFunction);
+fn SomeOtherFunction() -> float : inline, static, const {
+    return 1.0f;
+}
+
+// @GPUBufferTypeFor() and @GPUBufferTypeForBreak() also exist, but for this case, they are not needed
+fn ExportOutput(OutputBuffer: { float[], @GPUBufferTypes(SSBO) }) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
+    : export // export flag
+{
+    if comptime (TargetIsGPULike)
+    {
+        OutputBuffer[ProgramIndex.x] = expect CalculateNoiseContributionOfVertex::Back() from @AutoDiff::CalculateNoiseContributionOfVertex;
+    } else if comptime (TargetIsCPULike) {
+        return expect CalculateNoiseContributionOfVertex::Back() from @AutoDiff::CalculateNoiseContributionOfVertex;
+    }
+}
+
+// for quick REPL with TCC (Tiny C Compiler)
+@TestTCC(ExportOutput);

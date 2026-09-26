@@ -1468,26 +1468,13 @@ struct Build
             {.SourceCode =
                  R"(import HashingFunctions/HashingFunctions as unsafe; // removes the namespace so you can access the functions freely, but end up poisoning your own namespace
 
-                 // lua is just one of the languages that it can run. could run python, zig, and whatever else; would just need a JIT compiler in the C++ core
-                 const something = 20;
-                 begin lua
-                         ...
+                 // now macros run off of .dlls compiled from a C++ source plugin; Lua was just a bit too complex to setup, and a bit too clunky to work with. Embedded a LSP inside another is, as it turns out, quite annoying
 
-                     function AutoDiff(...) -- this gets LSP support from the JSlang compiler itself.
-                         ...
-
-                     function TestFunction(CallbackFunction)
-                         ...
-                 ||endlua
+                 @Embed("Prelude.ispc"): { As = ISPC_Prelude};
+                 @EmitEmbeddedBlock(ISPC_Prelude);
 
                  // forward declarations
-                 @RemoveIfTargetIsCPULike : Type.Flag;
-                 @AutoDiff : TargetLanguage = "Lua"; // default language is Lua anyways; but just to be explicit
-                 @TestFunction : {
-                 Type.DebugFunction,
-                 OnlyIfTargetLanguageLua, OnlyIfREPLEnabled,
-                 RunStage.AfterCodegen,
-                 ExpectedInputs = { .TargetLanguageFunction } } // .DebugFunctions get eliminated if not in a debug build
+                 @AutoDiff(ASTNode: ASTNodePointer) : {ExecutionStage = PostTypedASTConstruction};
 
                  struct SomeExportStruct : uint8, export
                  {
@@ -1496,45 +1483,48 @@ struct Build
 
                  const SomeExportVariable: auto, export = 3; // the first member of the decorations is always the type; the rest are just flags
 
-                 @AutoDiff("Back") : { // it walks forward and finds the function. Even if a bit ambiguous, it allows for complex macros not limited by the parser or lexer
-                 TargetType.Function = {.OnlyFor=CalculateNoiseContributionOfVertex},
-                 UniqueIdentifier = OverFn
-                 }
+                 @AutoDiff(CalculateNoiseContributionOfVertex, "Back");
                  fn CalculateNoiseContributionOfVertex(DistanceToVertex: float3, NoiseGradient: float3) : inline // return type is inferred
                  {
-                     const max_influential_radius_of_vertex = 0.6;
+                     const max_influential_radius_of_vertex: float, uniform = 0.6;
 
                      var dot_components = NoiseGradient * DistanceToVertex;
-                     var dot_product = dot_components.x + dot_components.y + dot_components.z;
+
+                     alias dot_components as dcmp;
+
+                     var dot_product = dcmp.x + dcmp.y + dcmp.z;
+
+                     discard dcmp;
 
                      var dist_squared_components = DistanceToVertex * DistanceToVertex;
                      var vertex_distance_squared = dist_squared_components.x + dist_squared_components.y + dist_squared_components.z;
 
                      var falloff_intensity = max(0.0f, max_influential_radius_of_vertex - vertex_distance_squared);
 
-                     var falloff_power4 = pow(float, falloff_intensity, 4);
+                     var falloff_power4 = pow(falloff_intensity, 4);
 
                      return falloff_power4 * dot_product;
                  }
 
-                 @IgnoreTypeAnalysis() : { TargetType.Function };
+                 @IgnoreTypeAnalysis(SomeOtherFunction);
                  fn SomeOtherFunction() -> float : inline, static, const {
                      return 1.0f;
                  }
 
-                 fn ExportOutput(@GPUBufferType(SSBO), OutputBuffer: { float[], RemoveIfTargetCPULike }) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
+                 // @GPUBufferTypeFor() and @GPUBufferTypeForBreak() also exist, but for this case, they are not needed
+                 fn ExportOutput(OutputBuffer: { float[], @GPUBufferTypes(SSBO) }) // SSBO gets interpreted as a pointer to a buffer when generating for CPU-side
                      : export // export flag
                  {
-                     if :  (TargetIsGPULike) // comptime
+                     if comptime (TargetIsGPULike)
                      {
-                         OutputBuffer[ProgramIndex.x] = expect CalculateNoiseContributionOfVertex::Back from @AutoDiff::OverFn;
-                     } else if : (TargetIsCPULike) {
-                         return expect CalculateNoiseContributionOfVertex::Back from @AutoDiff::OverFn;
+                         OutputBuffer[ProgramIndex.x] = expect CalculateNoiseContributionOfVertex::Back() from @AutoDiff::CalculateNoiseContributionOfVertex;
+                     } else if comptime (TargetIsCPULike) {
+                         return expect CalculateNoiseContributionOfVertex::Back() from @AutoDiff::CalculateNoiseContributionOfVertex;
                      }
                  }
 
-                 // for quick REPL with LuaJIT; you can now just step through your code and debug it
-                 @TestFunction(ExportOutput);)",
+                 // for quick REPL with TCC (Tiny C Compiler)
+                 @TestTCC(ExportOutput);)",
              .SourceFileName = "Undefined"});
 
         DestroyJSlangInterfaceInstance(jslang_instance);
