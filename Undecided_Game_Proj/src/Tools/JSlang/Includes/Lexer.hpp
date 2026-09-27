@@ -717,5 +717,17 @@ struct Lexer
             "know-it-all? I ain't got the slightest clue what your petty little symbol here is "
             "meanin'.");
     }
+
+    char8_t GetNextCharacter()
+    {
+        skip_whitespaces();
+
+        if (peek_character_under_cursor() == '/' && peek_character_infront_cursor() == '/')
+        {
+            skip_comment();
+        }
+
+        return advance_one_character();
+    }
 };
 } // namespace JSlang

@@ -1797,5 +1797,22 @@ struct Parser
 
         return module;
     }; // namespace AST
+
+    Module *ParseImportStatementsAndHashFileContents()
+    {
+        auto *module = ObjectArenaAllocator.Allocate<Module>();
+
+        while (!check_token_type_of_current_token(TokenTypes::EndOfFile))
+        {
+            while (!check_token_type_of_current_token(TokenTypes::Keyword_Import))
+            {
+                advance_one_token();
+            }
+
+            module->TopLevelNodes.push_back(ParseImportStatement());
+        }
+
+        return module;
+    };
 };
 } // namespace JSlang::AST

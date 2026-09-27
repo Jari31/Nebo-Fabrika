@@ -2,6 +2,7 @@
 
 #include "DebugHelpers.hpp"
 #include "ErrorCodes.hpp"
+#include "Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include "Libraries/include/magic_enum/magic_enum.hpp"
 #include "Log.hpp"
 #include <cstdint>
@@ -44,9 +45,16 @@ struct Diagnostic
 
 struct DiagnosticEngine
 {
-    std::vector<Diagnostic> DiagnosticBuffer;
-    uint32_t                ErrorCount   = 0;
-    uint32_t                WarningCount = 0;
+    std::vector<std::vector<Diagnostic>> DiagnosticBuffers;
+    uint32_t                             ErrorCount   = 0;
+    uint32_t                             WarningCount = 0;
+
+    enki::TaskScheduler *TaskScheduler = nullptr;
+
+    DiagnosticEngine(enki::TaskScheduler *ParameterTaskScheduler)
+    {
+        TaskScheduler = ParameterTaskScheduler;
+    }
 
     void Report(
         Severity       Severity,
@@ -59,7 +67,11 @@ struct DiagnosticEngine
         SourceLocation.Line += 1;
         SourceLocation.Column += 1;
 
-        DiagnosticBuffer.push_back(
+        auto thread_index = TaskScheduler->GetThreadNum();
+
+        auto &diagnostic_buffer = DiagnosticBuffers[thread_index];
+
+        diagnostic_buffer.push_back(
             {.ErrorCode      = ErrorCode,
              .Severity       = Severity,
              .Message        = std::move(Message),
@@ -69,7 +81,6 @@ struct DiagnosticEngine
 
         if (Severity == Severity::Error)
         {
-            PrintBuffer<true, true>();
             ++ErrorCount;
         }
         else if (Severity == Severity::Warning || Severity == Severity::PerformanceWarning)
@@ -84,27 +95,32 @@ struct DiagnosticEngine
         }
     }
 
+    // WARN not thread safe.
     template <bool ClearBuffer = true, bool FlushAfterWrite = false> void PrintBuffer()
     {
-        for (auto &Diagnostic : DiagnosticBuffer)
+        for (auto &DiagnosticBuffer : DiagnosticBuffers)
         {
-            ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
-                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, COLUMN: {}\n",
-                std::string_view(
-                    Diagnostic.SourceLocation.Source.data(),
-                    Diagnostic.SourceLocation.Source.size()),
-                magic_enum::enum_name(Diagnostic.Severity),
-                magic_enum::enum_name(Diagnostic.ErrorCode),
-                Diagnostic.Message,
-                Diagnostic.SourceLocation.Line,
-                Diagnostic.SourceLocation.Column);
-        }
+            for (auto &Diagnostic : DiagnosticBuffer)
+            {
+                ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
+                    "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, COLUMN: "
+                    "{}\n",
+                    std::string_view(
+                        Diagnostic.SourceLocation.Source.data(),
+                        Diagnostic.SourceLocation.Source.size()),
+                    magic_enum::enum_name(Diagnostic.Severity),
+                    magic_enum::enum_name(Diagnostic.ErrorCode),
+                    Diagnostic.Message,
+                    Diagnostic.SourceLocation.Line,
+                    Diagnostic.SourceLocation.Column);
+            }
 
-        ThreadUnsafeLogger::Flush();
+            ThreadUnsafeLogger::Flush();
 
-        if constexpr (ClearBuffer)
-        {
-            DiagnosticBuffer.clear();
+            if constexpr (ClearBuffer)
+            {
+                DiagnosticBuffers.clear();
+            }
         }
     }
 
@@ -112,7 +128,7 @@ struct DiagnosticEngine
 
     void Clear()
     {
-        DiagnosticBuffer.clear();
+        DiagnosticBuffers.clear();
         ErrorCount   = 0;
         WarningCount = 0;
     }

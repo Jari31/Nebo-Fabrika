@@ -30,8 +30,6 @@ struct Compiler
         ThreadedLogger.Initialize(&TaskScheduler, Options.CompileWithThreads);
     }
 
-    void crash_handler(int Signal) {}
-
     static CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
     {
         DiagnosticEngine diagnostic_engine;
@@ -40,34 +38,7 @@ struct Compiler
         ArenaAllocator arena_allocator;
         AST::Parser    parser(lexer, arena_allocator);
 
-        // while (true)
-        // {
-        //     Token current_token = lexer.GetNextToken();
-
-        //     ThreadUnsafeLogger::Log<LogTypes::Info>(
-        //         "[TOKEN_TYPE: {} | TOKEN_BODY: {} | LINE: {} | COLUMN: {}]\n",
-        //         uint32_t(current_token.TokenType),
-        //         current_token.ObjectSourceLocation.Source,
-        //         current_token.ObjectSourceLocation.Line,
-        //         current_token.ObjectSourceLocation.Column);
-        //     if (current_token.TokenType == TokenTypes::Invalid ||
-        //         current_token.TokenType == TokenTypes::EndOfFile)
-        //     {
-        //         break;
-        //     }
-        // }
-
         auto *module = parser.ParseModule();
-
-        for (auto *node : module->TopLevelNodes)
-        {
-            ThreadUnsafeLogger::Log<LogTypes::Info>(
-                "[sSOURCE = {}, FILENAME = {}, LINE = {}, COLUMN = {}]\n",
-                node->ObjectSourceLocation.Source,
-                node->ObjectSourceLocation.Filename,
-                node->ObjectSourceLocation.Line,
-                node->ObjectSourceLocation.Column);
-        }
 
         return {};
     };
