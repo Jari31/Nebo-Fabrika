@@ -25,12 +25,39 @@ enum class Severity : uint8_t
 
 struct SourceLocation
 {
-    std::string_view Source;
-    uint64_t         SourceHash;
+    uint32_t SourceHandle;
+    uint32_t Line_Column = 0;
 
-    std::string_view Filename;
-    uint32_t         Line   = 0;
-    uint32_t         Column = 0;
+    template <bool ClearBeforeAssign = false, bool AssumeValueIsInRange = true>
+    void SetLine(uint32_t Value)
+    {
+        if constexpr (ClearBeforeAssign)
+        {
+            Line_Column &= ~(0xFFFFF << 12);
+        }
+
+        // if this somehow goes over 1 million lines, the guy who wrote the shit behind this
+        // bullshit genuinely just needs to just end it all. i swear
+        if constexpr (AssumeValueIsInRange)
+        {
+            Line_Column |= Value << 12;
+            return;
+        }
+
+        Line_Column |= (Value & 0xFFFFF) << 12;
+    }
+
+    template <bool ClearBeforeAssign = false> void SetColumn(uint32_t Value)
+    {
+        if constexpr (ClearBeforeAssign)
+        {
+            Line_Column &= ~0xFFF;
+        }
+        Line_Column |= Value & 0xFFF;
+    }
+
+    [[nodiscard]] constexpr uint32_t GetLine() const { return Line_Column >> 12; }
+    [[nodiscard]] constexpr uint32_t GetColumn() const { return Line_Column & 0xFFF; }
 };
 
 struct Diagnostic
@@ -49,12 +76,10 @@ struct DiagnosticEngine
     uint32_t                             ErrorCount   = 0;
     uint32_t                             WarningCount = 0;
 
-    enki::TaskScheduler *TaskScheduler = nullptr;
+    // unused during the untyped phase
+    std::string_view Filepath = "UNDEFINED";
 
-    DiagnosticEngine(enki::TaskScheduler *ParameterTaskScheduler)
-    {
-        TaskScheduler = ParameterTaskScheduler;
-    }
+    enki::TaskScheduler *TaskScheduler = nullptr;
 
     void Report(
         Severity       Severity,
@@ -64,8 +89,8 @@ struct DiagnosticEngine
         std::string    Monologue,
         std::string    Hint = "")
     {
-        SourceLocation.Line += 1;
-        SourceLocation.Column += 1;
+        SourceLocation.SetLine<true>((SourceLocation.GetLine() + 1));
+        SourceLocation.SetColumn<true>((SourceLocation.GetColumn() + 1));
 
         auto thread_index = TaskScheduler->GetThreadNum();
 
@@ -111,8 +136,8 @@ struct DiagnosticEngine
                     magic_enum::enum_name(Diagnostic.Severity),
                     magic_enum::enum_name(Diagnostic.ErrorCode),
                     Diagnostic.Message,
-                    Diagnostic.SourceLocation.Line,
-                    Diagnostic.SourceLocation.Column);
+                    Diagnostic.SourceLocation.GetLine(),
+                    Diagnostic.SourceLocation.GetColumn());
             }
 
             ThreadUnsafeLogger::Flush();

@@ -5,6 +5,7 @@
 #include "ErrorCodes.hpp"
 #include "Libraries/include/xxhash/xxhash.h"
 #include "StringHasher.hpp"
+#include "StringInterner.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -115,34 +116,26 @@ struct Lexer
     static constexpr char UNDEFINED_NAME[10] = "Undefined"; // NOLINT
 
     DiagnosticEngine &ObjectDiagnosticEngine;
+    StringInterner   &ObjectStringInterner;
 
     std::string_view Source;
-    std::string_view Filename;
-    size_t           Cursor = 0;
+    std::string_view FilePath;
+    uint32_t         Cursor = 0;
     uint32_t         Line   = 0;
     uint32_t         Column = 0;
 
     // oh god. this gives me enterprise java flashbacks
     Lexer(
         DiagnosticEngine &ParameterDiagnosticEngine,
+        StringInterner   &ParameterStringInterner,
         std::string_view  ParameterSource,
-        std::string_view  ParameterFilename)
-        : ObjectDiagnosticEngine(ParameterDiagnosticEngine)
+        std::string_view  ParameterFilePath)
+        : ObjectDiagnosticEngine(ParameterDiagnosticEngine),
+          ObjectStringInterner(ParameterStringInterner)
     {
-        if (ParameterFilename.empty())
-        {
-            Filename = std::string_view{UNDEFINED_NAME};
-
-            ObjectDiagnosticEngine.Report(
-                Severity::Warning,
-                SOURCE_PROVIDED_IS_EMPTY,
-                {.Filename = Filename},
-                "No filename provided; assuming 'Undefined' as filename.",
-                "Suit yourself.");
-        }
         else
         {
-            Filename = ParameterFilename;
+            FilePath = ParameterFilePath;
         }
 
         if (ParameterSource.empty())
@@ -150,7 +143,7 @@ struct Lexer
             ObjectDiagnosticEngine.Report(
                 Severity::Warning,
                 SOURCE_PROVIDED_IS_EMPTY,
-                {.Filename = Filename},
+                {.Filename = FilePath},
                 "The file provided is empty.",
                 "Now... Ya thinking I'm a magician, mister? Expect me to whoop up an entire damn "
                 "source file from your thoughts like a cheap chat bot? Take yer thoughts of making "
@@ -162,6 +155,16 @@ struct Lexer
             Source = ParameterSource;
         }
     };
+
+    void ResetState(std::string_view ParameterSource, std::string_view ParameterFilename)
+    {
+        Cursor = 0;
+        Line   = 0;
+        Column = 0;
+
+        Source            = ParameterSource;
+        ParameterFilename = FilePath;
+    }
 
     [[nodiscard]] char peek_character_under_cursor() const
     {
@@ -208,7 +211,7 @@ struct Lexer
             .TokenType            = TokenType,
             .ObjectSourceLocation = {
                 .Source   = Source.substr(TokenStart, Length),
-                .Filename = Filename,
+                .Filename = FilePath,
                 .Line     = Line,
                 .Column   = Column}};
     }
@@ -217,7 +220,7 @@ struct Lexer
         return {
             .TokenType            = TokenType,
             .ObjectSourceLocation = {
-                .Source = StringView, .Filename = Filename, .Line = Line, .Column = Column}};
+                .Source = StringView, .Filename = FilePath, .Line = Line, .Column = Column}};
     }
     Token make_token(TokenTypes TokenType, size_t CursorStartPosition)
     {
@@ -230,7 +233,7 @@ struct Lexer
             .ObjectSourceLocation = {
                 .Source     = StringView,
                 .SourceHash = StringViewHash,
-                .Filename   = Filename,
+                .Filename   = FilePath,
                 .Line       = Line,
                 .Column     = Column}};
     }
@@ -418,8 +421,7 @@ struct Lexer
             return make_token(token_type, string_view);
         }
 
-        return make_token(
-            token_type, string_view, XXH64(string_view.data(), string_view.size(), 0));
+        return make_token(token_type, string_view);
     }
 
     Token create_token_from_digits(size_t CursorStartPosition)

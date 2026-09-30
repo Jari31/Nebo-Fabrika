@@ -1,11 +1,15 @@
 #pragma once
 
+#include "../CompilerTypes.hpp"
+#include "ASTNodes.hpp"
 #include "ASTParser.hpp"
 #include "ArenaAllocator.hpp"
 #include "Diagnostics.hpp"
 #include "Lexer.hpp"
+#include "Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include "Libraries/include/unordered_dense/ankerl/unordered_dense.h"
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -38,17 +42,18 @@ namespace JSlang
 {
 struct DependencyGraphResolver
 {
-    std::string_view EntrypointSource;
-    DiagnosticEngine ObjectDiagnosticEngine;
-    ArenaAllocator   ObjectArenaAllocator;
+    enki::TaskScheduler TaskScheduler;
+    DiagnosticEngine    ObjectDiagnosticEngine;
 
-    DependencyGraphResolver(
-        std::string_view  ParameterEntrypointSource,
-        DiagnosticEngine &ParameterDiagnosticEngine)
-        : EntrypointSource(ParameterEntrypointSource),
-          ObjectDiagnosticEngine(ParameterDiagnosticEngine) {
+    bool StoreCacheToDisk = true;
 
-          };
+    DependencyGraphResolver(uint32_t InitWithThreadNum)
+    {
+        TaskScheduler.Initialize(InitWithThreadNum);
+        ObjectDiagnosticEngine.TaskScheduler = &TaskScheduler;
+    }
+
+    using CompiledHeaders = ankerl::unordered_dense::map<std::string_view, AST::Parser::Module>;
 
     struct Node
     {
@@ -72,5 +77,34 @@ struct DependencyGraphResolver
         LeafNodeHashmap     LeafNodes;
         ModuleSourceHashmap ModuleSource;
     };
+
+    uint8_t *GenerateCodeFor(
+        CompilerTargets  CompilerTarget,
+        std::string_view Source,
+        std::string_view SourceFilepath)
+    {
+        ArenaAllocator ObjectArenaAllocator;
+
+        Lexer       lexer(ObjectDiagnosticEngine, Source, SourceFilepath);
+        AST::Parser parser(lexer, ObjectArenaAllocator);
+
+        std::vector<std::string_view> dependencies;
+        auto                         *import_statements = parser.ParseImportStatements();
+
+        for (auto *ImportStatement : import_statements->TopLevelNodes)
+        {
+            auto *cast_import_statement = static_cast<AST::ImportStatement *>(ImportStatement);
+
+            // already reported about in the untyped parser
+            if (cast_import_statement->ImportFrom.empty())
+            {
+                continue;
+            }
+
+            dependencies.push_back(cast_import_statement->ImportFrom);
+        }
+
+
+    }
 };
 } // namespace JSlang

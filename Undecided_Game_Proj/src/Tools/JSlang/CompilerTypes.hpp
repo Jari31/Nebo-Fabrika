@@ -23,10 +23,11 @@ enum class CompilerTargets : uint32_t // NOLINT
 
 struct CompileFromSourceRequest
 {
-    const char           *SourceCode     = nullptr;
-    const char           *SourceFileName = nullptr;
-    const CompilerTargets Targets        = CompilerTargets::AST;
-    const uint32_t        Optimization   = 0;
+    const char           *SourceCode   = nullptr;
+    const char           *SourcePath   = nullptr;
+    const CompilerTargets Targets      = CompilerTargets::ISPC_SOURCE;
+    const uint32_t        Optimization = 0;
+    const bool GenerateIRCacheFilesToDisk = false;
 };
 
 struct CompileResult

@@ -30,18 +30,7 @@ struct Compiler
         ThreadedLogger.Initialize(&TaskScheduler, Options.CompileWithThreads);
     }
 
-    static CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest)
-    {
-        DiagnosticEngine diagnostic_engine;
-        Lexer lexer(diagnostic_engine, CompileRequest.SourceCode, CompileRequest.SourceFileName);
-
-        ArenaAllocator arena_allocator;
-        AST::Parser    parser(lexer, arena_allocator);
-
-        auto *module = parser.ParseModule();
-
-        return {};
-    };
+    static CompileResult CompileFromSource(CompileFromSourceRequest CompileRequest) { return {}; };
 };
 
 } // namespace JSlang

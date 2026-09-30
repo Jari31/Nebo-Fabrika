@@ -58,10 +58,6 @@ struct Parser
     Token CurrentToken;
     Token PeekToken;
 
-    Parser(const Parser &)            = default;
-    Parser(Parser &&)                 = default;
-    Parser &operator=(const Parser &) = delete;
-    Parser &operator=(Parser &&)      = delete;
     Parser(Lexer &ParameterLexer, ArenaAllocator &ParameterArenaAllocator)
         : ObjectLexer(ParameterLexer), ObjectArenaAllocator(ParameterArenaAllocator),
           ObjectDiagnosticEngine(ParameterLexer.ObjectDiagnosticEngine)
@@ -1798,7 +1794,7 @@ struct Parser
         return module;
     }; // namespace AST
 
-    Module *ParseImportStatementsAndHashFileContents()
+    Module *ParseImportStatements()
     {
         auto *module = ObjectArenaAllocator.Allocate<Module>();
 

@@ -9,6 +9,7 @@ words = [
     "Globber",
     "HLSL",
     "ISPC",
+    "Interner",
     "JIT",
     "LUT",
     "NOLINT",
