@@ -1,22 +1,27 @@
 #pragma once
 #include "ASTNodes.hpp"
 #include "ArenaAllocator.hpp"
-#include "DebugHelpers.hpp"
 #include "Diagnostics.hpp"
 #include "ErrorCodes.hpp"
 #include "Lexer.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <concepts>
+#include <type_traits>
 
 namespace JSlang::AST
 {
+
+template <typename T>
+concept ASTNodePointerOrHandle =
+    std::same_as<T, ASTNode*> || std::same_as<T, ArenaAllocator::Handle>;
+
 struct Parser
 {
     /*
@@ -53,6 +58,8 @@ struct Parser
     Lexer            &ObjectLexer;
     ArenaAllocator   &ObjectArenaAllocator;
     DiagnosticEngine &ObjectDiagnosticEngine;
+
+    using Handle = ArenaAllocator::Handle;
 
     Token PreviousToken;
     Token CurrentToken;
@@ -98,8 +105,7 @@ struct Parser
         }
     }
 
-    template <typename Type>
-    std::span<Type> copy_vector_to_arena_allocated_span(std::vector<Type> &FromVector)
+    template <typename Type> Handle copy_vector_to_arena(std::vector<Type> &FromVector)
     {
         auto to_span = ObjectArenaAllocator.AllocateArray<Type>(FromVector.size());
 
@@ -216,7 +222,7 @@ struct Parser
         bool       ConsumeTerminator   = false,
         typename CallbackFunctionType1 = bool (*)(),
         typename CallbackFunctionType2 = bool (*)()>
-    std::span<ASTNode *> ParseArgumentativeExpressionUntilTerminator(
+    Handle ParseArgumentativeExpressionUntilTerminator(
         std::string             ExpectedTerminatorErrorMessage,
         std::string             ExpectedTerminatorMonologue,
         CallbackFunctionType1 &&CallbackIsCurrentTokenTerminator,
@@ -263,10 +269,10 @@ struct Parser
             }
         }
 
-        return copy_vector_to_arena_allocated_span(temporary_ast_node_pointer_vector);
+        return copy_vector_to_arena(temporary_ast_node_pointer_vector);
     }
 
-    template <bool ExpectInitializer = true> std::span<ASTNode *> ParseFunctionArguments()
+    template <bool ExpectInitializer = true> Handle ParseFunctionArguments()
     {
         // (arg1, arg2, arg3)
         return ParseArgumentativeExpressionUntilTerminator<
@@ -279,14 +285,14 @@ struct Parser
             [this]() { return check_token_type_of_current_token(TokenTypes::RightParenthesis); });
     }
 
-    ASTNode *ParseFunctionCallExpression()
+    Handle ParseFunctionCallExpression()
     {
         auto *function_call_expression_node = ObjectArenaAllocator.Allocate<FunctionCallExpression>(
             CurrentToken.ObjectSourceLocation);
 
         function_call_expression_node->Arguments = ParseFunctionArguments();
 
-        return function_call_expression_node;
+        return ObjectArenaAllocator.ConvertPtrToHandle(function_call_expression_node);
     };
 
     /// assuming the initializer got consumed
@@ -297,11 +303,15 @@ struct Parser
             ObjectArenaAllocator.Allocate<FunctionCallExpression>(ParameterSourceLocation);
 
         function_call_expression_node->Arguments = ParseFunctionArguments<false>();
-
         return function_call_expression_node;
+    }
+    Handle ParseFunctionCallExpressionToHandle(SourceLocation ParameterSourceLocation)
+    {
+        return ObjectArenaAllocator.ConvertPtrToHandle(
+            ParseFunctionCallExpression(ParameterSourceLocation));
     };
 
-    ASTNode *ParseIfExpression()
+    Handle ParseIfExpression()
     {
         /*
          * if() {
@@ -325,7 +335,7 @@ struct Parser
             report_error_about_current_token<EXPECTED_LEFT_PARENTHESIS>(
                 "Expected '(' to start condition after if expression.", "");
             SynchronizeParser();
-            return if_expression_node;
+            return ObjectArenaAllocator.ConvertPtrToHandle(if_expression_node);
         }
 
         if_expression_node->Condition = ParseExpression(0);
@@ -335,7 +345,7 @@ struct Parser
             report_error_about_current_token<EXPECTED_RIGHT_PARENTHESIS>(
                 "Expected ')' to terminate end condition af ter if expression.", "");
             SynchronizeParser();
-            return if_expression_node;
+            return ObjectArenaAllocator.ConvertPtrToHandle(if_expression_node);
         }
 
         if (check_token_type_of_current_token(TokenTypes::LeftBrace))
@@ -444,7 +454,7 @@ struct Parser
         case TokenTypes::LeftParenthesis:
         {
             advance_one_token();
-            ASTNode *expression = ParseExpression(0);
+            auto *expression = ParseExpression<true, true, ASTNode*>(0);
             expect_token_with_type(
                 TokenTypes::RightParenthesis,
                 "Expected ')' after parenthesized expression.",
@@ -530,8 +540,11 @@ struct Parser
         return nullptr;
     };
 
-    template <bool CurrentTokenIsIdentifier = true, bool ConsumeInitializer = true>
-    ASTNode *ParseArrayAccessExpression(SourceLocation IdentifierSourceLocation = {})
+    template <
+        bool CurrentTokenIsIdentifier = true,
+        bool ConsumeInitializer       = true,
+        typename Type                 = Handle>
+    Type ParseArrayAccessExpression(SourceLocation IdentifierSourceLocation = {})
     {
         ArrayAccessExpression *array_access_expression_node;
         if constexpr (CurrentTokenIsIdentifier)
@@ -557,7 +570,14 @@ struct Parser
         array_access_expression_node->Expression = ParseExpression(0);
 
         advance_one_token(); // consume ']'
-        return array_access_expression_node;
+        if constexpr (std::is_pointer_v<Type>)
+        {
+            return array_access_expression_node;
+        }
+        else
+        {
+            return ObjectArenaAllocator.ConvertPtrToHandle(array_access_expression_node);
+        }
     }
 
     template <bool CurrentTokenIsStartLocation = true>
@@ -614,7 +634,6 @@ struct Parser
         return expect_from_expression_node;
     }
 
-    template <typename CallbackFunctionType = bool (*)()>
     /*  @brief rough example:
      *  Given: 1 + 2 * 3
      *  lhs = 1; consume 1
@@ -666,7 +685,8 @@ struct Parser
      *
      * final output = {'+' 'a' { '*' 'b' {({'c', {'=' {'.' 'd'} '214'}) 'f' }}
      */
-    ASTNode *ParseExpression(
+    template <typename CallbackFunctionType = bool (*)(), ASTNodePointerOrHandle Type = Handle>
+    Type ParseExpression(
         uint32_t               MinimumPrecedence    = 0,
         CallbackFunctionType &&CallbackIsTerminator = []() { return false; })
     {
@@ -695,13 +715,13 @@ struct Parser
             case TokenTypes::Semicolon:
             case TokenTypes::Keyword_From:
             {
-                return left_hand_side;
+                return ObjectArenaAllocator.ConvertPtrToHandle(left_hand_side);
             }
             default:
             {
                 if (CallbackIsTerminator())
                 {
-                    return left_hand_side;
+                    return ObjectArenaAllocator.ConvertPtrToHandle(left_hand_side);
                 }
 
                 break;
@@ -732,7 +752,7 @@ struct Parser
             {
                 if (left_hand_side->NodeType == NodeTypes::IdentifierExpression)
                 {
-                    left_hand_side = ParseArrayAccessExpression<false, false>(
+                    left_hand_side = ParseArrayAccessExpression<false, false, ASTNode *>(
                         left_hand_side->ObjectSourceLocation);
                 }
                 break;
@@ -754,7 +774,7 @@ struct Parser
 
                 if (target_member.empty())
                 {
-                    return left_hand_side;
+                    return ObjectArenaAllocator.ConvertPtrToHandle(left_hand_side);
                 }
 
                 if (left_hand_side != nullptr &&
@@ -1046,7 +1066,7 @@ struct Parser
                 report_error_about_current_token<EXPECTED_IDENTIFIER>(
                     "Whilst parsing for function parameters, found unexpected token.", "");
                 SynchronizeParser();
-                return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
+                return copy_vector_to_arena(temporary_parameter_pointer_vector);
             }
             }
 
@@ -1064,7 +1084,7 @@ struct Parser
                 TokenTypes::RightParenthesis, "Expected ')'.", ""); // consume ')'
         }
 
-        return copy_vector_to_arena_allocated_span(temporary_parameter_pointer_vector);
+        return copy_vector_to_arena(temporary_parameter_pointer_vector);
     }
 
     /// doesn't consume trailing semicolons
@@ -1183,8 +1203,7 @@ struct Parser
             "ends with a damned '}'.");
 
         return ObjectArenaAllocator.Allocate<BlockStatement>(
-            start_location,
-            copy_vector_to_arena_allocated_span(temporary_statement_pointer_vector));
+            start_location, copy_vector_to_arena(temporary_statement_pointer_vector));
     }
 
     ASTNode *ParseFunctionDeclaration()
@@ -1384,8 +1403,7 @@ struct Parser
             "Mister, you... You're lucky I'm in a good mood today. Just damn close your switch "
             "statement with a '{', will you?");
 
-        switch_expression_node->Cases =
-            copy_vector_to_arena_allocated_span(temporary_cases_pointer_vector);
+        switch_expression_node->Cases = copy_vector_to_arena(temporary_cases_pointer_vector);
 
         return switch_expression_node;
     }
@@ -1609,7 +1627,7 @@ struct Parser
         }
 
         struct_declaration_node->StructImplementation =
-            copy_vector_to_arena_allocated_span(struct_declaration_implementation_vector);
+            copy_vector_to_arena(struct_declaration_implementation_vector);
 
         return struct_declaration_node;
     }

@@ -1,10 +1,12 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <cstdlib>
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 
 #include <memoryapi.h>
@@ -15,21 +17,18 @@
 #endif
 
 #include "DebugHelpers.hpp"
-#include "cerrno"
 #include "iostream"
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <span>
-#include <string_view>
-#include <vector>
 
 namespace JSlang
 {
-using Symbol = uint32_t;
 
 struct ArenaAllocator
 {
+    using Handle = uint32_t;
+
     uint8_t *base              = nullptr;
     size_t   reserved_capacity = 0;
     size_t   committed_size    = 0;
@@ -53,12 +52,9 @@ struct ArenaAllocator
 
     [[noreturn]] [[gnu::cold]] void PANIC_OUT_OF_MEMORY(size_t RequestedBytes) // NOLINT
     {
-        std::cerr << "\n[FATAL ERROR] : ArenaAllocator out of memory.\n"
-                  << "Failed to allocate " << RequestedBytes << " bytes.\n"
-                  << "Reserved 4GB address space exhausted.\n";
-
-        std::clog.flush();
-        std::cerr.flush();
+        std::cerr << "\nARENA ALLOCATOR OUT OF MEMORY.\n"
+                  << "FAILED TO ALLOCATE " << RequestedBytes << " BYTES.\n"
+                  << "Reserved 4GB virtual address space exhausted.\n";
 
         DebugHelpers::BuiltinTrap();
 
@@ -120,15 +116,25 @@ struct ArenaAllocator
     ArenaAllocator(const ArenaAllocator &)            = delete;
     ArenaAllocator &operator=(const ArenaAllocator &) = delete;
 
-    void check_if_target_commit_size_out_of_bounds(size_t TargetSize)
+    void commit_pages_given_target_size(size_t TargetSize)
     {
         if (TargetSize > reserved_capacity) [[unlikely]]
         {
             PANIC_OUT_OF_MEMORY(TargetSize);
         }
-    };
 
-    static size_t calculate_target_commit(size_t Base) { return (Base + 0xFFFF) & ~0xFFFF; }
+        if ((TargetSize) > committed_size) [[unlikely]]
+        {
+            size_t target_commit = (TargetSize + 0xFFFFU) & ~0xFFFFU;
+
+            commit_pages_given_target_size(target_commit);
+
+            if (!CommitPages(target_commit)) [[unlikely]]
+            {
+                PANIC_OUT_OF_MEMORY(TargetSize);
+            };
+        }
+    };
 
     uint8_t *AllocateBlockOfSize(size_t Size, size_t Alignment = 1)
     {
@@ -140,23 +146,12 @@ struct ArenaAllocator
 
         size_t new_offset = current_offset + padding + Size;
 
-        check_if_target_commit_size_out_of_bounds(new_offset);
-
-        if ((new_offset) > committed_size) [[unlikely]]
-        {
-            size_t target_commit = calculate_target_commit(new_offset);
-
-            check_if_target_commit_size_out_of_bounds(target_commit);
-
-            CommitPages(target_commit);
-            return AllocateBlockOfSize(Size, Alignment);
-        }
+        commit_pages_given_target_size(new_offset);
 
         current_offset += new_offset;
         return current_pointer + padding;
     }
-    template <typename Type, typename... ArgumentTypes>
-    uint32_t Allocate(ArgumentTypes &&...Arguments)
+    template <typename Type, typename... ArgumentTypes> Type *Allocate(ArgumentTypes &&...Arguments)
     {
         size_t alignment = alignof(Type);
         size_t size      = sizeof(Type);
@@ -167,30 +162,33 @@ struct ArenaAllocator
 
         size_t new_offset = current_pointer + padding + size;
 
-        check_if_target_commit_size_out_of_bounds(new_offset);
-
-        if (new_offset > committed_size) [[unlikely]]
-        {
-            size_t target_commit = calculate_target_commit(new_offset);
-
-            check_if_target_commit_size_out_of_bounds(target_commit);
-
-            if (!CommitPages(target_commit))
-            {
-                PANIC_OUT_OF_MEMORY(target_commit);
-            };
-        }
+        commit_pages_given_target_size(new_offset);
 
         current_offset += new_offset;
         Type *result = reinterpret_cast<Type *>(aligned_pointer);
 
         new (result) Type(std::forward<ArgumentTypes>(Arguments)...);
 
-        return static_cast<uint32_t>(aligned_pointer - reinterpret_cast<size_t>(base));
+        return result;
     }
-    template <typename Type> std::span<Type> AllocateArray(size_t Count)
+    template <typename Type> Handle ConvertPtrToHandle(Type *Pointer)
     {
-        if (Count == 0)
+        return reinterpret_cast<Handle>(Pointer - base);
+    };
+    /// assumes handle is already aligned.
+    template <typename Type> Type *ConvertHandleToPtr(uint32_t Handle)
+    {
+        assert(
+            static_cast<uint64_t>(Handle) + sizeof(Type) <= committed_size &&
+            "Handle out of bounds.");
+
+        return reinterpret_cast<Type *>(base + Handle);
+    }
+    template <typename Type> Handle AllocateArray(size_t Count)
+    {
+        // [ uint32_t header ] ... objects ...
+
+        if (Count == 0) [[unlikely]]
         {
             return {};
         }
@@ -198,40 +196,65 @@ struct ArenaAllocator
         size_t alignment = alignof(Type);
         size_t size      = sizeof(Type) * Count;
 
-        auto   current_pointer = reinterpret_cast<size_t>(base + current_offset);
+        auto *header_pointer = AllocateBlockOfSize(sizeof(uint32_t), alignof(uint32_t));
+
+        memcpy(header_pointer, &Count, sizeof(uint32_t));
+
+        size_t current_pointer = reinterpret_cast<size_t>(header_pointer + sizeof(uint32_t));
         size_t aligned_pointer = (current_pointer + alignment - 1) & ~(alignment - 1);
         size_t padding         = aligned_pointer - current_pointer;
 
-        if (current_offset + padding + size > reserved_capacity)
-        {
-            PANIC_OUT_OF_MEMORY(size);
-        }
+        size_t new_offset = padding + size + current_offset;
+
+        commit_pages_given_target_size(new_offset);
 
         current_offset += padding + size;
         auto *resulting_array = reinterpret_cast<Type *>(aligned_pointer);
 
-        // if constexpr (!std::is_trivially_constructible_v<Type>)
-        // {
         for (size_t i = 0; i < Count; i++)
         {
             new (&resulting_array[i]) Type();
         }
-        // }
 
-        return std::span<Type>(resulting_array, Count);
+        return static_cast<Handle>(header_pointer - base);
     }
 
-    template <typename Type, bool CheckNull = false> Type *ResolveTypePtrFromHandle(uint32_t Handle)
+    template <typename Type, bool SanityCheck = false>
+    std::span<Type> GetSpanFromHandle(Handle ParameterHandle)
     {
-        if constexpr (CheckNull)
+        uint8_t *count_pointer = base + ParameterHandle;
+
+        if constexpr (SanityCheck)
         {
-            if (Handle == 0)
+            if (ParameterHandle > committed_size)
             {
-                return nullptr;
+                std::cerr << "ATTEMPT TO READ SPAN COUNT OUT OF BOUNDS OF ARENA.\n";
+
+                DebugHelpers::BuiltinTrap();
             }
         }
 
-        return reinterpret_cast<Type *>(base + Handle);
+        uint32_t count = 0;
+
+        memcpy(&count, count_pointer, sizeof(uint32_t));
+
+        size_t alignment = alignof(Type);
+
+        size_t content_offset_unaligned = ParameterHandle + sizeof(uint32_t);
+        size_t aligned_offset = (content_offset_unaligned + alignment - 1) & ~(alignment - 1);
+
+        if constexpr (SanityCheck)
+        {
+            if (content_offset_unaligned + (count * sizeof(Type)) > committed_size)
+            {
+                std::cerr << "ATTEMPT TO READ SPAN CONTENT OUT OF BOUNDS OF ARENA.\n";
+
+                DebugHelpers::BuiltinTrap();
+            }
+        }
+
+        auto *content_pointer = reinterpret_cast<Type *>(base + aligned_offset);
+        return std::span<Type>(content_pointer, count);
     }
 };
 } // namespace JSlang

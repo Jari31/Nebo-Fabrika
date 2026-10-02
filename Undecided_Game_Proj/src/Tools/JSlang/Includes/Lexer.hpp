@@ -16,6 +16,7 @@
 
 namespace JSlang
 {
+
 enum class TokenTypes : uint8_t
 {
     UNKNOWN,
@@ -133,17 +134,12 @@ struct Lexer
         : ObjectDiagnosticEngine(ParameterDiagnosticEngine),
           ObjectStringInterner(ParameterStringInterner)
     {
-        else
-        {
-            FilePath = ParameterFilePath;
-        }
-
         if (ParameterSource.empty())
         {
             ObjectDiagnosticEngine.Report(
                 Severity::Warning,
                 SOURCE_PROVIDED_IS_EMPTY,
-                {.Filename = FilePath},
+                {.SourceHandle = 0, .Line_Column = 0},
                 "The file provided is empty.",
                 "Now... Ya thinking I'm a magician, mister? Expect me to whoop up an entire damn "
                 "source file from your thoughts like a cheap chat bot? Take yer thoughts of making "
@@ -204,54 +200,43 @@ struct Lexer
         char character = peek_character_infront_cursor();
         return character == ExpectedCharacter;
     }
-
-    Token make_token(TokenTypes TokenType, size_t TokenStart, size_t Length)
+    Token make_token(TokenTypes TokenType) const
     {
-        return {
-            .TokenType            = TokenType,
-            .ObjectSourceLocation = {
-                .Source   = Source.substr(TokenStart, Length),
-                .Filename = FilePath,
-                .Line     = Line,
-                .Column   = Column}};
+        SourceLocation source_location;
+        source_location.SetLine(Line);
+        source_location.SetColumn(Column);
+
+        return {.TokenType = TokenType, .ObjectSourceLocation = source_location};
     }
     Token make_token(TokenTypes TokenType, std::string_view StringView)
     {
-        return {
-            .TokenType            = TokenType,
-            .ObjectSourceLocation = {
-                .Source = StringView, .Filename = FilePath, .Line = Line, .Column = Column}};
-    }
-    Token make_token(TokenTypes TokenType, size_t CursorStartPosition)
-    {
-        return make_token(TokenType, CursorStartPosition, 1);
-    }
-    Token make_token(TokenTypes TokenType, std::string_view StringView, uint64_t StringViewHash)
-    {
-        return {
-            .TokenType            = TokenType,
-            .ObjectSourceLocation = {
-                .Source     = StringView,
-                .SourceHash = StringViewHash,
-                .Filename   = FilePath,
-                .Line       = Line,
-                .Column     = Column}};
-    }
+        auto string_handle = ObjectStringInterner.InternString(StringView);
 
+        SourceLocation source_location;
+        source_location.SourceHandle = string_handle;
+        source_location.SetLine(Line);
+        source_location.SetColumn(Column);
+
+        return {.TokenType = TokenType, .ObjectSourceLocation = source_location};
+    }
+    Token make_token(TokenTypes TokenType, uint32_t Start, uint32_t Length)
+    {
+        return make_token(TokenType, Source.substr(Start, Length));
+    }
     /// increments the cursor by one
-    Token make_singular_token(TokenTypes TokenType, size_t CursorStartPosition)
+    Token make_singular_token(TokenTypes TokenType)
     {
         advance_one_character();
-        return make_token(TokenType, CursorStartPosition, 1);
+        return make_token(TokenType);
     }
 
     /// increments the cursor by two
-    Token make_dual_token(TokenTypes TokenType, size_t CursorStartPosition)
+    Token make_dual_token(TokenTypes TokenType)
     {
         advance_one_character();
         advance_one_character();
 
-        return make_token(TokenType, CursorStartPosition, 2);
+        return make_token(TokenType);
     }
 
     static TokenTypes check_whether_identifier_or_keyword(std::string_view Text)
@@ -457,9 +442,8 @@ struct Lexer
         return make_token(
             TokenTypes::IntegerLiteral, CursorStartPosition, Cursor - CursorStartPosition);
     }
-
     template <char ExpectedSentinelCharacter>
-    Token create_token_from_string_literal(size_t CursorStartPosition)
+    Token create_token_from_string_literal(uint32_t CursorStartPosition)
     {
         advance_one_character();
         while (peek_character_under_cursor() !=
@@ -519,19 +503,19 @@ struct Lexer
         {
         case '\0':
         {
-            return make_token(TokenTypes::EndOfFile, cursor_start_position, 1);
+            return make_token(TokenTypes::EndOfFile);
         }
         case '@':
         {
-            return make_singular_token(TokenTypes::AtSymbol, cursor_start_position);
+            return make_singular_token(TokenTypes::AtSymbol);
         }
         case '=': // could use a macro, but would be annoyingly complex to maintain
         {
             if (match_next_character('='))
             {
-                return make_dual_token(TokenTypes::EqualEqual, cursor_start_position);
+                return make_dual_token(TokenTypes::EqualEqual);
             }
-            return make_singular_token(TokenTypes::Equal, cursor_start_position);
+            return make_singular_token(TokenTypes::Equal);
         }
         case '-':
         {
@@ -539,30 +523,30 @@ struct Lexer
             {
             case '-':
             {
-                return make_dual_token(TokenTypes::MinusMinus, cursor_start_position);
+                return make_dual_token(TokenTypes::MinusMinus);
             }
             case '=':
             {
-                return make_dual_token(TokenTypes::MinusEqual, cursor_start_position);
+                return make_dual_token(TokenTypes::MinusEqual);
             }
             case '>':
             {
-                return make_dual_token(TokenTypes::RightArrow, cursor_start_position);
+                return make_dual_token(TokenTypes::RightArrow);
             }
             default:
             {
                 break;
             }
             }
-            return make_singular_token(TokenTypes::Minus, cursor_start_position);
+            return make_singular_token(TokenTypes::Minus);
         }
         case '+':
         {
             if (match_next_character('+'))
             {
-                return make_dual_token(TokenTypes::PlusPlus, cursor_start_position);
+                return make_dual_token(TokenTypes::PlusPlus);
             }
-            return make_singular_token(TokenTypes::Plus, cursor_start_position);
+            return make_singular_token(TokenTypes::Plus);
         }
         case '/':
         {
@@ -574,111 +558,111 @@ struct Lexer
             }
             case '=':
             {
-                return make_dual_token(TokenTypes::SlashEqual, cursor_start_position);
+                return make_dual_token(TokenTypes::SlashEqual);
             }
             default:
             {
                 break;
             }
             }
-            return make_singular_token(TokenTypes::Slash, cursor_start_position);
+            return make_singular_token(TokenTypes::Slash);
         }
         case '(':
         {
-            return make_singular_token(TokenTypes::LeftParenthesis, cursor_start_position);
+            return make_singular_token(TokenTypes::LeftParenthesis);
         }
         case ')':
         {
-            return make_singular_token(TokenTypes::RightParenthesis, cursor_start_position);
+            return make_singular_token(TokenTypes::RightParenthesis);
         }
         case '{':
         {
-            return make_singular_token(TokenTypes::LeftBrace, cursor_start_position);
+            return make_singular_token(TokenTypes::LeftBrace);
         }
         case '}':
         {
-            return make_singular_token(TokenTypes::RightBrace, cursor_start_position);
+            return make_singular_token(TokenTypes::RightBrace);
         }
         case ',':
         {
-            return make_singular_token(TokenTypes::Comma, cursor_start_position);
+            return make_singular_token(TokenTypes::Comma);
         }
         case '[':
         {
-            return make_singular_token(TokenTypes::LeftSquareBracket, cursor_start_position);
+            return make_singular_token(TokenTypes::LeftSquareBracket);
         }
         case ']':
         {
-            return make_singular_token(TokenTypes::RightSquareBracket, cursor_start_position);
+            return make_singular_token(TokenTypes::RightSquareBracket);
         }
         case ';':
         {
-            return make_singular_token(TokenTypes::Semicolon, cursor_start_position);
+            return make_singular_token(TokenTypes::Semicolon);
         }
         case '*':
         {
             if (match_next_character('='))
             {
-                return make_dual_token(TokenTypes::StarEqual, cursor_start_position);
+                return make_dual_token(TokenTypes::StarEqual);
             }
-            return make_singular_token(TokenTypes::Star, cursor_start_position);
+            return make_singular_token(TokenTypes::Star);
         }
         case '.':
         {
             if (match_next_character('.'))
             {
-                return make_dual_token(TokenTypes::Ellipsis, cursor_start_position);
+                return make_dual_token(TokenTypes::Ellipsis);
             }
 
-            return make_singular_token(TokenTypes::Dot, cursor_start_position);
+            return make_singular_token(TokenTypes::Dot);
         }
         case '!':
         {
             if (match_next_character('='))
             {
-                return make_dual_token(TokenTypes::NotEqual, cursor_start_position);
+                return make_dual_token(TokenTypes::NotEqual);
             }
 
-            return make_singular_token(TokenTypes::Not, cursor_start_position);
+            return make_singular_token(TokenTypes::Not);
         }
         case '>':
         {
             if (match_next_character('='))
             {
-                return make_dual_token(TokenTypes::GreaterThanOrEqualTo, cursor_start_position);
+                return make_dual_token(TokenTypes::GreaterThanOrEqualTo);
             }
-            return make_singular_token(TokenTypes::RightAngleBrace, cursor_start_position);
+            return make_singular_token(TokenTypes::RightAngleBrace);
         }
         case '<':
         {
             if (match_next_character('='))
             {
-                return make_dual_token(TokenTypes::LessThanOrEqualTo, cursor_start_position);
+                return make_dual_token(TokenTypes::LessThanOrEqualTo);
             }
 
-            return make_singular_token(TokenTypes::LeftAngleBracket, cursor_start_position);
+            return make_singular_token(TokenTypes::LeftAngleBracket);
         }
         case '&':
         {
             if (match_next_character('&'))
             {
-                return make_dual_token(TokenTypes::AND, cursor_start_position);
+                return make_dual_token(TokenTypes::AND);
             }
 
-            return make_singular_token(TokenTypes::Ampersand, cursor_start_position);
+            return make_singular_token(TokenTypes::Ampersand);
         }
         case '|':
         {
             if (match_next_character('|'))
             {
-                return make_dual_token(TokenTypes::OR, cursor_start_position);
+                return make_dual_token(TokenTypes::OR);
             }
 
-            return make_singular_token(TokenTypes::Pipe, cursor_start_position);
+            return make_singular_token(TokenTypes::Pipe);
         }
         case '^':
         {
-            return make_singular_token(TokenTypes::XOR, cursor_start_position);
+            return make_singular_token(TokenTypes::XOR);
         }
         case '"':
         {
@@ -692,10 +676,10 @@ struct Lexer
         {
             if (match_next_character(':'))
             {
-                return make_dual_token(TokenTypes::ColonColon, cursor_start_position);
+                return make_dual_token(TokenTypes::ColonColon);
             }
 
-            return make_singular_token(TokenTypes::Colon, cursor_start_position);
+            return make_singular_token(TokenTypes::Colon);
         }
         default:
             break;
@@ -720,6 +704,39 @@ struct Lexer
             "meanin'.");
     }
 
+    void report_whether_current_lc_is_out_of_range()
+    {
+        if (Line > SourceLocation::MAX_LINES) [[unlikely]]
+        {
+            SourceLocation source_location;
+            source_location.SetLine(Line);
+            source_location.SetColumn(Column);
+
+            ObjectDiagnosticEngine.Report(
+                Severity::Warning,
+                WARN_INTEGER_OVERFLOW,
+                source_location,
+                "Line count of file is beyond what's trackable. Line count will be capped; "
+                "diagnostics may be wrong.",
+                "");
+        }
+
+        if (Column > SourceLocation::MAX_COLUM) [[unlikely]]
+        {
+            SourceLocation source_location;
+            source_location.SetLine(Line);
+            source_location.SetColumn(Column);
+
+            ObjectDiagnosticEngine.Report(
+                Severity::Warning,
+                WARN_INTEGER_OVERFLOW,
+                source_location,
+                "Column count of file is beyond what's trackable. Column count will be capped; "
+                "diagnostics may be wrong.",
+                "");
+        }
+    }
+
     char8_t GetNextCharacter()
     {
         skip_whitespaces();
@@ -727,6 +744,10 @@ struct Lexer
         if (peek_character_under_cursor() == '/' && peek_character_infront_cursor() == '/')
         {
             skip_comment();
+        }
+        else if (peek_character_under_cursor() == '\0') [[unlikely]]
+        {
+            report_whether_current_lc_is_out_of_range();
         }
 
         return advance_one_character();

@@ -1,16 +1,20 @@
 #pragma once
 
+#include "ArenaAllocator.hpp"
 #include "DebugHelpers.hpp"
 #include "ErrorCodes.hpp"
 #include "Libraries/include/enkits/enkiTS/TaskScheduler.h"
 #include "Libraries/include/magic_enum/magic_enum.hpp"
 #include "Log.hpp"
+#include "StringInterner.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
 
 namespace JSlang
 {
@@ -25,39 +29,29 @@ enum class Severity : uint8_t
 
 struct SourceLocation
 {
-    uint32_t SourceHandle;
-    uint32_t Line_Column = 0;
+    static constexpr uint32_t MAX_LINES = 0xFFFFFU;
+    static constexpr uint32_t MAX_COLUM = 0xFFFU;
 
-    template <bool ClearBeforeAssign = false, bool AssumeValueIsInRange = true>
+    ArenaAllocator::Handle SourceHandle = 0;
+    uint32_t               Line_Column  = 0;
+
     void SetLine(uint32_t Value)
     {
-        if constexpr (ClearBeforeAssign)
-        {
-            Line_Column &= ~(0xFFFFF << 12);
-        }
+        Line_Column &= ~(MAX_LINES << 12);
 
-        // if this somehow goes over 1 million lines, the guy who wrote the shit behind this
-        // bullshit genuinely just needs to just end it all. i swear
-        if constexpr (AssumeValueIsInRange)
-        {
-            Line_Column |= Value << 12;
-            return;
-        }
+        Value = std::min(Value, MAX_LINES);
 
-        Line_Column |= (Value & 0xFFFFF) << 12;
+        Line_Column |= Value << 12;
     }
 
-    template <bool ClearBeforeAssign = false> void SetColumn(uint32_t Value)
+    void SetColumn(uint32_t Value)
     {
-        if constexpr (ClearBeforeAssign)
-        {
-            Line_Column &= ~0xFFF;
-        }
-        Line_Column |= Value & 0xFFF;
+        Line_Column &= ~MAX_COLUM;
+        Line_Column |= std::min(Value, MAX_COLUM);
     }
 
     [[nodiscard]] constexpr uint32_t GetLine() const { return Line_Column >> 12; }
-    [[nodiscard]] constexpr uint32_t GetColumn() const { return Line_Column & 0xFFF; }
+    [[nodiscard]] constexpr uint32_t GetColumn() const { return Line_Column & 0xFFFU; }
 };
 
 struct Diagnostic
@@ -72,14 +66,17 @@ struct Diagnostic
 
 struct DiagnosticEngine
 {
-    std::vector<std::vector<Diagnostic>> DiagnosticBuffers;
-    uint32_t                             ErrorCount   = 0;
-    uint32_t                             WarningCount = 0;
+    std::vector<Diagnostic> DiagnosticBuffer;
+    uint32_t                ErrorCount   = 0;
+    uint32_t                WarningCount = 0;
 
-    // unused during the untyped phase
     std::string_view Filepath = "UNDEFINED";
+    StringInterner  &ObjectStringInternet;
 
-    enki::TaskScheduler *TaskScheduler = nullptr;
+    DiagnosticEngine(StringInterner &ParameterStringInterner)
+        : ObjectStringInternet(ParameterStringInterner)
+    {
+    }
 
     void Report(
         Severity       Severity,
@@ -89,14 +86,10 @@ struct DiagnosticEngine
         std::string    Monologue,
         std::string    Hint = "")
     {
-        SourceLocation.SetLine<true>((SourceLocation.GetLine() + 1));
-        SourceLocation.SetColumn<true>((SourceLocation.GetColumn() + 1));
+        SourceLocation.SetLine((SourceLocation.GetLine() + 1));
+        SourceLocation.SetColumn((SourceLocation.GetColumn() + 1));
 
-        auto thread_index = TaskScheduler->GetThreadNum();
-
-        auto &diagnostic_buffer = DiagnosticBuffers[thread_index];
-
-        diagnostic_buffer.push_back(
+        DiagnosticBuffer.push_back(
             {.ErrorCode      = ErrorCode,
              .Severity       = Severity,
              .Message        = std::move(Message),
@@ -123,29 +116,28 @@ struct DiagnosticEngine
     // WARN not thread safe.
     template <bool ClearBuffer = true, bool FlushAfterWrite = false> void PrintBuffer()
     {
-        for (auto &DiagnosticBuffer : DiagnosticBuffers)
+        for (auto &Diagnostic : DiagnosticBuffer)
         {
-            for (auto &Diagnostic : DiagnosticBuffer)
-            {
-                ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
-                    "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, COLUMN: "
-                    "{}\n",
-                    std::string_view(
-                        Diagnostic.SourceLocation.Source.data(),
-                        Diagnostic.SourceLocation.Source.size()),
-                    magic_enum::enum_name(Diagnostic.Severity),
-                    magic_enum::enum_name(Diagnostic.ErrorCode),
-                    Diagnostic.Message,
-                    Diagnostic.SourceLocation.GetLine(),
-                    Diagnostic.SourceLocation.GetColumn());
-            }
+            auto string = ObjectStringInternet.GetStringViewOverHandle(
+                Diagnostic.SourceLocation.SourceHandle);
 
-            ThreadUnsafeLogger::Flush();
+            ThreadUnsafeLogger::Log<ThreadUnsafeLogger::LogTypes::Info>(
+                "ISSUE WITH: {}, SEVERITY: {}, ERROR CODE: {}, MESSAGE: {}, LINE: {}, "
+                "COLUMN: "
+                "{}\n",
+                string,
+                magic_enum::enum_name(Diagnostic.Severity),
+                magic_enum::enum_name(Diagnostic.ErrorCode),
+                Diagnostic.Message,
+                Diagnostic.SourceLocation.GetLine(),
+                Diagnostic.SourceLocation.GetColumn());
+        }
 
-            if constexpr (ClearBuffer)
-            {
-                DiagnosticBuffers.clear();
-            }
+        ThreadUnsafeLogger::Flush();
+
+        if constexpr (ClearBuffer)
+        {
+            DiagnosticBuffer.clear();
         }
     }
 
@@ -153,7 +145,7 @@ struct DiagnosticEngine
 
     void Clear()
     {
-        DiagnosticBuffers.clear();
+        DiagnosticBuffer.clear();
         ErrorCount   = 0;
         WarningCount = 0;
     }

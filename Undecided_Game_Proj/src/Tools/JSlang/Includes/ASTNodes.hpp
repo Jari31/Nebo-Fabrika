@@ -1,9 +1,8 @@
 #pragma once
+#include "ArenaAllocator.hpp"
 #include "Diagnostics.hpp"
 #include "Lexer.hpp"
 #include <cstdint>
-#include <span>
-#include <string_view>
 
 namespace JSlang
 {
@@ -52,6 +51,7 @@ struct ASTNode
 
 namespace AST
 {
+using Handle = ArenaAllocator::Handle;
 
 struct GenericStatement : ASTNode
 {
@@ -64,8 +64,8 @@ struct GenericStatement : ASTNode
 
 struct AliasStatement : ASTNode
 {
-    std::string_view From;
-    std::string_view As;
+    Handle From;
+    Handle As;
 
     AliasStatement(SourceLocation ParameterSourceLocation)
     {
@@ -76,7 +76,7 @@ struct AliasStatement : ASTNode
 
 struct DiscardAliasStatement : ASTNode
 {
-    std::string_view AliasName;
+    Handle AliasName;
 
     DiscardAliasStatement(SourceLocation ParameterSourceLocation)
     {
@@ -88,11 +88,11 @@ struct DiscardAliasStatement : ASTNode
 /// the first node in the attributes list is always the type.
 struct VariableDeclarationStatement : ASTNode
 {
-    bool                 IsImmutable = false;
-    std::span<ASTNode *> Attributes;
+    bool   IsImmutable = false;
+    Handle Attributes;
 
-    std::string_view VariableName;
-    ASTNode *Initializer; // RHS; e.g., var/const VariableName: VariableTypeName = Initializer;
+    Handle VariableName;
+    Handle Initializer; // RHS; e.g., var/const VariableName: VariableTypeName = Initializer;
 
     VariableDeclarationStatement(SourceLocation ParameterSourceLocation)
     {
@@ -104,13 +104,13 @@ struct VariableDeclarationStatement : ASTNode
 struct BinaryExpression : ASTNode
 {
     TokenTypes OperandTokenType;
-    ASTNode   *LeftHandSide;
-    ASTNode   *RightHandSide;
+    Handle     LeftHandSide;
+    Handle     RightHandSide;
 
     BinaryExpression(
         TokenTypes     ParameterTokenType,
-        ASTNode       *ParameterLeftHandSide,
-        ASTNode       *ParameterRightHandSide,
+        Handle         ParameterLeftHandSide,
+        Handle         ParameterRightHandSide,
         SourceLocation ParameterSourceLocation)
         : OperandTokenType(ParameterTokenType), LeftHandSide(ParameterLeftHandSide),
           RightHandSide(ParameterRightHandSide)
@@ -140,7 +140,7 @@ struct IdentifierExpression : ASTNode
 
 struct FunctionCallExpression : ASTNode
 {
-    std::span<ASTNode *> Arguments;
+    Handle Arguments;
 
     FunctionCallExpression(SourceLocation ParameterSourceLocation)
     {
@@ -152,13 +152,10 @@ struct FunctionCallExpression : ASTNode
 struct AnnotationFunctionExpression : ASTNode // @Identifier : { Decorations }
                                               // OR @Identifier() : { Decorations }
 {
-    std::string_view     Identifier;
-    std::span<ASTNode *> Arguments;
+    Handle Identifier;
+    Handle Arguments;
 
-    std::span<ASTNode *> Decorations;
-
-    [[nodiscard]] bool IsFunction() const { return !Arguments.empty(); }
-    [[nodiscard]] bool ContainsDecorations() const { return !Decorations.empty(); }
+    Handle Decorations;
 
     AnnotationFunctionExpression(SourceLocation ParameterSourceLocation)
     {
@@ -170,12 +167,12 @@ struct AnnotationFunctionExpression : ASTNode // @Identifier : { Decorations }
 struct UnaryExpression : ASTNode
 {
     TokenTypes OperandType;
-    ASTNode   *Operand;
+    Handle     Operand;
 
     UnaryExpression(
         SourceLocation ParameterSourceLocation,
         TokenTypes     ParameterOperand,
-        ASTNode       *ParameterIdentifier)
+        Handle         ParameterIdentifier)
         : OperandType(ParameterOperand), Operand(ParameterIdentifier)
     {
         NodeType             = NodeTypes::UnaryExpression;
@@ -185,13 +182,13 @@ struct UnaryExpression : ASTNode
 
 struct ExplicitMemberAccessExpression : ASTNode
 {
-    ASTNode         *Target;
-    std::string_view TargetMember;
+    Handle Target;
+    Handle TargetMember;
 
     ExplicitMemberAccessExpression(
-        SourceLocation   ParameterSourceLocation,
-        ASTNode         *ParameterTarget,
-        std::string_view ParameterTargetMember)
+        SourceLocation ParameterSourceLocation,
+        Handle         ParameterTarget,
+        Handle         ParameterTargetMember)
         : Target(ParameterTarget), TargetMember(ParameterTargetMember)
     {
         NodeType             = NodeTypes::ExplicitMemberAccessExpression;
@@ -201,11 +198,11 @@ struct ExplicitMemberAccessExpression : ASTNode
 
 struct ImplicitMemberAccessExpression : ASTNode
 {
-    std::string_view TargetMember;
+    Handle TargetMember;
 
     ImplicitMemberAccessExpression(
-        SourceLocation   ParameterSourceLocation,
-        std::string_view ParameterTargetMember)
+        SourceLocation ParameterSourceLocation,
+        Handle         ParameterTargetMember)
         : TargetMember(ParameterTargetMember)
     {
         NodeType             = NodeTypes::ImplicitMemberAccessExpression;
@@ -215,9 +212,9 @@ struct ImplicitMemberAccessExpression : ASTNode
 
 struct BlockStatement : ASTNode
 {
-    std::span<ASTNode *> Statements;
+    Handle Statements;
 
-    BlockStatement(SourceLocation ParameterSourceLocation, std::span<ASTNode *> ParameterStatements)
+    BlockStatement(SourceLocation ParameterSourceLocation, Handle ParameterStatements)
         : Statements(ParameterStatements)
     {
         NodeType             = NodeTypes::BlockStatement;
@@ -229,12 +226,12 @@ struct FunctionDeclarationStatement : ASTNode
 {
     // maybe we should make this into a SourceLocation instead of a string view for more accurate
     // errors
-    std::string_view     ReturnType;
-    std::string_view     Identifier;
-    std::span<ASTNode *> Parameters;
+    Handle ReturnType;
+    Handle Identifier;
+    Handle Parameters;
 
-    std::span<ASTNode *> Attributes;
-    ASTNode             *FunctionBody;
+    Handle Attributes;
+    Handle FunctionBody;
 
     FunctionDeclarationStatement(SourceLocation ParameterSourceLocation)
     {
@@ -255,7 +252,7 @@ struct FlagExpression : ASTNode
 // return statement
 struct ReturnStatement : ASTNode
 {
-    ASTNode *Expression;
+    Handle Expression;
 
     ReturnStatement(SourceLocation ParameterSourceLocation)
     {
@@ -266,7 +263,7 @@ struct ReturnStatement : ASTNode
 
 struct ExpressionStatement : ASTNode
 {
-    ASTNode *Expression;
+    Handle Expression;
 
     ExpressionStatement(SourceLocation ParameterSourceLocation, ASTNode *ParameterExpression)
         : Expression(ParameterExpression)
@@ -280,9 +277,9 @@ struct IfExpression : ASTNode
 {
     bool EvaluateAtCompileTime = true;
 
-    ASTNode *Condition;
-    ASTNode *ThenBranch;
-    ASTNode *ElseBranch;
+    Handle Condition;
+    Handle ThenBranch;
+    Handle ElseBranch;
 
     IfExpression(SourceLocation ParameterSourceLocation)
     {
@@ -295,16 +292,16 @@ struct SwitchExpression : ASTNode
 {
     struct Case
     {
-        std::span<ASTNode *> ForCondition; // if this is empty, then it is a default case
-        ASTNode             *ThenExpression;
+        Handle ForCondition; // if this is empty, then it is a default case
+        Handle ThenExpression;
 
         SourceLocation ObjectCaseSourceLocation;
     };
 
     bool EvaluatedAtCompileTime = false;
 
-    ASTNode          *Condition;
-    std::span<Case *> Cases;
+    Handle Condition;
+    Handle Cases;
 
     SwitchExpression(SourceLocation ParameterSourceLocation)
     {
@@ -315,9 +312,9 @@ struct SwitchExpression : ASTNode
 
 struct ForStatement : ASTNode
 {
-    ASTNode             *Condition;
-    std::span<ASTNode *> Captures;
-    ASTNode             *BlockStatement;
+    Handle Condition;
+    Handle Captures;
+    Handle BlockStatement;
 
     ForStatement(SourceLocation ParameterSourceLocation)
     {
@@ -328,8 +325,8 @@ struct ForStatement : ASTNode
 
 struct WhileStatement : ASTNode
 {
-    ASTNode *Condition;
-    ASTNode *BlockStatement;
+    Handle Condition;
+    Handle BlockStatement;
 
     WhileStatement(SourceLocation ParameterSourceLocation)
     {
@@ -340,8 +337,8 @@ struct WhileStatement : ASTNode
 
 struct ImportStatement : ASTNode
 {
-    std::string_view ImportFrom; // import From/From From
-    ASTNode         *ImportAs;   // as unsafe ; as something_else
+    Handle ImportFrom; // import From/From From
+    Handle ImportAs;   // as unsafe ; as something_else
 
     ImportStatement(SourceLocation ParameterSourceLocation)
     {
@@ -352,10 +349,10 @@ struct ImportStatement : ASTNode
 
 struct StructDeclarationStatement : ASTNode
 {
-    std::string_view     Identifier;
-    std::span<ASTNode *> Attributes;
+    Handle Identifier;
+    Handle Attributes;
 
-    std::span<ASTNode *> StructImplementation;
+    Handle StructImplementation;
 
     StructDeclarationStatement(SourceLocation ParameterSourceLocation)
     {
@@ -367,7 +364,7 @@ struct StructDeclarationStatement : ASTNode
 /// the source location contains the identifier of the array being accessed
 struct ArrayAccessExpression : ASTNode
 {
-    ASTNode *Expression;
+    Handle Expression;
 
     ArrayAccessExpression(SourceLocation ParameterSourceLocation)
     {
@@ -378,8 +375,8 @@ struct ArrayAccessExpression : ASTNode
 
 struct ExpectFromExpression : ASTNode
 {
-    ASTNode *ExpectedNode;
-    ASTNode *TargetNode;
+    Handle ExpectedNode;
+    Handle TargetNode;
 
     ExpectFromExpression(SourceLocation ParameterSourceLocation)
     {
@@ -390,9 +387,9 @@ struct ExpectFromExpression : ASTNode
 
 struct DefineMacroStatement : ASTNode
 {
-    std::string_view     Identifier;
-    std::span<ASTNode *> Parameters;
-    std::span<ASTNode *> Decorations;
+    Handle Identifier;
+    Handle Parameters;
+    Handle Decorations;
 
     DefineMacroStatement(SourceLocation ParameterSourceLocation)
     {
